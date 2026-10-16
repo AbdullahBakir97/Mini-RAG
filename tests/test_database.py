@@ -1,7 +1,13 @@
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-from mini_rag.persistence.database import create_engine, create_session_factory
+from mini_rag.core.config import get_settings
+from mini_rag.persistence.database import (
+    create_engine,
+    create_session_factory,
+    stored_embedding_dimensions,
+)
 
 pytestmark = pytest.mark.anyio
 
@@ -32,3 +38,45 @@ def test_database_url_must_be_async_postgres(monkeypatch):
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+def test_app_refuses_to_start_when_embedding_dimensions_do_not_match(db, monkeypatch):
+    from mini_rag.main import create_app
+
+    monkeypatch.setenv("EMBEDDING_DIMENSIONS", "768")
+
+    with pytest.raises(RuntimeError, match="EMBEDDING_DIMENSIONS is 768.*1536"):
+        with TestClient(create_app()):
+            pass
+
+
+def test_app_starts_without_a_database_to_check_dimensions_against(monkeypatch):
+    from mini_rag.main import create_app
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://nobody:x@127.0.0.1:1/none")
+
+    with TestClient(create_app()) as client:
+        assert client.get("/api/v1/health").status_code == 503
+
+
+def test_embedder_is_created_only_when_configured(db, monkeypatch):
+    from mini_rag.main import create_app
+
+    with TestClient(create_app()) as client:
+        assert client.app.state.embedder is not None
+
+    monkeypatch.setenv("OPEN_API_KEY", "")
+    get_settings.cache_clear()
+    with TestClient(create_app()) as client:
+        assert client.app.state.embedder is None
+
+
+async def test_stored_embedding_dimensions(migrated_database):
+    engine = create_engine(migrated_database)
+    unreachable = create_engine("postgresql+asyncpg://nobody:x@127.0.0.1:1/none")
+    try:
+        assert await stored_embedding_dimensions(engine) == 1536
+        assert await stored_embedding_dimensions(unreachable) is None
+    finally:
+        await engine.dispose()
+        await unreachable.dispose()
