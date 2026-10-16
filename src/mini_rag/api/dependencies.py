@@ -1,10 +1,13 @@
 """Dependency wiring: how the API builds the objects that routes use."""
 
+from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
 
 from mini_rag.core.config import Settings, get_settings
+from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
+from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
@@ -28,3 +31,18 @@ def get_upload_service(storage: FileStorageDep, settings: SettingsDep) -> Upload
 
 
 UploadServiceDep = Annotated[UploadService, Depends(get_upload_service)]
+
+
+@lru_cache
+def get_loader_registry() -> LoaderRegistry:
+    return default_loader_registry()
+
+
+LoaderRegistryDep = Annotated[LoaderRegistry, Depends(get_loader_registry)]
+
+
+def get_processing_service(storage: FileStorageDep, loaders: LoaderRegistryDep) -> ProcessingService:
+    return ProcessingService(storage=storage, loaders=loaders)
+
+
+ProcessingServiceDep = Annotated[ProcessingService, Depends(get_processing_service)]

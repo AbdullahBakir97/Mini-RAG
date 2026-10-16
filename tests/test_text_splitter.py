@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from mini_rag.helpers.text_splitter import RecursiveTextSplitter
+from mini_rag.text.splitter import RecursiveTextSplitter
 
 PARAGRAPHS = (
     "Retrieval-augmented generation combines search with a language model.\n\n"

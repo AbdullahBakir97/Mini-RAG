@@ -7,7 +7,7 @@ layer turns it into a response.
 
 from http import HTTPStatus
 
-from mini_rag.models import ResponseSignal
+from mini_rag.domain.signals import ResponseSignal
 
 
 class AppError(Exception):

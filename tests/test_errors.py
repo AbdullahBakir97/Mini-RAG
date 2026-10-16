@@ -43,3 +43,13 @@ def test_detail_is_not_leaked_to_clients():
     _, body = call_handler(ProcessingFailed("stack trace with /secret/path"))
 
     assert body == {"signal": "processing_failed"}
+
+
+def test_client_errors_with_a_cause_are_logged_as_warnings(caplog):
+    error = ProcessingFailed("Could not read x.pdf")
+    error.__cause__ = ValueError("bad xref table")
+
+    with caplog.at_level("WARNING", logger="mini_rag.api.error_handlers"):
+        call_handler(error)
+
+    assert "bad xref table" in caplog.text

@@ -152,11 +152,11 @@ Mini-RAG/
 │   │   ├── core/             # Settings and application errors
 │   │   ├── api/              # Dependency wiring and error handler
 │   │   ├── routes/           # HTTP endpoints
-│   │   ├── services/         # Upload rules (type, size, cleanup)
-│   │   ├── controllers/      # Document processing
+│   │   ├── services/         # Upload rules and document processing
 │   │   ├── storage/          # File storage and path safety
-│   │   ├── models/enums/     # Response signals
-│   │   └── helpers/          # Text splitter
+│   │   ├── loaders/          # One loader per file type, chosen by extension
+│   │   ├── text/             # Recursive text splitter
+│   │   └── domain/           # Document, Chunk and response signals
 ├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
 ├── tests/                    # pytest suite
 ├── requirements.txt
