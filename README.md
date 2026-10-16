@@ -13,8 +13,8 @@ Mini RAG is a small, readable backend for answering questions over your own docu
 | Stage | Status |
 |---|---|
 | File upload API with validation | ✅ Done |
-| Document processing (load TXT/PDF, split into chunks) | 🔜 Next |
-| Storage for projects, files and chunks | Planned |
+| Document processing (load TXT/PDF, split into chunks) | ✅ Done |
+| Storage for projects, files and chunks | 🔜 Next |
 | Embeddings and vector search | Planned |
 | Answer generation with an LLM | Planned |
 | Docker packaging | Planned |
@@ -24,6 +24,7 @@ Mini RAG is a small, readable backend for answering questions over your own docu
 - **Python 3.11+** with **FastAPI** and **Uvicorn**
 - **pydantic-settings** for configuration from `.env`
 - **aiofiles** for streaming uploads to disk
+- **pypdf** for PDF text extraction, plus a small built-in recursive text splitter
 - **pytest** and **ruff** for tests and linting, run in GitHub Actions CI
 
 ## Quick start
@@ -65,6 +66,7 @@ Settings are read from `src/.env` (copy it from `src/.env.example`) or from envi
 | `GET` | `/` | Redirects to `/docs` |
 | `GET` | `/api/v1/` | Welcome message with app name and version |
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
+| `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into text chunks |
 
 ### Upload a file
 
@@ -84,6 +86,44 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | File type not in `FILE_ALLOWED_TYPES` | `400` | `{"signal": "file_type_not_supported"}` |
 | File larger than `FILE_MAX_SIZE` | `400` | `{"signal": "file_size_exceeded"}` |
 | Invalid `project_id` | `422` | Validation error details |
+
+### Process a file into chunks
+
+Send the `file_id` returned by the upload. Text is split on paragraphs first, then lines, then words; each chunk is at most `chunk_size` characters and shares up to `overlap_size` characters with the previous one.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/data/process/demo1 \
+  -H "Content-Type: application/json" \
+  -d '{"file_id": "a16q20nzrtvj_notes.txt", "chunk_size": 1000, "overlap_size": 200}'
+```
+
+```json
+{
+  "signal": "processing_success",
+  "file_id": "a16q20nzrtvj_notes.txt",
+  "chunks_count": 1,
+  "chunks": [
+    {"text": "...", "metadata": {"source": "a16q20nzrtvj_notes.txt", "chunk_index": 0}}
+  ]
+}
+```
+
+| Field | Default | Rules |
+|---|---|---|
+| `file_id` | required | ID returned by the upload endpoint |
+| `chunk_size` | `1000` | 1–100000 characters |
+| `overlap_size` | `200` | 0 or more, smaller than `chunk_size` |
+
+Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `page` number in their metadata.
+
+| Case | Status | Response |
+|---|---|---|
+| Chunks created | `200` | `{"signal": "processing_success", ...}` |
+| No such file in this project | `404` | `{"signal": "file_not_found"}` |
+| Extension is not `.txt` or `.pdf` | `400` | `{"signal": "file_type_not_supported"}` |
+| No extractable text (e.g. a scanned PDF) | `400` | `{"signal": "file_has_no_text"}` |
+| File could not be read | `400` | `{"signal": "processing_failed"}` |
+| Invalid `file_id` or chunk settings | `422` | Validation error details |
 
 ## Development
 
@@ -109,9 +149,9 @@ Mini-RAG/
 ├── src/
 │   ├── main.py               # FastAPI app and router setup
 │   ├── routes/               # HTTP endpoints
-│   ├── controllers/          # Upload validation, file naming, project folders
+│   ├── controllers/          # Upload validation, file naming, document processing
 │   ├── models/enums/         # Response signals
-│   ├── helpers/config.py     # Settings loaded from .env
+│   ├── helpers/              # Settings (.env) and the text splitter
 │   ├── assets/files/         # Uploaded files (git-ignored)
 │   ├── requirements.txt
 │   └── .env.example
