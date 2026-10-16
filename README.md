@@ -1,33 +1,128 @@
 # Mini RAG
 
-> Minimal retrieval-augmented generation pipeline — embeddings, vector store, prompt assembly.
+> A minimal retrieval-augmented generation (RAG) service built with FastAPI, developed step by step from document upload to LLM-generated answers.
 
-![Python](https://img.shields.io/badge/Python-3776AB?style=flat-square&logo=python&logoColor=white) ![Stars](https://img.shields.io/github/stars/AbdullahBakir97/Mini-RAG?style=flat-square&color=FFD700) ![Forks](https://img.shields.io/github/forks/AbdullahBakir97/Mini-RAG?style=flat-square&color=blue) ![Last commit](https://img.shields.io/github/last-commit/AbdullahBakir97/Mini-RAG?style=flat-square)
+[![CI](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 
 ---
 
 ## Overview
 
-Minimal retrieval-augmented generation pipeline — embeddings, vector store, prompt assembly.
+Mini RAG is a small, readable backend for answering questions over your own documents. It is being built in stages:
+
+| Stage | Status |
+|---|---|
+| File upload API with validation | ✅ Done |
+| Document processing (load TXT/PDF, split into chunks) | 🔜 Next |
+| Storage for projects, files and chunks | Planned |
+| Embeddings and vector search | Planned |
+| Answer generation with an LLM | Planned |
+| Docker packaging | Planned |
 
 ## Tech stack
 
-- **Language:** Python
-- **Tags:** embeddings, llm, python, rag, vector-store
+- **Python 3.11+** with **FastAPI** and **Uvicorn**
+- **pydantic-settings** for configuration from `.env`
+- **aiofiles** for streaming uploads to disk
+- **pytest** and **ruff** for tests and linting, run in GitHub Actions CI
 
 ## Quick start
 
 ```bash
 git clone https://github.com/AbdullahBakir97/Mini-RAG.git
 cd Mini-RAG
+
 python -m venv .venv
-source .venv/bin/activate    # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r src/requirements.txt
+
+cd src
+cp .env.example .env             # Windows: copy .env.example .env
+uvicorn main:app --reload
 ```
 
-## Topics
+Then open **http://localhost:8000**. It redirects to the interactive API docs at `/docs`, where you can try every endpoint from the browser.
 
-`embeddings` · `llm` · `python` · `rag` · `vector-store`
+> Run `uvicorn` from inside `src/`: the app imports its packages relative to that folder and reads `.env` from there.
+
+## Configuration
+
+Settings are read from `src/.env` (copy it from `src/.env.example`) or from environment variables.
+
+| Variable | Example | Description |
+|---|---|---|
+| `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
+| `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
+| `OPEN_API_KEY` | `""` | API key for the LLM provider (used from the generation stage) |
+| `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
+| `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
+| `FILE_DEFAULT_CHUNK_SIZE` | `512000` | Bytes read per chunk while saving an upload |
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | Redirects to `/docs` |
+| `GET` | `/api/v1/` | Welcome message with app name and version |
+| `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
+
+### Upload a file
+
+`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `src/assets/files/<project_id>/` with a random prefix, so uploads never overwrite each other.
+
+```bash
+curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
+```
+
+```json
+{"signal": "file_uploaded_successfully", "file_id": "a16q20nzrtvj_notes.txt"}
+```
+
+| Case | Status | Response |
+|---|---|---|
+| Upload saved | `200` | `{"signal": "file_uploaded_successfully", "file_id": "..."}` |
+| File type not in `FILE_ALLOWED_TYPES` | `400` | `{"signal": "file_type_not_supported"}` |
+| File larger than `FILE_MAX_SIZE` | `400` | `{"signal": "file_size_exceeded"}` |
+| Invalid `project_id` | `422` | Validation error details |
+
+## Development
+
+Install the runtime and dev dependencies from the repository root:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
+Run the same checks as CI:
+
+```bash
+ruff check .
+pytest
+```
+
+Tests use temporary directories and their own settings, so they need no `.env` file and never write to `src/assets`.
+
+## Project structure
+
+```
+Mini-RAG/
+├── src/
+│   ├── main.py               # FastAPI app and router setup
+│   ├── routes/               # HTTP endpoints
+│   ├── controllers/          # Upload validation, file naming, project folders
+│   ├── models/enums/         # Response signals
+│   ├── helpers/config.py     # Settings loaded from .env
+│   ├── assets/files/         # Uploaded files (git-ignored)
+│   ├── requirements.txt
+│   └── .env.example
+├── tests/                    # pytest suite
+├── requirements-dev.txt
+└── pyproject.toml            # pytest and ruff configuration
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md). Security issues: see [SECURITY.md](./SECURITY.md).
 
 ## Author
 
@@ -37,8 +132,4 @@ Full-Stack Developer based in Germany - Python · Django · Vue · Nuxt.
 
 ## License
 
-Part of the [@AbdullahBakir97](https://github.com/AbdullahBakir97) portfolio. License terms to be added; for now treat as **all rights reserved**.
-
----
-
-_Last refreshed: 2026-05-04 - This README was generated as part of a portfolio polish pass and will be replaced with project-specific narrative as work resumes on this repository._
+Released under the [MIT License](./LICENSE).

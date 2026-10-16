@@ -7,7 +7,12 @@ Thanks for considering a contribution!
 1. Fork the repository.
 2. Create a topic branch: `git checkout -b feature/short-name`.
 3. Make your change. Keep diffs focused — small PRs land faster.
-4. Run any local checks (tests, linters) before opening the PR.
+4. Run the local checks before opening the PR (the same ones CI runs):
+   ```bash
+   pip install -r requirements-dev.txt
+   ruff check .
+   pytest
+   ```
 5. Open a pull request describing **what** changed and **why**.
 
 ## Style
