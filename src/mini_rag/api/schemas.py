@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Path, Query
 from pydantic import BaseModel, Field, model_validator
@@ -46,6 +46,11 @@ def error_responses(*errors: type[AppError]) -> dict[int | str, dict[str, Any]]:
         status: {"model": entry["model"], "description": "Signal: " + ", ".join(entry["signals"])}
         for status, entry in responses.items()
     }
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "unavailable"]
+    database: Literal["ok", "unavailable"]
 
 
 class WelcomeResponse(BaseModel):

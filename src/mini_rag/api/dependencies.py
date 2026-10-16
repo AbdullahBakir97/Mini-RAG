@@ -5,7 +5,7 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.domain.repositories import UnitOfWork
@@ -17,6 +17,13 @@ from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+def get_engine(request: Request) -> AsyncEngine:
+    return request.app.state.engine
+
+
+EngineDep = Annotated[AsyncEngine, Depends(get_engine)]
 
 
 def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:

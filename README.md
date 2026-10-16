@@ -70,6 +70,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 |---|---|---|
 | `GET` | `/` | Redirects to `/docs` |
 | `GET` | `/api/v1/` | Welcome message with app name and version |
+| `GET` | `/api/v1/health` | `200` `{"status": "ok", "database": "ok"}`, or `503` when the database is unreachable |
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
 | `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file and chunk counts |
