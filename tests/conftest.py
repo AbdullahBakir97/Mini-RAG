@@ -1,12 +1,17 @@
 import asyncio
 import os
+from pathlib import Path
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import text as sql_text
 
 from mini_rag.core.config import get_settings
 from mini_rag.persistence.database import create_engine
+
+ROOT = Path(__file__).resolve().parents[1]
 
 # A disposable database: tests empty its tables. Defaults to the one created
 # by docker-compose (see docker/postgres/init); CI sets TEST_DATABASE_URL.
@@ -69,6 +74,37 @@ def database_url():
             returncode=1,
         )
     return TEST_DATABASE_URL
+
+
+def alembic_config(url: str) -> Config:
+    config = Config(str(ROOT / "alembic.ini"))
+    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    config.attributes["configure_logging"] = False
+    return config
+
+
+@pytest.fixture(scope="session")
+def migrated_database(database_url):
+    """The test database, migrated to the latest schema once per run."""
+    command.upgrade(alembic_config(database_url), "head")
+    return database_url
+
+
+async def _empty_tables(url: str) -> None:
+    engine = create_engine(url)
+    try:
+        async with engine.begin() as connection:
+            await connection.execute(sql_text(
+                "TRUNCATE projects, files, chunks RESTART IDENTITY CASCADE"))
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture
+def db(migrated_database):
+    """A migrated database that is emptied after the test."""
+    yield migrated_database
+    asyncio.run(_empty_tables(migrated_database))
 
 
 def build_pdf(pages: list[str]) -> bytes:

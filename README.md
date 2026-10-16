@@ -40,6 +40,7 @@ pip install -r requirements.txt
 
 cp .env.example .env             # Windows: copy .env.example .env
 docker compose up -d db          # PostgreSQL 16 on localhost:5432
+alembic upgrade head             # create or update the database tables
 uvicorn --app-dir src mini_rag.main:app --reload
 ```
 
@@ -164,6 +165,18 @@ def default_loader_registry() -> LoaderRegistry:
 
 Nothing else changes: the processing service and the API pick it up automatically.
 
+## Database migrations
+
+The schema is managed with Alembic; the app never creates tables itself.
+
+```bash
+alembic upgrade head                                  # apply all migrations
+alembic downgrade -1                                  # undo the latest one
+alembic revision --autogenerate -m "describe change"  # after changing persistence/tables.py
+```
+
+Review every generated migration before committing it. `tests/test_migrations.py` fails if the models and the migrations ever disagree.
+
 ## Development
 
 Install the runtime and dev dependencies from the repository root, and start PostgreSQL (the compose file also creates the `mini_rag_test` database the tests use):
@@ -197,10 +210,13 @@ Mini-RAG/
 │   │   ├── text/             # Recursive text splitter
 │   │   └── domain/           # Document, Chunk and response signals
 ├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
+├── migrations/               # Alembic migrations
 ├── tests/                    # pytest suite
 ├── requirements.txt
 ├── requirements-dev.txt
 ├── .env.example
+├── alembic.ini
+├── docker-compose.yml        # Local PostgreSQL
 └── pyproject.toml            # pytest and ruff configuration
 ```
 
