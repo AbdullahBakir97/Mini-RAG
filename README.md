@@ -126,6 +126,40 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 | File could not be read | `422` | `{"signal": "processing_failed"}` |
 | Invalid `file_id` or chunk settings | `422` | Validation error details |
 
+## Architecture
+
+The code is split into layers. Each layer only depends on the layers below it, and only the API layer knows about HTTP, so the business logic can be reused from a CLI or a background worker and tested without a web server. `tests/test_architecture.py` enforces these rules.
+
+```
+api        routes, request/response schemas, dependency wiring, error handler
+ │
+services   UploadService, ProcessingService: the use cases
+ │
+storage · loaders · text     files on disk · one loader per file type · text splitter
+ │
+domain     Document, Chunk, response signals
+```
+
+`core` holds settings and the `AppError` hierarchy; `api`, `services`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own.
+
+| Concern | Where it lives |
+|---|---|
+| Validation of IDs and request bodies | `api/schemas.py` (`ProjectId`, `FileId`, request models) |
+| Turning errors into responses | Services raise an `AppError` subclass; `api/error_handlers.py` maps it to `{"signal": ...}` and its status code |
+| Wiring objects together | `api/dependencies.py`, using FastAPI `Depends` |
+| Path safety | `storage/file_storage.py`: every path is checked to stay inside `FILES_DIR` |
+
+### Adding a file type
+
+Write a loader with a `load(path, source)` method that returns `Document`s, and register its extension in `loaders/registry.py`:
+
+```python
+def default_loader_registry() -> LoaderRegistry:
+    return LoaderRegistry({".txt": TextLoader(), ".pdf": PdfLoader(), ".md": MarkdownLoader()})
+```
+
+Nothing else changes: the processing service and the API pick it up automatically.
+
 ## Development
 
 Install the runtime and dev dependencies from the repository root:
