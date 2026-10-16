@@ -1,9 +1,11 @@
 """Dependency wiring: how the API builds the objects that routes use."""
 
+from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
@@ -12,6 +14,21 @@ from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
+
+
+def get_session_factory(request: Request) -> async_sessionmaker[AsyncSession]:
+    return request.app.state.session_factory
+
+
+async def get_session(
+    factory: Annotated[async_sessionmaker[AsyncSession], Depends(get_session_factory)],
+) -> AsyncIterator[AsyncSession]:
+    """One session (and transaction) per request; uncommitted work is rolled back."""
+    async with factory() as session:
+        yield session
+
+
+SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
 def get_file_storage(settings: SettingsDep) -> FileStorage:

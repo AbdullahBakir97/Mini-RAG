@@ -23,6 +23,7 @@ Mini RAG is a small, readable backend for answering questions over your own docu
 
 - **Python 3.11+** with **FastAPI** and **Uvicorn**
 - **pydantic-settings** for configuration from `.env`
+- **PostgreSQL 16** with **SQLAlchemy 2** (async, asyncpg)
 - **aiofiles** for streaming uploads to disk
 - **pypdf** for PDF text extraction, plus a small built-in recursive text splitter
 - **pytest** and **ruff** for tests and linting, run in GitHub Actions CI
@@ -38,6 +39,7 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env             # Windows: copy .env.example .env
+docker compose up -d db          # PostgreSQL 16 on localhost:5432
 uvicorn --app-dir src mini_rag.main:app --reload
 ```
 
@@ -54,6 +56,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
 | `OPEN_API_KEY` | `""` | API key for the LLM provider (used from the generation stage) |
+| `DATABASE_URL` | `"postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"` | PostgreSQL connection (must use the `postgresql+asyncpg://` driver); the default matches `docker-compose.yml` |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
 | `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
@@ -163,10 +166,11 @@ Nothing else changes: the processing service and the API pick it up automaticall
 
 ## Development
 
-Install the runtime and dev dependencies from the repository root:
+Install the runtime and dev dependencies from the repository root, and start PostgreSQL (the compose file also creates the `mini_rag_test` database the tests use):
 
 ```bash
 pip install -r requirements-dev.txt
+docker compose up -d db
 ```
 
 Run the same checks as CI:
@@ -176,7 +180,7 @@ ruff check .
 pytest
 ```
 
-Tests use temporary directories and their own settings, so they need no `.env` file and never write to `assets/`.
+Tests use temporary directories, their own settings and the `mini_rag_test` database (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database.
 
 ## Project structure
 

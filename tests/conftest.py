@@ -1,7 +1,19 @@
+import asyncio
+import os
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text as sql_text
 
 from mini_rag.core.config import get_settings
+from mini_rag.persistence.database import create_engine
+
+# A disposable database: tests empty its tables. Defaults to the one created
+# by docker-compose (see docker/postgres/init); CI sets TEST_DATABASE_URL.
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL",
+    "postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag_test",
+)
 
 TEST_ENV = {
     "APP_NAME": "mini-RAG-test",
@@ -10,6 +22,7 @@ TEST_ENV = {
     "FILE_ALLOWED_TYPES": '["text/plain", "application/pdf"]',
     "FILE_MAX_SIZE": "1",
     "FILE_DEFAULT_CHUNK_SIZE": "1024",
+    "DATABASE_URL": TEST_DATABASE_URL,
 }
 
 
@@ -28,6 +41,34 @@ def settings_env(monkeypatch, files_dir):
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
+
+async def _check_database(url: str) -> None:
+    engine = create_engine(url)
+    try:
+        async with engine.connect() as connection:
+            await connection.execute(sql_text("SELECT 1"))
+    finally:
+        await engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def database_url():
+    """URL of a reachable test database; stops the run with a hint if there is none."""
+    try:
+        asyncio.run(_check_database(TEST_DATABASE_URL))
+    except Exception as exc:
+        pytest.exit(
+            f"PostgreSQL is not reachable at {TEST_DATABASE_URL} ({exc!r}).\n"
+            "Start it with `docker compose up -d db`, or set TEST_DATABASE_URL.",
+            returncode=1,
+        )
+    return TEST_DATABASE_URL
 
 
 def build_pdf(pages: list[str]) -> bytes:
