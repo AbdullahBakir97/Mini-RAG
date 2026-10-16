@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, Depends, UploadFile, status
+from fastapi import FastAPI, APIRouter, Depends, Path, UploadFile, status
 from fastapi.responses import JSONResponse
 from helpers.config import get_settings, Settings
 from controllers import DataController, ProjectController
@@ -16,7 +16,8 @@ data_router = APIRouter(
 )
 
 @data_router.post("/upload/{project_id}")
-async def upload_data(project_id: str, file: UploadFile,
+async def upload_data(file: UploadFile,
+                      project_id: str = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$"),
                       app_settings: Settings = Depends(get_settings)):
     
     
