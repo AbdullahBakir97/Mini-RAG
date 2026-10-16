@@ -10,6 +10,13 @@ def upload(client, project_id, name="notes.txt", content=b"hello", content_type=
     )
 
 
+def test_root_redirects_to_docs(client):
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/docs"
+
+
 def test_welcome_returns_app_info(client):
     response = client.get("/api/v1/")
 
