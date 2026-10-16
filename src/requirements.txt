@@ -4,3 +4,4 @@ python-multipart==0.0.32
 python-dotenv==1.2.4
 pydantic-settings==2.16.0
 aiofiles==25.1.0
+pypdf==6.21.0
