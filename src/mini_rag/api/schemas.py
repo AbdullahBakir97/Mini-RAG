@@ -127,6 +127,8 @@ class ProjectResponse(BaseModel):
     created_at: datetime
     files_count: int
     chunks_count: int
+    embedded_chunks_count: int = Field(
+        description="Chunks that are indexed for search; equals chunks_count when the index is complete.")
 
 
 class FileResponse(BaseModel):

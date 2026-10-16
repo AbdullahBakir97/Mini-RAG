@@ -36,6 +36,16 @@ def test_index_embeds_new_chunks_and_is_repeatable(client, embedder, query):
     assert query("SELECT count(*) FROM chunks WHERE embedding IS NOT NULL") == [(5,)]
 
 
+def test_project_details_show_index_progress(client, embedder):
+    file_id = upload_and_process(client)
+    upload_and_process(client, text="Just one paragraph.")
+    client.post("/api/v1/index/demo", json={"file_id": file_id})
+
+    project = client.get("/api/v1/projects/demo").json()
+
+    assert (project["chunks_count"], project["embedded_chunks_count"]) == (6, 5)
+
+
 def test_index_a_single_file(client, embedder):
     upload_and_process(client)
     file_id = upload_and_process(client, text="Just one paragraph.")
