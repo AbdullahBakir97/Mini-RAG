@@ -31,7 +31,7 @@ router = APIRouter(prefix="/api/v1/data", tags=["data"])
 async def upload_data(project_id: ProjectId, file: UploadFile,
                       upload_service: UploadServiceDep) -> UploadResponse:
     file_id = await upload_service.save(
-        project_id=project_id,
+        project_name=project_id,
         filename=file.filename or "",
         content_type=file.content_type,
         stream=file,

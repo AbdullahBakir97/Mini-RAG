@@ -8,7 +8,9 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
+from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
+from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
@@ -31,6 +33,13 @@ async def get_session(
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
+def get_unit_of_work(session: SessionDep) -> UnitOfWork:
+    return SqlUnitOfWork(session)
+
+
+UnitOfWorkDep = Annotated[UnitOfWork, Depends(get_unit_of_work)]
+
+
 def get_file_storage(settings: SettingsDep) -> FileStorage:
     return FileStorage(root=settings.FILES_DIR)
 
@@ -38,9 +47,11 @@ def get_file_storage(settings: SettingsDep) -> FileStorage:
 FileStorageDep = Annotated[FileStorage, Depends(get_file_storage)]
 
 
-def get_upload_service(storage: FileStorageDep, settings: SettingsDep) -> UploadService:
+def get_upload_service(storage: FileStorageDep, uow: UnitOfWorkDep,
+                       settings: SettingsDep) -> UploadService:
     return UploadService(
         storage=storage,
+        uow=uow,
         allowed_types=settings.FILE_ALLOWED_TYPES,
         max_bytes=settings.max_upload_bytes,
         read_size=settings.FILE_DEFAULT_CHUNK_SIZE,

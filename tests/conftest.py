@@ -145,8 +145,23 @@ def make_pdf():
     return build_pdf
 
 
+async def _fetch(url: str, sql: str) -> list[tuple]:
+    engine = create_engine(url)
+    try:
+        async with engine.connect() as connection:
+            return [tuple(row) for row in await connection.execute(sql_text(sql))]
+    finally:
+        await engine.dispose()
+
+
 @pytest.fixture
-def client():
+def query(db):
+    """Run a SQL query against the test database and return its rows."""
+    return lambda sql: asyncio.run(_fetch(db, sql))
+
+
+@pytest.fixture
+def client(db):
     from mini_rag.main import create_app
 
     with TestClient(create_app()) as test_client:
