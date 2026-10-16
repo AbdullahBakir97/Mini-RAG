@@ -11,3 +11,33 @@ updates:
     labels: ["dependencies", "github-actions"]
     commit-message:
       prefix: "deps(github-actions)"
+
+  # Runtime dependencies (src/requirements.txt).
+  - package-ecosystem: "pip"
+    directory: "/src"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "deps(pip)"
+    groups:
+      runtime:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Dev and test tooling (requirements-dev.txt).
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python"]
+    commit-message:
+      prefix: "deps(pip-dev)"
+    groups:
+      dev-tools:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
