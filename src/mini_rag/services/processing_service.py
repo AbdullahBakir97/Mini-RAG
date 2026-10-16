@@ -1,29 +1,57 @@
-from mini_rag.core.errors import NoTextExtracted, ProcessingFailed
+from pathlib import Path
+
+import anyio.to_thread
+
+from mini_rag.core.errors import FileNotFound, NoTextExtracted, ProcessingFailed
 from mini_rag.domain.models import Chunk, Document
+from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.loaders.base import DocumentLoader
 from mini_rag.loaders.registry import LoaderRegistry
 from mini_rag.storage.file_storage import FileStorage
 from mini_rag.text.splitter import RecursiveTextSplitter
 
 
 class ProcessingService:
-    """Turns a stored file into chunks: find it, load it, split it."""
+    """Turns an uploaded file into stored chunks: find, load, split, save."""
 
-    def __init__(self, storage: FileStorage, loaders: LoaderRegistry):
+    def __init__(self, storage: FileStorage, loaders: LoaderRegistry, uow: UnitOfWork):
         self.storage = storage
         self.loaders = loaders
+        self.uow = uow
 
-    def process(self, project_id: str, file_id: str,
-                chunk_size: int, overlap_size: int) -> list[Chunk]:
-        path = self.storage.get_file_path(project_id, file_id)
-        loader = self.loaders.get(file_id)
+    async def process(self, project_name: str, file_key: str,
+                      chunk_size: int, overlap_size: int) -> int:
+        """Split the file into chunks, replacing any it had, and return how many.
+
+        Processing a file again (e.g. with other chunk settings) replaces its
+        previous chunks in the same transaction, so readers never see a mix.
+        """
+        project = await self.uow.projects.get_by_name(project_name)
+        record = project and await self.uow.files.get_by_key(project.id, file_key)
+        if record is None:
+            raise FileNotFound()
+
+        path = self.storage.get_file_path(project_name, file_key)
+        loader = self.loaders.get(file_key)
         splitter = RecursiveTextSplitter(chunk_size=chunk_size, overlap_size=overlap_size)
 
-        try:
-            documents = loader.load(path, source=file_id)
-        except Exception as exc:
-            raise ProcessingFailed(f"Could not read {file_id}") from exc
+        # Parsing and splitting are CPU-bound; keep them off the event loop.
+        chunks = await anyio.to_thread.run_sync(
+            self._load_and_split, loader, path, file_key, splitter)
 
-        chunks = self._split(documents, splitter)
+        await self.uow.chunks.replace_for_file(record, chunks)
+        await self.uow.commit()
+        return len(chunks)
+
+    @staticmethod
+    def _load_and_split(loader: DocumentLoader, path: Path, source: str,
+                        splitter: RecursiveTextSplitter) -> list[Chunk]:
+        try:
+            documents = loader.load(path, source=source)
+        except Exception as exc:
+            raise ProcessingFailed(f"Could not read {source}") from exc
+
+        chunks = ProcessingService._split(documents, splitter)
         if not chunks:
             raise NoTextExtracted()
         return chunks

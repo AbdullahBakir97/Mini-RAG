@@ -1,9 +1,7 @@
 from fastapi import APIRouter, UploadFile
-from starlette.concurrency import run_in_threadpool
 
 from mini_rag.api.dependencies import ProcessingServiceDep, UploadServiceDep
 from mini_rag.api.schemas import (
-    ChunkResponse,
     ProcessRequest,
     ProcessResponse,
     ProjectId,
@@ -42,24 +40,21 @@ async def upload_data(project_id: ProjectId, file: UploadFile,
 
 @router.post(
     "/process/{project_id}",
-    summary="Split an uploaded file into text chunks",
+    summary="Split an uploaded file into chunks and store them",
+    description="Processing a file again replaces its previous chunks. "
+                "Read the chunks with GET /api/v1/projects/{project_id}/files/{file_id}/chunks.",
     responses=error_responses(FileNotFound, UnsupportedFileType, NoTextExtracted, ProcessingFailed),
 )
 async def process_data(project_id: ProjectId, request: ProcessRequest,
                        processing_service: ProcessingServiceDep) -> ProcessResponse:
-    # PDF parsing is CPU-bound; keep it off the event loop.
-    chunks = await run_in_threadpool(
-        processing_service.process,
-        project_id=project_id,
-        file_id=request.file_id,
+    chunks_count = await processing_service.process(
+        project_name=project_id,
+        file_key=request.file_id,
         chunk_size=request.chunk_size,
         overlap_size=request.overlap_size,
     )
     return ProcessResponse(
         signal=ResponseSignal.PROCESSING_SUCCESS,
         file_id=request.file_id,
-        chunks_count=len(chunks),
-        chunks=[ChunkResponse(text=chunk.text,
-                              metadata={**chunk.metadata, "chunk_index": chunk.index})
-                for chunk in chunks],
+        chunks_count=chunks_count,
     )

@@ -11,6 +11,10 @@ from mini_rag.loaders.registry import LoaderRegistry
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.storage.file_storage import FileStorage
 
+from .fakes import FakeUnitOfWork
+
+pytestmark = pytest.mark.anyio
+
 
 class FakeLoader:
     def __init__(self, documents=None, error=None):
@@ -28,54 +32,75 @@ def storage(tmp_path):
     return FileStorage(root=tmp_path / "files")
 
 
-def make_service(storage, loader):
-    return ProcessingService(storage=storage, loaders=LoaderRegistry({".txt": loader}))
+@pytest.fixture
+def uow():
+    return FakeUnitOfWork()
 
 
-def test_chunks_carry_document_metadata_and_a_running_index(storage):
+async def uploaded(storage, uow, name="a.txt"):
+    """Store and record a file the way UploadService does."""
+    project = await uow.projects.get_or_create("p1")
+    key, path = storage.reserve_file("p1", name)
+    record = await uow.files.add(project_id=project.id, key=key, original_name=name,
+                                 content_type="text/plain", size_bytes=0)
+    return record, path
+
+
+def make_service(storage, uow, loader):
+    return ProcessingService(storage=storage, loaders=LoaderRegistry({".txt": loader}), uow=uow)
+
+
+async def test_chunks_are_numbered_stored_and_committed(storage, uow):
     loader = FakeLoader([
         Document("alpha beta gamma delta", {"source": "s", "page": 1}),
         Document("epsilon zeta", {"source": "s", "page": 2}),
     ])
-    file_id, path = storage.reserve_file("p1", "a.txt")
+    record, path = await uploaded(storage, uow)
 
-    chunks = make_service(storage, loader).process("p1", file_id, chunk_size=12, overlap_size=0)
+    count = await make_service(storage, uow, loader).process("p1", record.key, 12, 0)
 
-    assert loader.calls == [(path, file_id)]
-    assert [(c.index, c.text, c.metadata) for c in chunks] == [
+    assert count == 3
+    assert loader.calls == [(path, record.key)]
+    stored = await uow.chunks.list_for_file(record.id, offset=0, limit=10)
+    assert [(c.index, c.text, c.metadata) for c in stored] == [
         (0, "alpha beta", {"source": "s", "page": 1}),
         (1, "gamma delta", {"source": "s", "page": 1}),
         (2, "epsilon zeta", {"source": "s", "page": 2}),
     ]
+    assert uow.commits == 1
 
 
-def test_missing_file_is_reported_before_loading(storage):
+@pytest.mark.parametrize(("project", "key"), [("p1", "nope.txt"), ("other", "a.txt")])
+async def test_unknown_project_or_file_is_not_found(storage, uow, project, key):
     loader = FakeLoader()
+    await uploaded(storage, uow)
 
     with pytest.raises(FileNotFound):
-        make_service(storage, loader).process("p1", "nope.txt", 100, 0)
+        await make_service(storage, uow, loader).process(project, key, 100, 0)
     assert loader.calls == []
 
 
-def test_unsupported_type(storage):
-    file_id, _ = storage.reserve_file("p1", "a.md")
+async def test_unsupported_type(storage, uow):
+    record, _ = await uploaded(storage, uow, name="a.md")
 
     with pytest.raises(UnsupportedFileType):
-        make_service(storage, FakeLoader()).process("p1", file_id, 100, 0)
+        await make_service(storage, uow, FakeLoader()).process("p1", record.key, 100, 0)
 
 
-def test_loader_errors_become_processing_failed_with_cause(storage):
-    file_id, _ = storage.reserve_file("p1", "a.txt")
+async def test_loader_errors_become_processing_failed_and_nothing_is_saved(storage, uow):
+    record, _ = await uploaded(storage, uow)
     cause = RuntimeError("corrupt")
 
     with pytest.raises(ProcessingFailed) as raised:
-        make_service(storage, FakeLoader(error=cause)).process("p1", file_id, 100, 0)
+        await make_service(storage, uow, FakeLoader(error=cause)).process("p1", record.key, 100, 0)
+
     assert raised.value.__cause__ is cause
+    assert await uow.chunks.count_for_file(record.id) == 0
 
 
-def test_blank_documents_raise_no_text(storage):
-    file_id, _ = storage.reserve_file("p1", "a.txt")
+async def test_blank_documents_raise_no_text(storage, uow):
+    record, _ = await uploaded(storage, uow)
     loader = FakeLoader([Document("   "), Document("\n\n")])
 
     with pytest.raises(NoTextExtracted):
-        make_service(storage, loader).process("p1", file_id, 100, 0)
+        await make_service(storage, uow, loader).process("p1", record.key, 100, 0)

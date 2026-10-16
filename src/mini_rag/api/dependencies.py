@@ -69,8 +69,9 @@ def get_loader_registry() -> LoaderRegistry:
 LoaderRegistryDep = Annotated[LoaderRegistry, Depends(get_loader_registry)]
 
 
-def get_processing_service(storage: FileStorageDep, loaders: LoaderRegistryDep) -> ProcessingService:
-    return ProcessingService(storage=storage, loaders=loaders)
+def get_processing_service(storage: FileStorageDep, loaders: LoaderRegistryDep,
+                           uow: UnitOfWorkDep) -> ProcessingService:
+    return ProcessingService(storage=storage, loaders=loaders, uow=uow)
 
 
 ProcessingServiceDep = Annotated[ProcessingService, Depends(get_processing_service)]

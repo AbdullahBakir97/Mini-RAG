@@ -71,7 +71,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `GET` | `/` | Redirects to `/docs` |
 | `GET` | `/api/v1/` | Welcome message with app name and version |
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
-| `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into text chunks |
+| `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
 
 ### Upload a file
 
@@ -104,15 +104,10 @@ curl -X POST http://localhost:8000/api/v1/data/process/demo1 \
 ```
 
 ```json
-{
-  "signal": "processing_success",
-  "file_id": "a16q20nzrtvj_notes.txt",
-  "chunks_count": 1,
-  "chunks": [
-    {"text": "...", "metadata": {"source": "a16q20nzrtvj_notes.txt", "chunk_index": 0}}
-  ]
-}
+{"signal": "processing_success", "file_id": "a16q20nzrtvj_notes.txt", "chunks_count": 1}
 ```
+
+The chunks are stored in the database. Processing a file again (for example with other chunk settings) replaces its chunks in one transaction; if it fails, the previous chunks are kept.
 
 | Field | Default | Rules |
 |---|---|---|
@@ -125,7 +120,7 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 | Case | Status | Response |
 |---|---|---|
 | Chunks created | `200` | `{"signal": "processing_success", ...}` |
-| No such file in this project | `404` | `{"signal": "file_not_found"}` |
+| No such file in this project (or not uploaded through the API) | `404` | `{"signal": "file_not_found"}` |
 | Extension is not `.txt` or `.pdf` | `415` | `{"signal": "file_type_not_supported"}` |
 | No extractable text (e.g. a scanned PDF) | `422` | `{"signal": "file_has_no_text"}` |
 | File could not be read | `422` | `{"signal": "processing_failed"}` |

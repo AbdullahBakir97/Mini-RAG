@@ -61,13 +61,7 @@ class ProcessRequest(BaseModel):
         return self
 
 
-class ChunkResponse(BaseModel):
-    text: str
-    metadata: dict[str, Any]
-
-
 class ProcessResponse(BaseModel):
     signal: ResponseSignal
     file_id: str
     chunks_count: int
-    chunks: list[ChunkResponse]
