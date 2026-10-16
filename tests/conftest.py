@@ -1,8 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from mini_rag.controllers.BaseController import BaseController
-from mini_rag.helpers.config import get_settings
+from mini_rag.core.config import get_settings
 
 TEST_ENV = {
     "APP_NAME": "mini-RAG-test",
@@ -14,27 +13,21 @@ TEST_ENV = {
 }
 
 
+@pytest.fixture
+def files_dir(tmp_path):
+    """Temporary storage root for uploaded files."""
+    return tmp_path / "files"
+
+
 @pytest.fixture(autouse=True)
-def settings_env(monkeypatch):
+def settings_env(monkeypatch, files_dir):
     """Provide settings via env vars instead of a local .env file."""
     for key, value in TEST_ENV.items():
         monkeypatch.setenv(key, value)
+    monkeypatch.setenv("FILES_DIR", str(files_dir))
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
-
-
-@pytest.fixture
-def files_dir(tmp_path, monkeypatch):
-    """Redirect uploaded files to a temporary directory."""
-    original_init = BaseController.__init__
-
-    def patched_init(self):
-        original_init(self)
-        self.file_dir = str(tmp_path)
-
-    monkeypatch.setattr(BaseController, "__init__", patched_init)
-    return tmp_path
 
 
 def build_pdf(pages: list[str]) -> bytes:

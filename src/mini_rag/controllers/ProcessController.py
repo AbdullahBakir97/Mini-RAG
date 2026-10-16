@@ -5,8 +5,7 @@ from pypdf import PdfReader
 
 from mini_rag.helpers.text_splitter import RecursiveTextSplitter
 from mini_rag.models import ProcessingEnum
-
-from .BaseController import BaseController
+from mini_rag.storage.file_storage import FileStorage
 
 
 @dataclass
@@ -15,24 +14,10 @@ class Document:
     metadata: dict = field(default_factory=dict)
 
 
-class ProcessController(BaseController):
+class ProcessController:
 
-    def __init__(self, project_id: str):
-        super().__init__()
-        self.project_path = os.path.join(self.file_dir, project_id)
-
-    def get_file_path(self, file_id: str):
-        """Return the path of an uploaded file, or None if it does not exist.
-
-        The resolved path must sit directly inside the project folder, so
-        IDs such as '..' can never reach files outside it.
-        """
-        project_dir = os.path.realpath(self.project_path)
-        file_path = os.path.realpath(os.path.join(project_dir, file_id))
-
-        if os.path.dirname(file_path) != project_dir or not os.path.isfile(file_path):
-            return None
-        return file_path
+    def __init__(self, storage: FileStorage):
+        self.storage = storage
 
     def is_supported(self, file_id: str):
         extension = os.path.splitext(file_id)[-1].lower()

@@ -1,6 +1,6 @@
 import pytest
 
-from mini_rag.controllers import DataController
+from mini_rag.storage.file_storage import clean_file_name
 
 
 def upload(client, project_id, name="notes.txt", content=b"hello", content_type="text/plain"):
@@ -66,7 +66,7 @@ def test_upload_rejects_unsafe_project_id(client, files_dir, project_id):
     response = upload(client, project_id)
 
     assert response.status_code == 422
-    assert list(files_dir.parent.glob("*.txt")) == []
+    assert list(files_dir.parent.rglob("*.txt")) == []
 
 
 @pytest.mark.parametrize(
@@ -77,7 +77,9 @@ def test_upload_rejects_unsafe_project_id(client, files_dir, project_id):
         ("  padded name.txt  ", "padded_name.txt"),
         ("../../etc/passwd", "....etcpasswd"),
         ("résumé (final).pdf", "résumé_final.pdf"),
+        ("", "file"),
+        ("%%%", "file"),
     ],
 )
-def test_get_clean_file_name(original, expected):
-    assert DataController().get_clean_file_name(orig_file_name=original) == expected
+def test_clean_file_name(original, expected):
+    assert clean_file_name(original) == expected

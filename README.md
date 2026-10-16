@@ -54,6 +54,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
 | `OPEN_API_KEY` | `""` | API key for the LLM provider (used from the generation stage) |
+| `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
 | `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
 | `FILE_DEFAULT_CHUNK_SIZE` | `512000` | Bytes read per chunk while saving an upload |
@@ -69,7 +70,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 
 ### Upload a file
 
-`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `src/assets/files/<project_id>/` with a random prefix, so uploads never overwrite each other.
+`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other.
 
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
@@ -139,7 +140,7 @@ ruff check .
 pytest
 ```
 
-Tests use temporary directories and their own settings, so they need no `.env` file and never write to `src/assets`.
+Tests use temporary directories and their own settings, so they need no `.env` file and never write to `assets/`.
 
 ## Project structure
 
@@ -148,11 +149,14 @@ Mini-RAG/
 ├── src/
 │   ├── mini_rag/
 │   │   ├── main.py           # FastAPI app and router setup
+│   │   ├── core/             # Settings and application errors
+│   │   ├── api/              # Dependency wiring and error handler
 │   │   ├── routes/           # HTTP endpoints
-│   │   ├── controllers/      # Upload validation, file naming, document processing
+│   │   ├── controllers/      # Upload validation and document processing
+│   │   ├── storage/          # File storage and path safety
 │   │   ├── models/enums/     # Response signals
-│   │   └── helpers/          # Settings (.env) and the text splitter
-│   └── assets/files/         # Uploaded files (git-ignored)
+│   │   └── helpers/          # Text splitter
+├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
 ├── tests/                    # pytest suite
 ├── requirements.txt
 ├── requirements-dev.txt

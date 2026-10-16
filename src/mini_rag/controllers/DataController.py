@@ -1,57 +1,23 @@
-import os
-import re
-
 from fastapi import UploadFile
 
+from mini_rag.core.config import Settings
 from mini_rag.core.errors import FileTooLarge, UnsupportedFileType
-
-from .BaseController import BaseController
-from .ProjectController import ProjectController
+from mini_rag.storage.file_storage import FileStorage
 
 
-class DataController(BaseController):
-    def __init__(self):
-        super().__init__()
-        self.size_scale = 1048576 # convert MB to bytes
+class DataController:
+
+    def __init__(self, settings: Settings, storage: FileStorage):
+        self.settings = settings
+        self.storage = storage
 
     def validate_uploaded_file(self, file: UploadFile):
 
-        if file.content_type not in self.app_settings.FILE_ALLOWED_TYPES:
+        if file.content_type not in self.settings.FILE_ALLOWED_TYPES:
             raise UnsupportedFileType()
 
-        if file.size is not None and file.size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
+        if file.size is not None and file.size > self.settings.max_upload_bytes:
             raise FileTooLarge()
 
-
-    def generate_unique_file_path(self, orig_file_name: str, project_id: str):
-
-        random_key = self.generate_random_string()
-        project_path = ProjectController().get_project_path(project_id=project_id)
-
-        cleaned_file_name = self.get_clean_file_name(
-            orig_file_name=orig_file_name
-        )
-
-        new_file_path = os.path.join(
-            project_path,
-            random_key + "_" + cleaned_file_name
-        )
-
-        while os.path.exists(new_file_path):
-            random_key = self.generate_random_string()
-            new_file_path = os.path.join(
-                project_path,
-                random_key + "_" + cleaned_file_name
-            )
-
-        return new_file_path, random_key + "_" + cleaned_file_name
-
-    def get_clean_file_name(self, orig_file_name: str):
-
-        # replace spaces with underscore
-        cleaned_file_name = orig_file_name.strip().replace(" ", "_")
-
-        # remove any special characters except underscore and .
-        cleaned_file_name = re.sub(r'[^\w.]', '', cleaned_file_name)
-
-        return cleaned_file_name
+    def reserve_file(self, orig_file_name: str, project_id: str):
+        return self.storage.reserve_file(project_id=project_id, original_name=orig_file_name or "")

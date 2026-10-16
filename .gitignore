@@ -164,3 +164,6 @@ cython_debug/
 # * User-specific files created by various text editors / IDEs
 # Linters
 .ruff_cache/
+
+# Uploaded files (FILES_DIR default)
+/assets/
