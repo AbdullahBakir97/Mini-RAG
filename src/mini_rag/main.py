@@ -4,10 +4,13 @@ from fastapi.responses import RedirectResponse
 from mini_rag.api.error_handlers import register_error_handlers
 from mini_rag.api.routes import base, data
 from mini_rag.core.config import get_settings
+from mini_rag.core.logging_config import configure_logging
 
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    configure_logging(settings.LOG_LEVEL)
+
     app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION)
 
     app.include_router(base.router)

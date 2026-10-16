@@ -54,6 +54,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
 | `OPEN_API_KEY` | `""` | API key for the LLM provider (used from the generation stage) |
+| `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
 | `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
 | `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
@@ -184,7 +185,7 @@ Mini-RAG/
 ├── src/
 │   ├── mini_rag/
 │   │   ├── main.py           # create_app(): routers and error handler
-│   │   ├── core/             # Settings and application errors
+│   │   ├── core/             # Settings, application errors, logging setup
 │   │   ├── api/              # Routes, schemas, dependency wiring, error handler
 │   │   ├── services/         # Upload rules and document processing
 │   │   ├── storage/          # File storage and path safety

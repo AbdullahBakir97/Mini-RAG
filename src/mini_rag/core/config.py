@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,7 @@ class Settings(BaseSettings):
     APP_NAME: str
     APP_VERSION: str
     OPEN_API_KEY: str
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     # Uploaded files are stored under FILES_DIR/<project_id>/.
     FILES_DIR: Path = Path("assets/files")
