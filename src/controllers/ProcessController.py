@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 
 from pypdf import PdfReader
 
-from helpers.text_splitter import split_text
+from helpers.text_splitter import RecursiveTextSplitter
 from models import ProcessingEnum
 
 from .BaseController import BaseController
@@ -59,9 +59,11 @@ class ProcessController(BaseController):
 
     def process_file(self, file_path: str, file_id: str,
                      chunk_size: int, overlap_size: int):
+        splitter = RecursiveTextSplitter(chunk_size=chunk_size, overlap_size=overlap_size)
+
         chunks = []
         for document in self.load_documents(file_path=file_path, file_id=file_id):
-            for text in split_text(document.text, chunk_size, overlap_size):
+            for text in splitter.split(document.text):
                 chunks.append(Document(
                     text=text,
                     metadata={**document.metadata, "chunk_index": len(chunks)},

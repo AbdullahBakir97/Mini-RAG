@@ -1,79 +1,108 @@
 """Recursive character text splitter.
 
-Splits text into chunks of at most ``chunk_size`` characters, preferring to
-break on paragraph boundaries, then lines, then words, and only cutting inside
-a word when a single word is longer than ``chunk_size``. Consecutive chunks
-share up to ``overlap_size`` characters of context.
+Splits text into chunks of at most ``chunk_size`` characters. Boundaries are
+chosen recursively: paragraphs first, then lines, then words, and a word is
+cut only when it alone is too long.
+
+Each chunk after the first also begins with up to ``overlap_size`` characters
+of the text that precedes it, starting at a word boundary when the overlap
+window contains one, so context carries across chunk borders. Every chunk is
+an exact (whitespace-trimmed) slice of the input text.
 """
 
-from collections import deque
+from collections.abc import Iterator, Sequence
 
-DEFAULT_SEPARATORS =("\n\n", "\n", " ", "")
+DEFAULT_SEPARATORS = ("\n\n", "\n", " ", "")
 
-
-def split_text(text: str, chunk_size: int, overlap_size: int = 0,
-               separators: tuple[str, ...] = DEFAULT_SEPARATORS) -> list[str]:
-    if chunk_size <= 0:
-        raise ValueError("chunk_size must be positive")
-    if not 0 <= overlap_size < chunk_size:
-        raise ValueError("overlap_size must be >= 0 and smaller than chunk_size")
-
-    chunks = _split(text, separators, chunk_size, overlap_size)
-    return [chunk.strip() for chunk in chunks if chunk.strip()]
+Span = tuple[int, int]
 
 
-def _split(text: str, separators: tuple[str, ...], chunk_size: int,
-           overlap_size: int) -> list[str]:
-    # Use the coarsest separator that actually occurs in the text.
-    separator, finer_separators = separators[-1], ()
-    for index, candidate in enumerate(separators):
-        if candidate == "" or candidate in text:
-            separator, finer_separators = candidate, separators[index + 1:]
-            break
+class RecursiveTextSplitter:
 
-    pieces = text.split(separator) if separator else list(text)
+    def __init__(self, chunk_size: int, overlap_size: int = 0,
+                 separators: Sequence[str] = DEFAULT_SEPARATORS):
+        if chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        if not 0 <= overlap_size < chunk_size:
+            raise ValueError("overlap_size must be >= 0 and smaller than chunk_size")
+        if not separators or separators[-1] != "":
+            raise ValueError("separators must end with '' so any text can be split")
 
-    chunks: list[str] = []
-    fitting: list[str] = []
-    for piece in pieces:
-        if not piece:
-            continue
-        if len(piece) <= chunk_size:
-            fitting.append(piece)
-            continue
-        # Too long: flush what we have, then split this piece more finely.
-        if fitting:
-            chunks.extend(_merge(fitting, separator, chunk_size, overlap_size))
-            fitting = []
-        chunks.extend(_split(piece, finer_separators, chunk_size, overlap_size))
+        self.chunk_size = chunk_size
+        self.overlap_size = overlap_size
+        self.separators = tuple(separators)
+        # Room left for each chunk's own text once the overlap is prepended.
+        self._body_size = chunk_size - overlap_size
 
-    if fitting:
-        chunks.extend(_merge(fitting, separator, chunk_size, overlap_size))
-    return chunks
+    def split(self, text: str) -> list[str]:
+        chunks = []
+        for index, (start, end) in enumerate(self._split_spans(text, 0, len(text), self.separators)):
+            if index:
+                start = self._overlap_start(text, start)
+            chunks.append(text[start:end].strip())
+        return chunks
 
+    def _split_spans(self, text: str, start: int, end: int,
+                     separators: tuple[str, ...]) -> list[Span]:
+        """Split text[start:end] into spans of at most _body_size characters."""
+        separator, finer_separators = self._pick_separator(text, start, end, separators)
+        if not separator:
+            # No boundary left to respect: cut at fixed widths.
+            return [(position, min(position + self._body_size, end))
+                    for position in range(start, end, self._body_size)]
 
-def _merge(pieces: list[str], separator: str, chunk_size: int,
-           overlap_size: int) -> list[str]:
-    """Greedily join pieces into chunks, carrying a tail of each chunk over."""
-    chunks: list[str] = []
-    current: deque[str] = deque()
-    length = 0  # len(separator.join(current)), tracked incrementally
-    sep_len = len(separator)
+        spans: list[Span] = []
+        group: Span | None = None
+        for piece_start, piece_end in self._pieces(text, start, end, separator):
+            if text[piece_start:piece_end].isspace() or piece_start == piece_end:
+                continue
 
-    for piece in pieces:
-        if current and length + sep_len + len(piece) > chunk_size:
-            chunks.append(separator.join(current))
-            # Keep only as much of the tail as fits the overlap and leaves
-            # room for the next piece.
-            while current and (
-                length > overlap_size
-                or length + sep_len + len(piece) > chunk_size
-            ):
-                removed = current.popleft()
-                length -= len(removed) + (sep_len if current else 0)
-        length += len(piece) + (sep_len if current else 0)
-        current.append(piece)
+            if piece_end - piece_start > self._body_size:
+                # Too long on its own: flush the current group, then split finer.
+                if group:
+                    spans.append(group)
+                    group = None
+                spans.extend(self._split_spans(text, piece_start, piece_end, finer_separators))
+                continue
 
-    if current:
-        chunks.append(separator.join(current))
-    return chunks
+            if group and piece_end - group[0] > self._body_size:
+                spans.append(group)
+                group = None
+            group = (group[0] if group else piece_start, piece_end)
+
+        if group:
+            spans.append(group)
+        return spans
+
+    @staticmethod
+    def _pick_separator(text: str, start: int, end: int,
+                        separators: tuple[str, ...]) -> tuple[str, tuple[str, ...]]:
+        """Return the coarsest separator present in the span and the finer ones."""
+        for index, separator in enumerate(separators):
+            if separator == "" or text.find(separator, start, end) != -1:
+                return separator, separators[index + 1:]
+        return "", ()
+
+    @staticmethod
+    def _pieces(text: str, start: int, end: int, separator: str) -> Iterator[Span]:
+        position = start
+        while (found := text.find(separator, position, end)) != -1:
+            yield position, found
+            position = found + len(separator)
+        yield position, end
+
+    def _overlap_start(self, text: str, start: int) -> int:
+        """Move a chunk start back by up to overlap_size, to a word boundary."""
+        if not self.overlap_size:
+            return start
+
+        window_start = max(0, start - self.overlap_size)
+        if window_start == 0 or text[window_start - 1].isspace():
+            return window_start
+
+        # The window begins mid-word: skip to the next whitespace so no word
+        # is cut. Without any whitespace (one very long word) cut exactly.
+        for position in range(window_start, start):
+            if text[position].isspace():
+                return position
+        return window_start
