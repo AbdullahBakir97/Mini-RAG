@@ -16,7 +16,7 @@ class DataController(BaseController):
         if file.content_type not in self.app_settings.FILE_ALLOWED_TYPES:
             return False, ResponseSignal.FILE_TYPES_NOT_SUPPORTED.value
         
-        if file.size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
+        if file.size is not None and file.size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
             return False, ResponseSignal.FILE_SIZE_EXCEEDED.value
         
         return True, ResponseSignal.FILE_VALIDATED_SUCCESS.value
@@ -47,11 +47,11 @@ class DataController(BaseController):
         
     def get_clean_file_name(self, orig_file_name: str):
         
-        # remove any special characters except underscore and .
-        cleaned_file_name = re.sub(r'[^\w.]', '', orig_file_name())
-        
         # replace spaces with underscore
-        cleaned_file_name = cleaned_file_name.replace(" ","_")
-        
+        cleaned_file_name = orig_file_name.strip().replace(" ", "_")
+
+        # remove any special characters except underscore and .
+        cleaned_file_name = re.sub(r'[^\w.]', '', cleaned_file_name)
+
         return cleaned_file_name
     
