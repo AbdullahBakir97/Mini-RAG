@@ -69,8 +69,8 @@ def make_pdf():
 
 
 @pytest.fixture
-def client(files_dir):
-    from mini_rag.main import app
+def client():
+    from mini_rag.main import create_app
 
-    with TestClient(app) as test_client:
+    with TestClient(create_app()) as test_client:
         yield test_client

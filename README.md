@@ -148,10 +148,9 @@ Tests use temporary directories and their own settings, so they need no `.env` f
 Mini-RAG/
 ├── src/
 │   ├── mini_rag/
-│   │   ├── main.py           # FastAPI app and router setup
+│   │   ├── main.py           # create_app(): routers and error handler
 │   │   ├── core/             # Settings and application errors
-│   │   ├── api/              # Dependency wiring and error handler
-│   │   ├── routes/           # HTTP endpoints
+│   │   ├── api/              # Routes, schemas, dependency wiring, error handler
 │   │   ├── services/         # Upload rules and document processing
 │   │   ├── storage/          # File storage and path safety
 │   │   ├── loaders/          # One loader per file type, chosen by extension
