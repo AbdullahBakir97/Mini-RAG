@@ -16,6 +16,7 @@ from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
+from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
@@ -112,3 +113,10 @@ def get_indexing_service(uow: UnitOfWorkDep, embedder: EmbedderDep,
 
 
 IndexingServiceDep = Annotated[IndexingService, Depends(get_indexing_service)]
+
+
+def get_search_service(uow: UnitOfWorkDep, embedder: EmbedderDep) -> SearchService:
+    return SearchService(uow=uow, embedder=embedder)
+
+
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]

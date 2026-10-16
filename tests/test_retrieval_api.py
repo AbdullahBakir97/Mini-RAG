@@ -90,3 +90,82 @@ def test_index_without_embedding_configuration(client):
     response = client.post("/api/v1/index/demo")
 
     assert (response.status_code, response.json()) == (503, {"signal": "embedding_not_configured"})
+
+
+# One chunk per paragraph at chunk_size 60.
+GUIDE = "\n\n".join([
+    "Upload a file first, as text or PDF.",
+    "Processing splits each file into chunks.",
+    "Indexing stores an embedding vector per chunk.",
+    "Search compares the question with the chunks.",
+])
+
+
+def search(client, project="demo", **body):
+    return client.post(f"/api/v1/search/{project}", json=body)
+
+
+def test_search_finds_the_most_relevant_chunks(client, embedder):
+    file_id = upload_and_process(client, text=GUIDE)
+    client.post("/api/v1/index/demo")
+
+    response = search(client, query="Where is the embedding vector stored?", top_k=2)
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["signal"] == "search_success"
+    assert len(body["results"]) == 2
+    best = body["results"][0]
+    assert best["text"] == "Indexing stores an embedding vector per chunk."
+    assert (best["file_id"], best["chunk_index"]) == (file_id, 2)
+    assert best["metadata"] == {"source": file_id}
+    assert 0 < body["results"][1]["score"] < best["score"] <= 1
+
+
+def test_search_only_sees_indexed_chunks_of_the_project(client, embedder):
+    upload_and_process(client, text=GUIDE)
+    upload_and_process(client, project="other", text="An embedding vector per chunk.")
+    client.post("/api/v1/index/other")
+
+    unindexed = search(client, query="embedding vector")
+    client.post("/api/v1/index/demo")
+    indexed = search(client, query="embedding vector", top_k=50)
+
+    assert unindexed.json() == {"signal": "search_success", "results": []}
+    assert len(indexed.json()["results"]) == 4  # all of demo's chunks, none of other's
+
+
+def test_search_min_score(client, embedder):
+    upload_and_process(client, text=GUIDE)
+    client.post("/api/v1/index/demo")
+
+    results = search(client, query="embedding vector", top_k=10, min_score=0.2).json()["results"]
+
+    assert [r["chunk_index"] for r in results] == [2]
+
+
+def test_search_unknown_project(client, embedder):
+    response = search(client, project="missing", query="anything")
+
+    assert (response.status_code, response.json()) == (404, {"signal": "project_not_found"})
+
+
+@pytest.mark.parametrize("body", [
+    {"query": ""},
+    {"query": "   "},
+    {"query": "x" * 2001},
+    {"query": "ok", "top_k": 0},
+    {"query": "ok", "top_k": 51},
+    {"query": "ok", "min_score": 1.5},
+    {},
+])
+def test_search_validates_the_request(client, embedder, body):
+    assert search(client, **body).status_code == 422
+
+
+def test_search_without_embedding_configuration(client):
+    client.app.state.embedder = None
+
+    response = search(client, query="anything")
+
+    assert (response.status_code, response.json()) == (503, {"signal": "embedding_not_configured"})

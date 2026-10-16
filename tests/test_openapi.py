@@ -45,3 +45,11 @@ def test_index_endpoint_is_documented(schema):
     assert "file_not_found" in responses["404"]["description"]
     assert "embedding_failed" in responses["502"]["description"]
     assert "embedding_not_configured" in responses["503"]["description"]
+
+
+def test_search_endpoint_is_documented(schema):
+    responses = schema["paths"]["/api/v1/search/{project_id}"]["post"]["responses"]
+
+    assert response_schema(schema, "/api/v1/search/{project_id}", "200") == "SearchResponse"
+    assert "project_not_found" in responses["404"]["description"]
+    assert "embedding_failed" in responses["502"]["description"]

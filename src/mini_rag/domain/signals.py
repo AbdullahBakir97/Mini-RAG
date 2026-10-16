@@ -13,5 +13,6 @@ class ResponseSignal(Enum):
     PROCESSING_SUCCESS = "processing_success"
     PROCESSING_FAILED = "processing_failed"
     INDEXING_SUCCESS = "indexing_success"
+    SEARCH_SUCCESS = "search_success"
     EMBEDDING_NOT_CONFIGURED = "embedding_not_configured"
     EMBEDDING_FAILED = "embedding_failed"

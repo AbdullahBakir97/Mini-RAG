@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import Path, Query
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mini_rag.core.errors import AppError
 from mini_rag.domain.signals import ResponseSignal
@@ -93,6 +93,33 @@ class IndexResponse(BaseModel):
     signal: ResponseSignal
     embedded_count: int = Field(description="Chunks embedded by this request.")
     chunks_count: int = Field(description="All chunks of the project, or of the file.")
+
+
+class SearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000, description="The question or search text.")
+    top_k: int = Field(default=5, ge=1, le=50, description="Maximum number of results.")
+    min_score: float | None = Field(default=None, ge=-1, le=1,
+                                    description="Leave out results scoring below this.")
+
+    @field_validator("query")
+    @classmethod
+    def query_must_contain_text(cls, query: str) -> str:
+        if not query.strip():
+            raise ValueError("query must not be blank")
+        return query
+
+
+class SearchResult(BaseModel):
+    file_id: str
+    chunk_index: int
+    score: float = Field(description="Cosine similarity to the query: 1 is the best match.")
+    text: str
+    metadata: dict[str, Any]
+
+
+class SearchResponse(BaseModel):
+    signal: ResponseSignal
+    results: list[SearchResult]
 
 
 class ProjectResponse(BaseModel):
