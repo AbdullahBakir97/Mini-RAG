@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
-from routes import base, data
+from mini_rag.routes import base, data
 
 app = FastAPI()
 app.include_router(base.base_router)

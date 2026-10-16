@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from helpers.config import Settings, get_settings
+from mini_rag.helpers.config import Settings, get_settings
 
 base_router = APIRouter(
     prefix="/api/v1",

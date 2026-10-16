@@ -1,8 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from controllers.BaseController import BaseController
-from helpers.config import get_settings
+from mini_rag.controllers.BaseController import BaseController
+from mini_rag.helpers.config import get_settings
 
 TEST_ENV = {
     "APP_NAME": "mini-RAG-test",
@@ -77,7 +77,7 @@ def make_pdf():
 
 @pytest.fixture
 def client(files_dir):
-    from main import app
+    from mini_rag.main import app
 
     with TestClient(app) as test_client:
         yield test_client

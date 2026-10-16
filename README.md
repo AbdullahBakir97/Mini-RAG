@@ -35,20 +35,19 @@ cd Mini-RAG
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r src/requirements.txt
+pip install -r requirements.txt
 
-cd src
 cp .env.example .env             # Windows: copy .env.example .env
-uvicorn main:app --reload
+uvicorn --app-dir src mini_rag.main:app --reload
 ```
 
 Then open **http://localhost:8000**. It redirects to the interactive API docs at `/docs`, where you can try every endpoint from the browser.
 
-> Run `uvicorn` from inside `src/`: the app imports its packages relative to that folder and reads `.env` from there.
+> Run commands from the repository root: `--app-dir src` tells Uvicorn where the `mini_rag` package lives, and `.env` is read from the current directory.
 
 ## Configuration
 
-Settings are read from `src/.env` (copy it from `src/.env.example`) or from environment variables.
+Settings are read from `.env` in the repository root (copy it from `.env.example`) or from environment variables.
 
 | Variable | Example | Description |
 |---|---|---|
@@ -147,16 +146,17 @@ Tests use temporary directories and their own settings, so they need no `.env` f
 ```
 Mini-RAG/
 ├── src/
-│   ├── main.py               # FastAPI app and router setup
-│   ├── routes/               # HTTP endpoints
-│   ├── controllers/          # Upload validation, file naming, document processing
-│   ├── models/enums/         # Response signals
-│   ├── helpers/              # Settings (.env) and the text splitter
-│   ├── assets/files/         # Uploaded files (git-ignored)
-│   ├── requirements.txt
-│   └── .env.example
+│   ├── mini_rag/
+│   │   ├── main.py           # FastAPI app and router setup
+│   │   ├── routes/           # HTTP endpoints
+│   │   ├── controllers/      # Upload validation, file naming, document processing
+│   │   ├── models/enums/     # Response signals
+│   │   └── helpers/          # Settings (.env) and the text splitter
+│   └── assets/files/         # Uploaded files (git-ignored)
 ├── tests/                    # pytest suite
+├── requirements.txt
 ├── requirements-dev.txt
+├── .env.example
 └── pyproject.toml            # pytest and ruff configuration
 ```
 

@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, Path, UploadFile, status
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
-from controllers import DataController, ProcessController
-from helpers.config import Settings, get_settings
-from models import ResponseSignal
+from mini_rag.controllers import DataController, ProcessController
+from mini_rag.helpers.config import Settings, get_settings
+from mini_rag.models import ResponseSignal
 
 from .schemes import ProcessRequest
 

@@ -3,8 +3,8 @@ from dataclasses import dataclass, field
 
 from pypdf import PdfReader
 
-from helpers.text_splitter import RecursiveTextSplitter
-from models import ProcessingEnum
+from mini_rag.helpers.text_splitter import RecursiveTextSplitter
+from mini_rag.models import ProcessingEnum
 
 from .BaseController import BaseController
 

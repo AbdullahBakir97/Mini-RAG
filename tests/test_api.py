@@ -1,6 +1,6 @@
 import pytest
 
-from controllers import DataController
+from mini_rag.controllers import DataController
 
 
 def upload(client, project_id, name="notes.txt", content=b"hello", content_type="text/plain"):
