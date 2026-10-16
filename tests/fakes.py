@@ -5,11 +5,19 @@ immediately (there are no real transactions); tests check ``commits``
 to verify the service committed its work.
 """
 
-from collections.abc import Sequence
+import math
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
 
-from mini_rag.domain.models import Chunk, FileRecord, Project
+from mini_rag.domain.models import (
+    Chunk,
+    FileRecord,
+    Project,
+    ScoredChunk,
+    UnembeddedChunk,
+)
 
 
 class FakeProjects:
@@ -53,26 +61,66 @@ class FakeFiles:
         return sum(r.project_id == project_id for r in self.records)
 
 
+@dataclass
+class StoredChunk:
+    """One row of the fake chunks table."""
+
+    id: int
+    file: FileRecord
+    chunk: Chunk
+    embedding: list[float] | None = None
+
+
+def cosine_similarity(a: Sequence[float], b: Sequence[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=True))
+    return dot / (math.hypot(*a) * math.hypot(*b))
+
+
 class FakeChunks:
 
     def __init__(self):
-        self.by_file: dict[int, list[Chunk]] = {}
-        self.project_of_file: dict[int, int] = {}
+        self.rows: list[StoredChunk] = []
+        self._ids = count(1)
 
     async def replace_for_file(self, file: FileRecord, chunks: Sequence[Chunk]) -> None:
-        self.by_file[file.id] = list(chunks)
-        self.project_of_file[file.id] = file.project_id
+        self.rows = [row for row in self.rows if row.file.id != file.id]
+        self.rows += [StoredChunk(id=next(self._ids), file=file, chunk=chunk) for chunk in chunks]
 
     async def list_for_file(self, file_id: int, *, offset: int, limit: int) -> list[Chunk]:
-        chunks = sorted(self.by_file.get(file_id, []), key=lambda c: c.index)
+        chunks = sorted((row.chunk for row in self.rows if row.file.id == file_id),
+                        key=lambda c: c.index)
         return chunks[offset:offset + limit]
 
     async def count_for_file(self, file_id: int) -> int:
-        return len(self.by_file.get(file_id, []))
+        return sum(row.file.id == file_id for row in self.rows)
 
     async def count_for_project(self, project_id: int) -> int:
-        return sum(len(chunks) for file_id, chunks in self.by_file.items()
-                   if self.project_of_file[file_id] == project_id)
+        return sum(row.file.project_id == project_id for row in self.rows)
+
+    async def list_unembedded(self, project_id: int, *, file_id: int | None,
+                              limit: int) -> list[UnembeddedChunk]:
+        pending = [row for row in self.rows
+                   if row.file.project_id == project_id and row.embedding is None
+                   and file_id in (None, row.file.id)]
+        return [UnembeddedChunk(id=row.id, text=row.chunk.text) for row in pending[:limit]]
+
+    async def set_embeddings(self, embeddings: Mapping[int, Sequence[float]]) -> None:
+        for row in self.rows:
+            if row.id in embeddings:
+                row.embedding = list(embeddings[row.id])
+
+    async def count_embedded_for_project(self, project_id: int) -> int:
+        return sum(row.file.project_id == project_id and row.embedding is not None
+                   for row in self.rows)
+
+    async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
+                     min_score: float | None) -> list[ScoredChunk]:
+        hits = [ScoredChunk(file_key=row.file.key, chunk=row.chunk,
+                            score=cosine_similarity(row.embedding, embedding))
+                for row in self.rows
+                if row.file.project_id == project_id and row.embedding is not None]
+        hits.sort(key=lambda hit: -hit.score)
+        return [hit for hit in hits[:top_k] if min_score is None or hit.score >= min_score]
 
 
 class FakeUnitOfWork:

@@ -1,12 +1,18 @@
 """SQLAlchemy implementations of the domain repository interfaces."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from sqlalchemy import delete, func, insert, select
+from sqlalchemy import bindparam, delete, func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mini_rag.domain.models import Chunk, FileRecord, Project
+from mini_rag.domain.models import (
+    Chunk,
+    FileRecord,
+    Project,
+    ScoredChunk,
+    UnembeddedChunk,
+)
 
 from .tables import ChunkRow, FileRow, ProjectRow
 
@@ -103,6 +109,65 @@ class SqlChunkRepository:
     async def count_for_project(self, project_id: int) -> int:
         return await self.session.scalar(
             select(func.count()).select_from(ChunkRow).where(ChunkRow.project_id == project_id))
+
+    async def list_unembedded(self, project_id: int, *, file_id: int | None,
+                              limit: int) -> list[UnembeddedChunk]:
+        query = select(ChunkRow.id, ChunkRow.text).where(
+            ChunkRow.project_id == project_id, ChunkRow.embedding.is_(None))
+        if file_id is not None:
+            query = query.where(ChunkRow.file_id == file_id)
+        rows = await self.session.execute(query.order_by(ChunkRow.id).limit(limit))
+        return [UnembeddedChunk(id=row.id, text=row.text) for row in rows]
+
+    async def set_embeddings(self, embeddings: Mapping[int, Sequence[float]]) -> None:
+        if not embeddings:
+            return
+        # A plain UPDATE per ID: unlike the ORM's bulk update, it does not
+        # fail when a chunk was deleted meanwhile (e.g. by reprocessing).
+        table = ChunkRow.__table__
+        await self.session.execute(
+            update(table).where(table.c.id == bindparam("chunk_id"))
+            .values(embedding=bindparam("vector")),
+            [{"chunk_id": chunk_id, "vector": list(vector)}
+             for chunk_id, vector in embeddings.items()])
+
+    async def count_embedded_for_project(self, project_id: int) -> int:
+        return await self.session.scalar(
+            select(func.count()).select_from(ChunkRow)
+            .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None)))
+
+    async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
+                     min_score: float | None) -> list[ScoredChunk]:
+        # The HNSW index finds neighbours across all projects; filtering by
+        # project afterwards could leave fewer than top_k. An iterative scan
+        # (pgvector 0.8+) keeps searching until enough rows pass the filter.
+        # It may return them slightly out of order, so the outer query sorts
+        # them again. SET LOCAL lasts until the end of this transaction.
+        await self.session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+
+        distance = ChunkRow.embedding.cosine_distance(list(embedding))
+        nearest = (
+            select(ChunkRow.id, ChunkRow.file_id, ChunkRow.chunk_index, ChunkRow.text,
+                   ChunkRow.meta, distance.label("distance"))
+            .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None))
+            .order_by(distance).limit(top_k)
+            .cte("nearest").prefix_with("MATERIALIZED")
+        )
+        query = (
+            select(nearest, FileRow.key)
+            .join(FileRow, FileRow.id == nearest.c.file_id)
+            .order_by(nearest.c.distance, nearest.c.id)
+        )
+        if min_score is not None:
+            # score = 1 - cosine distance
+            query = query.where(nearest.c.distance <= 1 - min_score)
+
+        rows = await self.session.execute(query)
+        return [
+            ScoredChunk(file_key=row.key, score=1 - row.distance,
+                        chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
+            for row in rows
+        ]
 
 
 class SqlUnitOfWork:

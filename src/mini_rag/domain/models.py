@@ -24,6 +24,27 @@ class Chunk:
 
 
 @dataclass(frozen=True)
+class UnembeddedChunk:
+    """A stored chunk that has no embedding yet. ``id`` is its database ID."""
+
+    id: int
+    text: str
+
+
+@dataclass(frozen=True)
+class ScoredChunk:
+    """A search hit: a chunk, the file_id of its file and how well it matches.
+
+    ``score`` is the cosine similarity to the query: 1 means the same
+    direction, 0 unrelated.
+    """
+
+    file_key: str
+    chunk: Chunk
+    score: float
+
+
+@dataclass(frozen=True)
 class Project:
     id: int
     name: str
