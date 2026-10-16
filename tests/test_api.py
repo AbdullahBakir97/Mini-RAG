@@ -48,7 +48,7 @@ def test_upload_generates_unique_file_ids(client):
 def test_upload_rejects_unsupported_type(client, files_dir):
     response = upload(client, "p1", name="image.png", content_type="image/png")
 
-    assert response.status_code == 400
+    assert response.status_code == 415
     assert response.json() == {"signal": "file_type_not_supported"}
     assert not (files_dir / "p1").exists()
 
@@ -57,7 +57,7 @@ def test_upload_rejects_oversized_file(client):
     # FILE_MAX_SIZE is 1 MB in the test settings.
     response = upload(client, "p1", content=b"x" * (1024 * 1024 + 1))
 
-    assert response.status_code == 400
+    assert response.status_code == 413
     assert response.json() == {"signal": "file_size_exceeded"}
 
 
@@ -83,3 +83,17 @@ def test_upload_rejects_unsafe_project_id(client, files_dir, project_id):
 )
 def test_clean_file_name(original, expected):
     assert clean_file_name(original) == expected
+
+
+def test_upload_disk_failure_is_a_server_error(client, files_dir, monkeypatch, caplog):
+    def failing_open(*args, **kwargs):
+        raise OSError("No space left on device")
+
+    monkeypatch.setattr("mini_rag.services.upload_service.aiofiles.open", failing_open)
+
+    response = upload(client, "p1")
+
+    assert response.status_code == 500
+    assert response.json() == {"signal": "file_upload_failed"}
+    assert "No space left on device" in caplog.text
+    assert [p for p in files_dir.rglob("*") if p.is_file()] == []

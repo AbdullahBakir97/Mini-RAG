@@ -66,7 +66,7 @@ def test_process_pdf_without_text(client, make_pdf):
 
     response = process(client, "p1", file_id)
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert response.json() == {"signal": "file_has_no_text"}
 
 
@@ -75,7 +75,7 @@ def test_process_corrupt_pdf(client):
 
     response = process(client, "p1", file_id)
 
-    assert response.status_code == 400
+    assert response.status_code == 422
     assert response.json() == {"signal": "processing_failed"}
 
 
@@ -84,7 +84,7 @@ def test_process_unsupported_extension(client):
 
     response = process(client, "p1", file_id)
 
-    assert response.status_code == 400
+    assert response.status_code == 415
     assert response.json() == {"signal": "file_type_not_supported"}
 
 

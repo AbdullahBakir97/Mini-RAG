@@ -22,14 +22,17 @@ class AppError(Exception):
 
 class UnsupportedFileType(AppError):
     signal = ResponseSignal.FILE_TYPES_NOT_SUPPORTED
+    status_code = HTTPStatus.UNSUPPORTED_MEDIA_TYPE
 
 
 class FileTooLarge(AppError):
     signal = ResponseSignal.FILE_SIZE_EXCEEDED
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
 
 class UploadFailed(AppError):
     signal = ResponseSignal.FILE_UPLOAD_FAILED
+    status_code = HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 class FileNotFound(AppError):
@@ -39,7 +42,9 @@ class FileNotFound(AppError):
 
 class NoTextExtracted(AppError):
     signal = ResponseSignal.FILE_HAS_NO_TEXT
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
 
 class ProcessingFailed(AppError):
     signal = ResponseSignal.PROCESSING_FAILED
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY

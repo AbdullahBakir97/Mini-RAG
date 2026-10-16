@@ -83,9 +83,10 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | Case | Status | Response |
 |---|---|---|
 | Upload saved | `200` | `{"signal": "file_uploaded_successfully", "file_id": "..."}` |
-| File type not in `FILE_ALLOWED_TYPES` | `400` | `{"signal": "file_type_not_supported"}` |
-| File larger than `FILE_MAX_SIZE` | `400` | `{"signal": "file_size_exceeded"}` |
+| File type not in `FILE_ALLOWED_TYPES` | `415` | `{"signal": "file_type_not_supported"}` |
+| File larger than `FILE_MAX_SIZE` | `413` | `{"signal": "file_size_exceeded"}` |
 | Invalid `project_id` | `422` | Validation error details |
+| Storage failure on the server | `500` | `{"signal": "file_upload_failed"}` |
 
 ### Process a file into chunks
 
@@ -120,9 +121,9 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 |---|---|---|
 | Chunks created | `200` | `{"signal": "processing_success", ...}` |
 | No such file in this project | `404` | `{"signal": "file_not_found"}` |
-| Extension is not `.txt` or `.pdf` | `400` | `{"signal": "file_type_not_supported"}` |
-| No extractable text (e.g. a scanned PDF) | `400` | `{"signal": "file_has_no_text"}` |
-| File could not be read | `400` | `{"signal": "processing_failed"}` |
+| Extension is not `.txt` or `.pdf` | `415` | `{"signal": "file_type_not_supported"}` |
+| No extractable text (e.g. a scanned PDF) | `422` | `{"signal": "file_has_no_text"}` |
+| File could not be read | `422` | `{"signal": "processing_failed"}` |
 | Invalid `file_id` or chunk settings | `422` | Validation error details |
 
 ## Development
