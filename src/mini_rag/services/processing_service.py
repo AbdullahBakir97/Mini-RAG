@@ -33,6 +33,5 @@ class ProcessingService:
         chunks: list[Chunk] = []
         for document in documents:
             for text in splitter.split(document.text):
-                metadata = {**document.metadata, "chunk_index": len(chunks)}
-                chunks.append(Chunk(text=text, metadata=metadata))
+                chunks.append(Chunk(index=len(chunks), text=text, metadata=dict(document.metadata)))
         return chunks

@@ -42,10 +42,10 @@ def test_chunks_carry_document_metadata_and_a_running_index(storage):
     chunks = make_service(storage, loader).process("p1", file_id, chunk_size=12, overlap_size=0)
 
     assert loader.calls == [(path, file_id)]
-    assert [(c.text, c.metadata) for c in chunks] == [
-        ("alpha beta", {"source": "s", "page": 1, "chunk_index": 0}),
-        ("gamma delta", {"source": "s", "page": 1, "chunk_index": 1}),
-        ("epsilon zeta", {"source": "s", "page": 2, "chunk_index": 2}),
+    assert [(c.index, c.text, c.metadata) for c in chunks] == [
+        (0, "alpha beta", {"source": "s", "page": 1}),
+        (1, "gamma delta", {"source": "s", "page": 1}),
+        (2, "epsilon zeta", {"source": "s", "page": 2}),
     ]
 
 

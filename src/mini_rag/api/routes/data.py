@@ -59,5 +59,7 @@ async def process_data(project_id: ProjectId, request: ProcessRequest,
         signal=ResponseSignal.PROCESSING_SUCCESS,
         file_id=request.file_id,
         chunks_count=len(chunks),
-        chunks=[ChunkResponse(text=chunk.text, metadata=chunk.metadata) for chunk in chunks],
+        chunks=[ChunkResponse(text=chunk.text,
+                              metadata={**chunk.metadata, "chunk_index": chunk.index})
+                for chunk in chunks],
     )
