@@ -6,11 +6,14 @@ to verify the service committed its work.
 """
 
 import math
+import re
+import zlib
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
 
+from mini_rag.core.errors import EmbeddingFailed
 from mini_rag.domain.models import (
     Chunk,
     FileRecord,
@@ -18,6 +21,7 @@ from mini_rag.domain.models import (
     ScoredChunk,
     UnembeddedChunk,
 )
+from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS
 
 
 class FakeProjects:
@@ -139,3 +143,31 @@ class FakeUnitOfWork:
 
     async def rollback(self) -> None:
         pass
+
+
+class FakeEmbedder:
+    """Deterministic bag-of-words vectors, so texts sharing words are similar.
+
+    Each word adds 1 to a dimension chosen by a stable hash of the word.
+    ``fail_on_call`` makes that call (1-based) raise EmbeddingFailed.
+    """
+
+    model = "fake-embedder"
+
+    def __init__(self, dimensions: int = EMBEDDING_DIMENSIONS, fail_on_call: int | None = None):
+        self.dimensions = dimensions
+        self.fail_on_call = fail_on_call
+        self.calls: list[list[str]] = []
+
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.calls.append(list(texts))
+        if len(self.calls) == self.fail_on_call:
+            raise EmbeddingFailed("fake failure")
+        return [self.vector(text) for text in texts]
+
+    def vector(self, text: str) -> list[float]:
+        vector = [0.0] * self.dimensions
+        vector[0] = 0.01  # never all zeros, which has no direction
+        for word in re.findall(r"\w+", text.lower()):
+            vector[1 + zlib.crc32(word.encode()) % (self.dimensions - 1)] += 1.0
+        return vector

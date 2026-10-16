@@ -35,3 +35,13 @@ def test_project_id_rules_are_documented(schema):
     [project_id] = [p for p in params if p["name"] == "project_id"]
 
     assert project_id["schema"]["pattern"] == "^[A-Za-z0-9_-]{1,64}$"
+
+
+def test_index_endpoint_is_documented(schema):
+    responses = schema["paths"]["/api/v1/index/{project_id}"]["post"]["responses"]
+
+    assert response_schema(schema, "/api/v1/index/{project_id}", "200") == "IndexResponse"
+    assert "project_not_found" in responses["404"]["description"]
+    assert "file_not_found" in responses["404"]["description"]
+    assert "embedding_failed" in responses["502"]["description"]
+    assert "embedding_not_configured" in responses["503"]["description"]

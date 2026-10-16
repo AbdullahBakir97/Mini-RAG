@@ -84,6 +84,17 @@ class ProcessResponse(BaseModel):
     chunks_count: int
 
 
+class IndexRequest(BaseModel):
+    file_id: FileId | None = Field(default=None,
+                                   description="Index only this file; omit for the whole project.")
+
+
+class IndexResponse(BaseModel):
+    signal: ResponseSignal
+    embedded_count: int = Field(description="Chunks embedded by this request.")
+    chunks_count: int = Field(description="All chunks of the project, or of the file.")
+
+
 class ProjectResponse(BaseModel):
     name: str
     created_at: datetime
