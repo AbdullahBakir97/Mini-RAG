@@ -2,7 +2,9 @@
 
 Splits text into chunks of at most ``chunk_size`` characters. Boundaries are
 chosen recursively: paragraphs first, then lines, then words, and a word is
-cut only when it alone is too long.
+cut only when it alone is too long. A chunk ends early at a boundary only when
+that keeps the next piece whole; otherwise it is filled up, so long lines
+(such as PDF layout lines) do not leave small fragments behind.
 
 Each chunk after the first also begins with up to ``overlap_size`` characters
 of the text that precedes it, starting at a word boundary when the overlap
@@ -48,8 +50,9 @@ class RecursiveTextSplitter:
         separator, finer_separators = self._pick_separator(text, start, end, separators)
         if not separator:
             # No boundary left to respect: cut at fixed widths.
-            return [(position, min(position + self._body_size, end))
-                    for position in range(start, end, self._body_size)]
+            fixed = ((position, min(position + self._body_size, end))
+                     for position in range(start, end, self._body_size))
+            return [(s, e) for s, e in fixed if not text[s:e].isspace()]
 
         spans: list[Span] = []
         group: Span | None = None
@@ -58,11 +61,14 @@ class RecursiveTextSplitter:
                 continue
 
             if piece_end - piece_start > self._body_size:
-                # Too long on its own: flush the current group, then split finer.
-                if group:
-                    spans.append(group)
-                    group = None
-                spans.extend(self._split_spans(text, piece_start, piece_end, finer_separators))
+                # The piece has to be split anyway, so ending the current chunk
+                # early would keep nothing whole: split it together with the
+                # open group, filling that chunk up, and keep the remainder
+                # open so it can merge with the pieces that follow.
+                region_start = group[0] if group else piece_start
+                sub_spans = self._split_spans(text, region_start, piece_end, finer_separators)
+                spans.extend(sub_spans[:-1])
+                group = sub_spans[-1]
                 continue
 
             if group and piece_end - group[0] > self._body_size:

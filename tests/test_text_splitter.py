@@ -62,6 +62,32 @@ def test_prefers_paragraph_boundaries():
     assert split(text, chunk_size=40) == ["a" * 30, "b" * 30]
 
 
+def test_pieces_that_fit_are_kept_whole():
+    text = "\n\n".join(letter * 30 for letter in "abc")
+
+    assert split(text, chunk_size=40) == ["a" * 30, "b" * 30, "c" * 30]
+
+
+def test_long_lines_do_not_leave_fragments():
+    # Each line is longer than a chunk, so splitting lines one by one would
+    # leave a short leftover per line. Chunks must be filled up instead.
+    line = "one printed line of a PDF page that is wrapped by the layout engine"
+    text = "\n".join([line] * 10)
+    longest_word = max(len(word) for word in text.split())
+
+    chunks = split(text, chunk_size=50)
+
+    assert all(len(chunk) > 50 - longest_word - 1 for chunk in chunks[:-1])
+
+
+def test_short_piece_before_a_long_one_is_filled_up():
+    text = "Intro.\n\n" + " ".join(["word"] * 30)
+
+    first = split(text, chunk_size=40)[0]
+
+    assert first.startswith("Intro.") and "word" in first
+
+
 def test_overlap_carries_preceding_words():
     text = " ".join(f"w{i:02d}" for i in range(40))  # 3-character words
 
@@ -119,6 +145,16 @@ def test_random_texts_respect_size_and_are_slices():
         assert all(chunk in text for chunk in chunks)
         if overlap_size == 0:
             assert "".join("".join(chunks).split()) == "".join(text.split())
+
+
+def test_fixed_width_cut_never_yields_blank_chunks():
+    # Regression: cutting a region that contains spaces at fixed widths
+    # produced whitespace-only spans, which became empty chunks.
+    text = "embedding  embedding\nrag\n\nvector\nrag bb rag " + "x" * 40 + "  bb vector\n\na\n"
+
+    chunks = split(text, chunk_size=29, overlap_size=28)
+
+    assert chunks and all(chunk.strip() for chunk in chunks)
 
 
 @pytest.mark.parametrize(
