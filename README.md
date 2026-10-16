@@ -14,8 +14,8 @@ Mini RAG is a small, readable backend for answering questions over your own docu
 |---|---|
 | File upload API with validation | ✅ Done |
 | Document processing (load TXT/PDF, split into chunks) | ✅ Done |
-| Storage for projects, files and chunks | 🔜 Next |
-| Embeddings and vector search | Planned |
+| Storage for projects, files and chunks (PostgreSQL) | ✅ Done |
+| Embeddings and vector search | 🔜 Next |
 | Answer generation with an LLM | Planned |
 | Docker packaging | Planned |
 
@@ -158,16 +158,19 @@ Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `
 The code is split into layers. Each layer only depends on the layers below it, and only the API layer knows about HTTP, so the business logic can be reused from a CLI or a background worker and tested without a web server. `tests/test_architecture.py` enforces these rules.
 
 ```
-api        routes, request/response schemas, dependency wiring, error handler
+api          routes, request/response schemas, dependency wiring, error handler
  │
-services   UploadService, ProcessingService: the use cases
+services     UploadService, ProcessingService, ProjectService: the use cases
  │
-storage · loaders · text     files on disk · one loader per file type · text splitter
+persistence · storage · loaders · text
+             PostgreSQL repositories · files on disk · one loader per file type · text splitter
  │
-domain     Document, Chunk, response signals
+domain       Document, Chunk, Project, FileRecord, repository interfaces, response signals
 ```
 
-`core` holds settings and the `AppError` hierarchy; `api`, `services`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own.
+Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes.
+
+`core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own. Only `api` may import FastAPI, and only `persistence` (and the API, which wires it up) may import SQLAlchemy.
 
 | Concern | Where it lives |
 |---|---|
@@ -175,6 +178,8 @@ domain     Document, Chunk, response signals
 | Turning errors into responses | Services raise an `AppError` subclass; `api/error_handlers.py` maps it to `{"signal": ...}` and its status code |
 | Wiring objects together | `api/dependencies.py`, using FastAPI `Depends` |
 | Path safety | `storage/file_storage.py`: every path is checked to stay inside `FILES_DIR` |
+| Transactions | One database session per request; services call `uow.commit()`, and anything uncommitted is rolled back |
+| Database schema | `persistence/tables.py`, changed only through Alembic migrations |
 
 ### Adding a file type
 
@@ -226,12 +231,14 @@ Mini-RAG/
 │   │   ├── main.py           # create_app(): routers and error handler
 │   │   ├── core/             # Settings, application errors, logging setup
 │   │   ├── api/              # Routes, schemas, dependency wiring, error handler
-│   │   ├── services/         # Upload rules and document processing
+│   │   ├── services/         # Use cases: upload, processing, project queries
+│   │   ├── persistence/      # SQLAlchemy tables, engine and repositories
 │   │   ├── storage/          # File storage and path safety
 │   │   ├── loaders/          # One loader per file type, chosen by extension
 │   │   ├── text/             # Recursive text splitter
-│   │   └── domain/           # Document, Chunk and response signals
+│   │   └── domain/           # Domain models, repository interfaces, signals
 ├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
+├── docker/postgres/init/     # Creates the test database in docker-compose
 ├── migrations/               # Alembic migrations
 ├── tests/                    # pytest suite
 ├── requirements.txt

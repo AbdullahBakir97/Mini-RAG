@@ -10,6 +10,7 @@ Thanks for considering a contribution!
 4. Run the local checks before opening the PR (the same ones CI runs):
    ```bash
    pip install -r requirements-dev.txt
+   docker compose up -d db
    ruff check .
    pytest
    ```
@@ -29,6 +30,13 @@ The layers and their allowed dependencies are described in the README's
   subclass with its signal and HTTP status.
 - Receive collaborators through the constructor; wire them in
   `api/dependencies.py`.
+- Services talk to the database only through the interfaces in
+  `domain/repositories.py`; add a method there (and to
+  `persistence/repositories.py` and `tests/fakes.py`) rather than
+  importing SQLAlchemy in a service.
+- Change the schema only with a migration: edit `persistence/tables.py`,
+  run `alembic revision --autogenerate -m "..."`, review the result, and
+  commit both. The test suite fails if they disagree.
 - Give every service and loader unit tests, plus an API test for each new
   endpoint or response.
 
