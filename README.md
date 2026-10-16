@@ -72,6 +72,9 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `GET` | `/api/v1/` | Welcome message with app name and version |
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
 | `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
+| `GET` | `/api/v1/projects/{project_id}` | Project details with file and chunk counts |
+| `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
+| `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
 
 ### Upload a file
 
@@ -125,6 +128,29 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 | No extractable text (e.g. a scanned PDF) | `422` | `{"signal": "file_has_no_text"}` |
 | File could not be read | `422` | `{"signal": "processing_failed"}` |
 | Invalid `file_id` or chunk settings | `422` | Validation error details |
+
+### Read projects, files and chunks
+
+```bash
+curl http://localhost:8000/api/v1/projects/demo1
+curl "http://localhost:8000/api/v1/projects/demo1/files?offset=0&limit=20"
+curl "http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/chunks?limit=5"
+```
+
+```json
+{"name": "demo1", "created_at": "2026-10-16T21:13:55Z", "files_count": 1, "chunks_count": 4}
+```
+
+```json
+{
+  "total": 4, "offset": 0, "limit": 5,
+  "items": [
+    {"chunk_index": 0, "text": "...", "metadata": {"source": "a16q20nzrtvj_notes.txt", "page": 1}}
+  ]
+}
+```
+
+Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `100`); `total` is the number of items overall. Files are listed in upload order, chunks by `chunk_index`. An unknown project returns `404` `{"signal": "project_not_found"}`, an unknown file `404` `{"signal": "file_not_found"}`.
 
 ## Architecture
 

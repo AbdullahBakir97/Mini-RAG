@@ -12,6 +12,7 @@ from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.processing_service import ProcessingService
+from mini_rag.services.project_service import ProjectService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
@@ -75,3 +76,10 @@ def get_processing_service(storage: FileStorageDep, loaders: LoaderRegistryDep,
 
 
 ProcessingServiceDep = Annotated[ProcessingService, Depends(get_processing_service)]
+
+
+def get_project_service(uow: UnitOfWorkDep) -> ProjectService:
+    return ProjectService(uow=uow)
+
+
+ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]

@@ -40,6 +40,11 @@ class FileNotFound(AppError):
     status_code = HTTPStatus.NOT_FOUND
 
 
+class ProjectNotFound(AppError):
+    signal = ResponseSignal.PROJECT_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
 class NoTextExtracted(AppError):
     signal = ResponseSignal.FILE_HAS_NO_TEXT
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
