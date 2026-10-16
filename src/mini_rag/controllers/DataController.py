@@ -3,7 +3,7 @@ import re
 
 from fastapi import UploadFile
 
-from mini_rag.models import ResponseSignal
+from mini_rag.core.errors import FileTooLarge, UnsupportedFileType
 
 from .BaseController import BaseController
 from .ProjectController import ProjectController
@@ -17,12 +17,10 @@ class DataController(BaseController):
     def validate_uploaded_file(self, file: UploadFile):
 
         if file.content_type not in self.app_settings.FILE_ALLOWED_TYPES:
-            return False, ResponseSignal.FILE_TYPES_NOT_SUPPORTED.value
+            raise UnsupportedFileType()
 
         if file.size is not None and file.size > self.app_settings.FILE_MAX_SIZE * self.size_scale:
-            return False, ResponseSignal.FILE_SIZE_EXCEEDED.value
-
-        return True, ResponseSignal.FILE_VALIDATED_SUCCESS.value
+            raise FileTooLarge()
 
 
     def generate_unique_file_path(self, orig_file_name: str, project_id: str):

@@ -1,0 +1,45 @@
+import asyncio
+import json
+
+import pytest
+from starlette.requests import Request
+
+from mini_rag.api.error_handlers import handle_app_error
+from mini_rag.core.errors import (
+    AppError,
+    FileNotFound,
+    FileTooLarge,
+    NoTextExtracted,
+    ProcessingFailed,
+    UnsupportedFileType,
+    UploadFailed,
+)
+
+ERRORS = [FileNotFound, FileTooLarge, NoTextExtracted, ProcessingFailed,
+          UnsupportedFileType, UploadFailed]
+
+
+def call_handler(error: AppError):
+    request = Request({"type": "http", "method": "POST", "path": "/x", "headers": []})
+    response = asyncio.run(handle_app_error(request, error))
+    return response.status_code, json.loads(response.body)
+
+
+@pytest.mark.parametrize("error_class", ERRORS)
+def test_handler_returns_signal_and_status(error_class):
+    status_code, body = call_handler(error_class())
+
+    assert status_code == error_class.status_code
+    assert body == {"signal": error_class.signal.value}
+
+
+def test_every_error_has_its_own_signal():
+    signals = [error_class.signal for error_class in ERRORS]
+
+    assert len(set(signals)) == len(signals)
+
+
+def test_detail_is_not_leaked_to_clients():
+    _, body = call_handler(ProcessingFailed("stack trace with /secret/path"))
+
+    assert body == {"signal": "processing_failed"}
