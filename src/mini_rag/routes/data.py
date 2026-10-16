@@ -1,14 +1,12 @@
-import aiofiles
 from fastapi import APIRouter, Path, UploadFile
 from starlette.concurrency import run_in_threadpool
 
-from mini_rag.api.dependencies import FileStorageDep, SettingsDep
-from mini_rag.controllers import DataController, ProcessController
+from mini_rag.api.dependencies import FileStorageDep, UploadServiceDep
+from mini_rag.controllers import ProcessController
 from mini_rag.core.errors import (
     NoTextExtracted,
     ProcessingFailed,
     UnsupportedFileType,
-    UploadFailed,
 )
 from mini_rag.models import ResponseSignal
 
@@ -21,24 +19,16 @@ data_router = APIRouter(
 
 @data_router.post("/upload/{project_id}")
 async def upload_data(file: UploadFile,
-                      storage: FileStorageDep,
-                      app_settings: SettingsDep,
+                      upload_service: UploadServiceDep,
                       project_id: str = Path(pattern=r"^[A-Za-z0-9_-]{1,64}$")):
 
-    data_controller = DataController(settings=app_settings, storage=storage)
-    data_controller.validate_uploaded_file(file=file)
-
-    file_id, file_path = data_controller.reserve_file(
-        orig_file_name=file.filename,
-        project_id=project_id
+    file_id = await upload_service.save(
+        project_id=project_id,
+        filename=file.filename or "",
+        content_type=file.content_type,
+        stream=file,
+        declared_size=file.size,
     )
-
-    try:
-        async with aiofiles.open(file_path, "wb") as f:
-            while chunk := await file.read(app_settings.FILE_DEFAULT_CHUNK_SIZE):
-                await f.write(chunk)
-    except Exception as e:
-        raise UploadFailed() from e
 
     return {
         "signal": ResponseSignal.FILE_UPLOAD_SUCCESS.value,

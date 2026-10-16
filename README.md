@@ -152,7 +152,8 @@ Mini-RAG/
 │   │   ├── core/             # Settings and application errors
 │   │   ├── api/              # Dependency wiring and error handler
 │   │   ├── routes/           # HTTP endpoints
-│   │   ├── controllers/      # Upload validation and document processing
+│   │   ├── services/         # Upload rules (type, size, cleanup)
+│   │   ├── controllers/      # Document processing
 │   │   ├── storage/          # File storage and path safety
 │   │   ├── models/enums/     # Response signals
 │   │   └── helpers/          # Text splitter
