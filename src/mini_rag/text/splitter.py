@@ -2,7 +2,11 @@
 
 Splits text into chunks of at most ``chunk_size`` characters. Boundaries are
 chosen recursively: paragraphs first, then lines, then words, and a word is
-cut only when it alone is too long. A chunk ends early at a boundary only when
+cut only when it alone is too long.
+
+Paragraph breaks are hard boundaries: a chunk may hold several whole
+paragraphs, but part of a paragraph is never joined with another paragraph.
+Inside a paragraph, a chunk ends early at a line or word boundary only when
 that keeps the next piece whole; otherwise it is filled up, so long lines
 (such as PDF layout lines) do not leave small fragments behind.
 
@@ -12,9 +16,10 @@ window contains one, so context carries across chunk borders. Every chunk is
 an exact (whitespace-trimmed) slice of the input text.
 """
 
-from collections.abc import Iterator, Sequence
+from collections.abc import Collection, Iterator, Sequence
 
 DEFAULT_SEPARATORS = ("\n\n", "\n", " ", "")
+DEFAULT_HARD_SEPARATORS = ("\n\n",)
 
 Span = tuple[int, int]
 
@@ -22,7 +27,8 @@ Span = tuple[int, int]
 class RecursiveTextSplitter:
 
     def __init__(self, chunk_size: int, overlap_size: int = 0,
-                 separators: Sequence[str] = DEFAULT_SEPARATORS):
+                 separators: Sequence[str] = DEFAULT_SEPARATORS,
+                 hard_separators: Collection[str] = DEFAULT_HARD_SEPARATORS):
         if chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         if not 0 <= overlap_size < chunk_size:
@@ -33,6 +39,7 @@ class RecursiveTextSplitter:
         self.chunk_size = chunk_size
         self.overlap_size = overlap_size
         self.separators = tuple(separators)
+        self.hard_separators = frozenset(hard_separators)
         # Room left for each chunk's own text once the overlap is prepended.
         self._body_size = chunk_size - overlap_size
 
@@ -58,6 +65,16 @@ class RecursiveTextSplitter:
         group: Span | None = None
         for piece_start, piece_end in self._pieces(text, start, end, separator):
             if text[piece_start:piece_end].isspace() or piece_start == piece_end:
+                continue
+
+            if piece_end - piece_start > self._body_size and separator in self.hard_separators:
+                # Never join part of this piece (e.g. a paragraph) with
+                # anything across a hard boundary: close the open group and
+                # split the piece on its own.
+                if group:
+                    spans.append(group)
+                    group = None
+                spans.extend(self._split_spans(text, piece_start, piece_end, finer_separators))
                 continue
 
             if piece_end - piece_start > self._body_size:
