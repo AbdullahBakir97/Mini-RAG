@@ -1,7 +1,8 @@
-from helpers.config import get_settings
 import os
 import secrets
 import string
+
+from helpers.config import get_settings
 
 
 class BaseController:
