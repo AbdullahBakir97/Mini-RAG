@@ -9,7 +9,7 @@ Thanks for considering a contribution!
 3. Make your change. Keep diffs focused — small PRs land faster.
 4. Run the local checks before opening the PR (the same ones CI runs):
    ```bash
-   pip install -r requirements-dev.txt
+   pip install -e ".[dev]"
    docker compose up -d db
    ruff check .
    pytest
@@ -18,8 +18,8 @@ Thanks for considering a contribution!
 
 ## Architecture rules
 
-The layers and their allowed dependencies are described in the README's
-[Architecture](./README.md#architecture) section and enforced by
+The layers and their allowed dependencies are described in
+[docs/architecture.md](../docs/architecture.md) and enforced by
 `tests/test_architecture.py`. In practice:
 
 - Keep routes thin: validate input with the schemas, call a service, return

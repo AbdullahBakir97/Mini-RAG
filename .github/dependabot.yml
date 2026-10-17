@@ -12,7 +12,7 @@ updates:
     commit-message:
       prefix: "deps(github-actions)"
 
-  # Python dependencies (requirements.txt and requirements-dev.txt).
+  # Python dependencies, pinned in pyproject.toml.
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
