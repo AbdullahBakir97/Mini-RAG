@@ -48,6 +48,18 @@ class Settings(BaseSettings):
     EMBEDDING_BATCH_SIZE: int = Field(default=64, gt=0, le=2048,
                                       description="Texts sent per embedding request")
 
+    # Answers come from the OpenAI API, or from any OpenAI-compatible server
+    # when LLM_BASE_URL is set; it may differ from the embedding server.
+    LLM_BASE_URL: str | None = None
+    LLM_MODEL: str = "gpt-4.1-mini"
+    LLM_MAX_TOKENS: int = Field(default=1024, gt=0, le=100_000,
+                                description="Most tokens the model may write per answer")
+    LLM_TEMPERATURE: float | None = Field(
+        default=None, ge=0, le=2, description="Sampling temperature; empty uses the model's default")
+    ANSWER_MIN_SCORE: float = Field(
+        default=0.3, ge=-1, le=1,
+        description="Chunks scoring below this are not used for answers; none left means no answer")
+
     @model_validator(mode="before")
     @classmethod
     def reject_renamed_settings(cls, data: Any) -> Any:
@@ -67,15 +79,25 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must start with postgresql+asyncpg://")
         return url
 
-    @field_validator("EMBEDDING_BASE_URL")
+    @field_validator("EMBEDDING_BASE_URL", "LLM_BASE_URL")
     @classmethod
     def empty_base_url_means_default(cls, url: str | None) -> str | None:
         return url or None
+
+    @field_validator("LLM_TEMPERATURE", mode="before")
+    @classmethod
+    def empty_temperature_means_default(cls, value: Any) -> Any:
+        return None if value == "" else value
 
     @property
     def embeddings_configured(self) -> bool:
         """Whether there is an API key, or a server that may not need one."""
         return bool(self.OPENAI_API_KEY or self.EMBEDDING_BASE_URL)
+
+    @property
+    def llm_configured(self) -> bool:
+        """Whether there is an API key, or a server that may not need one."""
+        return bool(self.OPENAI_API_KEY or self.LLM_BASE_URL)
 
     @property
     def max_upload_bytes(self) -> int:
