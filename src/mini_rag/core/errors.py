@@ -67,3 +67,17 @@ class EmbeddingFailed(AppError):
 
     signal = ResponseSignal.EMBEDDING_FAILED
     status_code = HTTPStatus.BAD_GATEWAY
+
+
+class LLMNotConfigured(AppError):
+    """Neither an API key nor a language model server is configured."""
+
+    signal = ResponseSignal.LLM_NOT_CONFIGURED
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+
+class LLMFailed(AppError):
+    """The language model provider failed or returned something unusable."""
+
+    signal = ResponseSignal.LLM_FAILED
+    status_code = HTTPStatus.BAD_GATEWAY

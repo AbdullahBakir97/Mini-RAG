@@ -9,17 +9,17 @@ api          routes, request/response schemas, dependency wiring, error handler
  │
 services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService
  │
-persistence · embeddings · storage · loaders · text
-             PostgreSQL + pgvector repositories · embedding client · files on disk ·
-             one loader per file type · text splitter
+persistence · embeddings · llm · storage · loaders · text
+             PostgreSQL + pgvector repositories · embedding client · chat model client ·
+             files on disk · one loader per file type · text splitter
  │
-domain       Document, Chunk, Project, FileRecord, ScoredChunk, repository and Embedder
-             interfaces, response signals
+domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, repository,
+             Embedder and LLM interfaces, response signals
 ```
 
-Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network.
+Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
 
-`core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` may import the OpenAI SDK.
+`core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
 
 | Concern | Where it lives |
 |---|---|
@@ -56,10 +56,11 @@ Mini-RAG/
 │   ├── persistence/          # SQLAlchemy tables, engine, repositories (with pgvector)
 │   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs
+│   ├── llm/                  # Chat model client for OpenAI-compatible APIs
 │   ├── storage/              # File storage and path safety
 │   ├── loaders/              # One loader per file type, chosen by extension
 │   ├── text/                 # Recursive text splitter
-│   └── domain/               # Domain models, repository and Embedder interfaces, signals
+│   └── domain/               # Domain models, repository, Embedder and LLM interfaces, signals
 ├── tests/                    # pytest suite
 ├── .env.example              # Settings template (copy to .env)
 ├── compose.yaml              # Local PostgreSQL with pgvector

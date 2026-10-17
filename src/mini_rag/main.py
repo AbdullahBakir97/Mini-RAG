@@ -10,6 +10,7 @@ from mini_rag.api.routes import base, data, index, projects, search
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
+from mini_rag.llm.factory import create_llm
 from mini_rag.persistence.database import (
     create_engine,
     create_session_factory,
@@ -34,18 +35,21 @@ async def _check_embedding_dimensions(engine: AsyncEngine, settings: Settings) -
 def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # One connection pool and one embedding client per app, closed
-        # cleanly on shutdown.
+        # One connection pool, one embedding client and one LLM client per
+        # app, closed cleanly on shutdown.
         engine = create_engine(settings.DATABASE_URL)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.embedder = embedder = create_embedder(settings)
+        app.state.llm = llm = create_llm(settings)
         try:
             await _check_embedding_dimensions(engine, settings)
             yield
         finally:
             if embedder is not None:
                 await embedder.aclose()
+            if llm is not None:
+                await llm.aclose()
             await engine.dispose()
 
     return lifespan
