@@ -15,7 +15,7 @@ ALLOWED_LAYERS = {
     "api": {"api", "core", "domain", "services", "storage", "loaders", "text", "persistence",
             "embeddings", "llm"},
     # Services use the repository interfaces in domain, never persistence.
-    "services": {"core", "domain", "storage", "loaders", "text"},
+    "services": {"core", "domain", "storage", "loaders", "text", "prompts"},
     "persistence": {"core", "domain"},
     "storage": {"core", "domain"},
     "loaders": {"core", "domain"},
@@ -23,6 +23,7 @@ ALLOWED_LAYERS = {
     "embeddings": {"core", "domain"},
     "llm": {"core", "domain"},
     "text": set(),
+    "prompts": {"domain"},
     "core": {"domain"},
     "domain": set(),
 }
