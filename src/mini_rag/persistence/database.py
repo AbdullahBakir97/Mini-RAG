@@ -29,3 +29,22 @@ async def is_database_available(engine: AsyncEngine, timeout_seconds: float = 3.
     except Exception:
         return False
     return True
+
+
+async def stored_embedding_dimensions(engine: AsyncEngine,
+                                      timeout_seconds: float = 3.0) -> int | None:
+    """Length of chunks.embedding in the database.
+
+    None when it cannot be told: the database is unreachable or not
+    migrated yet.
+    """
+    # For a vector column, the type modifier is its number of dimensions.
+    query = text("SELECT atttypmod FROM pg_attribute "
+                 "WHERE attrelid = to_regclass('chunks') AND attname = 'embedding' "
+                 "AND NOT attisdropped")
+    try:
+        with anyio.fail_after(timeout_seconds):
+            async with engine.connect() as connection:
+                return await connection.scalar(query)
+    except Exception:
+        return None

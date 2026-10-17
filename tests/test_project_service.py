@@ -25,6 +25,16 @@ async def test_summary_counts_files_and_chunks(uow):
     summary = await ProjectService(uow).get_summary("demo")
 
     assert (summary.project.name, summary.files_count, summary.chunks_count) == ("demo", 2, 3)
+    assert summary.embedded_chunks_count == 0
+
+
+async def test_summary_counts_indexed_chunks(uow):
+    [first, *_] = await uow.chunks.list_unembedded(1, file_id=None, limit=10)
+    await uow.chunks.set_embeddings({first.id: [1.0]})
+
+    summary = await ProjectService(uow).get_summary("demo")
+
+    assert (summary.chunks_count, summary.embedded_chunks_count) == (3, 1)
 
 
 async def test_pages_report_total_and_window(uow):

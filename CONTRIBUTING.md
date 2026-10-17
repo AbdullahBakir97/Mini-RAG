@@ -34,6 +34,10 @@ The layers and their allowed dependencies are described in the README's
   `domain/repositories.py`; add a method there (and to
   `persistence/repositories.py` and `tests/fakes.py`) rather than
   importing SQLAlchemy in a service.
+- Services get embeddings only through the `Embedder` interface in
+  `domain/embedder.py`; only `mini_rag.embeddings` may import a provider
+  SDK. Tests use `FakeEmbedder` from `tests/fakes.py` and never call a
+  real provider.
 - Change the schema only with a migration: edit `persistence/tables.py`,
   run `alembic revision --autogenerate -m "..."`, review the result, and
   commit both. The test suite fails if they disagree.

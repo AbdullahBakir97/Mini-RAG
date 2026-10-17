@@ -4,10 +4,10 @@ Implementations live in mini_rag.persistence; tests can use in-memory
 fakes. Nothing here knows about SQL.
 """
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Protocol
 
-from .models import Chunk, FileRecord, Project
+from .models import Chunk, FileRecord, Project, ScoredChunk, UnembeddedChunk
 
 
 class ProjectRepository(Protocol):
@@ -47,6 +47,25 @@ class ChunkRepository(Protocol):
     async def count_for_file(self, file_id: int) -> int: ...
 
     async def count_for_project(self, project_id: int) -> int: ...
+
+    async def list_unembedded(self, project_id: int, *, file_id: int | None,
+                              limit: int) -> list[UnembeddedChunk]:
+        """Chunks without an embedding, oldest first; ``file_id`` narrows to one file."""
+        ...
+
+    async def set_embeddings(self, embeddings: Mapping[int, Sequence[float]]) -> None:
+        """Store vectors by chunk ID. IDs of chunks deleted meanwhile are skipped."""
+        ...
+
+    async def count_embedded_for_project(self, project_id: int) -> int: ...
+
+    async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
+                     min_score: float | None) -> list[ScoredChunk]:
+        """The project's embedded chunks most similar to ``embedding``, best first.
+
+        At most ``top_k`` results, and none scoring below ``min_score``.
+        """
+        ...
 
 
 class UnitOfWork(Protocol):

@@ -20,7 +20,7 @@ jobs:
         python-version: ['3.11', '3.12']
     services:
       postgres:
-        image: postgres:16-alpine
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: mini_rag
           POSTGRES_PASSWORD: mini_rag

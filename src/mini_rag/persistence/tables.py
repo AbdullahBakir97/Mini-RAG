@@ -7,11 +7,13 @@ models, and the repositories translate between the two.
 from datetime import datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     DateTime,
     ForeignKey,
     Identity,
+    Index,
     Integer,
     MetaData,
     String,
@@ -31,6 +33,10 @@ NAMING_CONVENTION = {
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }
+
+# Length of chunks.embedding. Changing it needs a migration, and
+# EMBEDDING_DIMENSIONS must match it (checked when the app starts).
+EMBEDDING_DIMENSIONS = 1536
 
 
 class Base(DeclarativeBase):
@@ -65,7 +71,13 @@ class FileRow(Base):
 
 class ChunkRow(Base):
     __tablename__ = "chunks"
-    __table_args__ = (UniqueConstraint("file_id", "chunk_index"),)
+    __table_args__ = (
+        UniqueConstraint("file_id", "chunk_index"),
+        # Approximate nearest-neighbour search by cosine distance. HNSW needs
+        # no training data, so it works from the first row.
+        Index("ix_chunks_embedding", "embedding", postgresql_using="hnsw",
+              postgresql_ops={"embedding": "vector_cosine_ops"}),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     file_id: Mapped[int] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"))
@@ -77,4 +89,6 @@ class ChunkRow(Base):
     # "metadata" is reserved on declarative classes, hence the attribute name.
     meta: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, server_default="{}", default=dict)
+    # NULL until the chunk is indexed; deleted together with the chunk.
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
     created_at: Mapped[datetime] = _created_at()

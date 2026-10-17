@@ -8,11 +8,15 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
+from mini_rag.core.errors import EmbeddingNotConfigured
+from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
+from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
+from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
@@ -90,3 +94,29 @@ def get_project_service(uow: UnitOfWorkDep) -> ProjectService:
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_embedder(request: Request) -> Embedder:
+    """The app's embedder; requests that need one fail with 503 without it."""
+    embedder = request.app.state.embedder
+    if embedder is None:
+        raise EmbeddingNotConfigured()
+    return embedder
+
+
+EmbedderDep = Annotated[Embedder, Depends(get_embedder)]
+
+
+def get_indexing_service(uow: UnitOfWorkDep, embedder: EmbedderDep,
+                         settings: SettingsDep) -> IndexingService:
+    return IndexingService(uow=uow, embedder=embedder, batch_size=settings.EMBEDDING_BATCH_SIZE)
+
+
+IndexingServiceDep = Annotated[IndexingService, Depends(get_indexing_service)]
+
+
+def get_search_service(uow: UnitOfWorkDep, embedder: EmbedderDep) -> SearchService:
+    return SearchService(uow=uow, embedder=embedder)
+
+
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
