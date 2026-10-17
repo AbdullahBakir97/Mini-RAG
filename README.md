@@ -20,6 +20,19 @@
 
 Streaming answers and conversations are next; see the [roadmap](docs/roadmap.md).
 
+## How it works
+
+Documents are indexed once: uploaded, read, split into overlapping chunks, embedded and stored in PostgreSQL with pgvector. Every question is then embedded with the same model, the closest chunks above a minimum score become numbered sources, and the language model answers only from them, citing each one.
+
+<p align="center">
+  <img src="docs/media/live-trace.gif" width="880" alt="Animated trace of one run: the ingest steps (upload, extract text, split, embed, store) complete one after another, then the ask steps (question, embed query, vector search, rank, build prompt, generate, answer), with a timing chart and an event log.">
+</p>
+<p align="center"><sub>One run from upload to cited answer, with sample data · <a href="docs/media/live-trace.mp4">MP4</a></sub></p>
+
+<p align="center">
+  <img src="docs/media/system-overview.png" width="880" alt="System overview infographic: the five ingest steps and the seven ask steps around the shared index, key defaults (1,000-character chunks, 200 characters of overlap, 1,536-dimension vectors, 64 chunks per request, 5 sources per answer), and diagrams of chunking with overlap, search by meaning, the prompt and a cited answer.">
+</p>
+
 ## Quick start
 
 Requires Python 3.11+ and Docker.
