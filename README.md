@@ -323,7 +323,7 @@ Mini-RAG/
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md). Security issues: see [SECURITY.md](./SECURITY.md).
+See [CONTRIBUTING.md](.github/CONTRIBUTING.md). Security issues: see [SECURITY.md](.github/SECURITY.md).
 
 ## Author
 

@@ -19,7 +19,7 @@ Thanks for considering a contribution!
 ## Architecture rules
 
 The layers and their allowed dependencies are described in the README's
-[Architecture](./README.md#architecture) section and enforced by
+[Architecture](../README.md#architecture) section and enforced by
 `tests/test_architecture.py`. In practice:
 
 - Keep routes thin: validate input with the schemas, call a service, return
