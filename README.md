@@ -58,7 +58,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
 | `OPENAI_API_KEY` | `""` | API key for OpenAI (embeddings now, answer generation later). Leave empty for a local server set in `EMBEDDING_BASE_URL` |
-| `DATABASE_URL` | `"postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"` | PostgreSQL connection (must use the `postgresql+asyncpg://` driver); the default matches `docker-compose.yml` |
+| `DATABASE_URL` | `"postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"` | PostgreSQL connection (must use the `postgresql+asyncpg://` driver); the default matches `compose.yaml` |
 | `EMBEDDING_BASE_URL` | `""` | OpenAI-compatible server for embeddings, e.g. `"http://localhost:11434/v1"` for Ollama; empty means OpenAI |
 | `EMBEDDING_MODEL` | `"text-embedding-3-small"` | Embedding model name |
 | `EMBEDDING_DIMENSIONS` | `1536` | Length of each vector. Must match the database column (1536); the app refuses to start otherwise |
@@ -265,9 +265,9 @@ alembic revision --autogenerate -m "describe change"  # after changing persisten
 
 Review every generated migration before committing it. `tests/test_migrations.py` fails if the models and the migrations ever disagree.
 
-The database needs the pgvector extension, version 0.8 or newer; the `pgvector/pgvector:pg16` image in `docker-compose.yml` has it, and migration `0002` enables it. To use a model with another vector length, change `EMBEDDING_DIMENSIONS` in `persistence/tables.py`, add a migration that changes the column and its index, and set `EMBEDDING_DIMENSIONS` in `.env` to match.
+The database needs the pgvector extension, version 0.8 or newer; the `pgvector/pgvector:pg16` image in `compose.yaml` has it, and migration `0002` enables it. To use a model with another vector length, change `EMBEDDING_DIMENSIONS` in `persistence/tables.py`, add a migration that changes the column and its index, and set `EMBEDDING_DIMENSIONS` in `.env` to match.
 
-**Upgrading a local database from before vector search:** `docker-compose.yml` used `postgres:16-alpine` before and now uses the Debian-based `pgvector/pgvector:pg16`. Text sorting rules differ between the two, so don't reuse the old data volume; recreate it, migrate, and upload your files again:
+**Upgrading a local database from before vector search:** `compose.yaml` used `postgres:16-alpine` before and now uses the Debian-based `pgvector/pgvector:pg16`. Text sorting rules differ between the two, so don't reuse the old data volume; recreate it, migrate, and upload your files again:
 
 ```bash
 docker compose down -v            # deletes the local database volume
@@ -310,12 +310,12 @@ Mini-RAG/
 │   │   ├── text/             # Recursive text splitter
 │   │   └── domain/           # Domain models, repository and Embedder interfaces, signals
 ├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
-├── docker/postgres/init/     # Creates the test database in docker-compose
+├── docker/postgres/init/     # Creates the test database in compose.yaml
 ├── migrations/               # Alembic migrations
 ├── tests/                    # pytest suite
 ├── .env.example
 ├── alembic.ini
-├── docker-compose.yml        # Local PostgreSQL with pgvector
+├── compose.yaml              # Local PostgreSQL with pgvector
 └── pyproject.toml            # Dependencies, pytest and ruff configuration
 ```
 

@@ -14,7 +14,7 @@ from mini_rag.persistence.database import create_engine
 ROOT = Path(__file__).resolve().parents[1]
 
 # A disposable database: tests empty its tables. Defaults to the one created
-# by docker-compose (see docker/postgres/init); CI sets TEST_DATABASE_URL.
+# by compose.yaml (see docker/postgres/init); CI sets TEST_DATABASE_URL.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag_test",
