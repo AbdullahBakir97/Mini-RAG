@@ -28,12 +28,13 @@ def _file_response(record: FileRecord) -> FileResponse:
                         created_at=record.created_at)
 
 
-@router.get("/{project_id}", summary="Project details with file and chunk counts",
+@router.get("/{project_id}", summary="Project details with file, chunk and index counts",
             responses=error_responses(ProjectNotFound))
 async def get_project(project_id: ProjectId, service: ProjectServiceDep) -> ProjectResponse:
     summary = await service.get_summary(project_id)
     return ProjectResponse(name=summary.project.name, created_at=summary.project.created_at,
-                           files_count=summary.files_count, chunks_count=summary.chunks_count)
+                           files_count=summary.files_count, chunks_count=summary.chunks_count,
+                           embedded_chunks_count=summary.embedded_chunks_count)
 
 
 @router.get("/{project_id}/files", summary="List a project's files in upload order",

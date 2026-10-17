@@ -11,6 +11,7 @@ class ProjectSummary:
     project: Project
     files_count: int
     chunks_count: int
+    embedded_chunks_count: int
 
 
 T = TypeVar("T")
@@ -36,6 +37,7 @@ class ProjectService:
             project=project,
             files_count=await self.uow.files.count_for_project(project.id),
             chunks_count=await self.uow.chunks.count_for_project(project.id),
+            embedded_chunks_count=await self.uow.chunks.count_embedded_for_project(project.id),
         )
 
     async def list_files(self, project_name: str, offset: int, limit: int) -> Page[FileRecord]:

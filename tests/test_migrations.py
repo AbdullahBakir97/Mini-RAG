@@ -48,3 +48,13 @@ def test_models_and_migrations_are_in_sync(migrated_database):
         return compare_metadata(context, Base.metadata)
 
     assert run_on_connection(migrated_database, schema_differences) == []
+
+
+def test_chunk_embeddings_have_a_cosine_hnsw_index(migrated_database):
+    def embedding_index(connection):
+        return connection.exec_driver_sql(
+            "SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_chunks_embedding'").scalar_one()
+
+    definition = run_on_connection(migrated_database, embedding_index)
+
+    assert "USING hnsw (embedding vector_cosine_ops)" in definition

@@ -53,3 +53,17 @@ class NoTextExtracted(AppError):
 class ProcessingFailed(AppError):
     signal = ResponseSignal.PROCESSING_FAILED
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+class EmbeddingNotConfigured(AppError):
+    """Neither an API key nor an embedding server is configured."""
+
+    signal = ResponseSignal.EMBEDDING_NOT_CONFIGURED
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+
+class EmbeddingFailed(AppError):
+    """The embedding provider failed or returned something unusable."""
+
+    signal = ResponseSignal.EMBEDDING_FAILED
+    status_code = HTTPStatus.BAD_GATEWAY
