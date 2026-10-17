@@ -4,6 +4,11 @@
 
 [![CI](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 
+<p align="center">
+  <img src="docs/media/how-an-answer-is-made.gif" width="880" alt="Animation of how Mini RAG answers a question: a PDF is uploaded, read page by page, split into overlapping chunks, embedded as vectors and indexed; a question is then embedded, the nearest chunks above the minimum score become numbered sources, and the model answers from them with citations.">
+</p>
+<p align="center"><sub>How an answer is made, with sample data · <a href="docs/media/how-an-answer-is-made.mp4">MP4</a></sub></p>
+
 ## Features
 
 - **Upload** TXT and PDF files into separate projects, with type checks and a size limit enforced while streaming.
