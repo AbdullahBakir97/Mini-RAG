@@ -16,7 +16,7 @@ ruff check .
 pytest
 ```
 
-Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings come from a deterministic fake, so the tests need no API key or network.
+Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings and answers come from deterministic fakes, so the tests need no API key or network.
 
 ## Database migrations
 

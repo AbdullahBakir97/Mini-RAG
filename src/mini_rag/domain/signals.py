@@ -16,3 +16,5 @@ class ResponseSignal(Enum):
     SEARCH_SUCCESS = "search_success"
     EMBEDDING_NOT_CONFIGURED = "embedding_not_configured"
     EMBEDDING_FAILED = "embedding_failed"
+    LLM_NOT_CONFIGURED = "llm_not_configured"
+    LLM_FAILED = "llm_failed"
