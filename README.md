@@ -10,9 +10,10 @@
 - **Process** them into chunks that respect paragraphs, with exact overlap between chunks and page numbers for PDFs.
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
 - **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
+- **Ask** questions and get answers with citations to the file, page and chunk, or an explicit "no answer" when the documents don't say.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
 
-Answer generation with citations is next; see the [roadmap](docs/roadmap.md).
+Streaming answers and conversations are next; see the [roadmap](docs/roadmap.md).
 
 ## Quick start
 
@@ -32,7 +33,7 @@ alembic upgrade head             # create or update the database tables
 uvicorn mini_rag.main:app --reload
 ```
 
-Open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing and search need `OPENAI_API_KEY` in `.env`, or an OpenAI-compatible server in `EMBEDDING_BASE_URL`.
+Open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
 
 ### Try it
 
@@ -46,6 +47,8 @@ curl -X POST http://localhost:8000/api/v1/index/demo
 
 curl -X POST http://localhost:8000/api/v1/search/demo \
   -H "Content-Type: application/json" -d '{"query": "What do my notes say about overlap?"}'
+curl -X POST http://localhost:8000/api/v1/ask/demo \
+  -H "Content-Type: application/json" -d '{"question": "What do my notes say about overlap?"}'
 ```
 
 ## Documentation
@@ -60,7 +63,7 @@ curl -X POST http://localhost:8000/api/v1/search/demo \
 
 ## Tech stack
 
-FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings · pypdf · pytest and ruff in GitHub Actions
+FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · pytest and ruff in GitHub Actions
 
 ## Contributing
 

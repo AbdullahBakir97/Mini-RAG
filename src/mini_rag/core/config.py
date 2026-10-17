@@ -56,6 +56,9 @@ class Settings(BaseSettings):
                                 description="Most tokens the model may write per answer")
     LLM_TEMPERATURE: float | None = Field(
         default=None, ge=0, le=2, description="Sampling temperature; empty uses the model's default")
+    ANSWER_MIN_SCORE: float = Field(
+        default=0.3, ge=-1, le=1,
+        description="Chunks scoring below this are not used for answers; none left means no answer")
 
     @model_validator(mode="before")
     @classmethod

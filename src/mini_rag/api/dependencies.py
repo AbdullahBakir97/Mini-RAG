@@ -8,11 +8,13 @@ from fastapi import Depends, Request
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
-from mini_rag.core.errors import EmbeddingNotConfigured
+from mini_rag.core.errors import EmbeddingNotConfigured, LLMNotConfigured
 from mini_rag.domain.embedder import Embedder
+from mini_rag.domain.llm import LLM
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
+from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
@@ -120,3 +122,22 @@ def get_search_service(uow: UnitOfWorkDep, embedder: EmbedderDep) -> SearchServi
 
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
+
+
+def get_llm(request: Request) -> LLM:
+    """The app's language model; requests that need one fail with 503 without it."""
+    llm = request.app.state.llm
+    if llm is None:
+        raise LLMNotConfigured()
+    return llm
+
+
+LLMDep = Annotated[LLM, Depends(get_llm)]
+
+
+def get_answer_service(search: SearchServiceDep, llm: LLMDep,
+                       settings: SettingsDep) -> AnswerService:
+    return AnswerService(search=search, llm=llm, min_score=settings.ANSWER_MIN_SCORE)
+
+
+AnswerServiceDep = Annotated[AnswerService, Depends(get_answer_service)]

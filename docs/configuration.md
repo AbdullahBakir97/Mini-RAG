@@ -16,6 +16,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `LLM_MODEL` | `"gpt-4.1-mini"` | Chat model that writes answers |
 | `LLM_MAX_TOKENS` | `1024` | Most tokens the model may write per answer |
 | `LLM_TEMPERATURE` | `""` | Sampling temperature from 0 to 2; empty uses the model's default (reasoning models accept no other) |
+| `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
 | `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |

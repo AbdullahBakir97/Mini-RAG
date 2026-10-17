@@ -53,3 +53,14 @@ def test_search_endpoint_is_documented(schema):
     assert response_schema(schema, "/api/v1/search/{project_id}", "200") == "SearchResponse"
     assert "project_not_found" in responses["404"]["description"]
     assert "embedding_failed" in responses["502"]["description"]
+
+
+def test_ask_endpoint_is_documented(schema):
+    responses = schema["paths"]["/api/v1/ask/{project_id}"]["post"]["responses"]
+
+    assert response_schema(schema, "/api/v1/ask/{project_id}", "200") == "AskResponse"
+    assert "project_not_found" in responses["404"]["description"]
+    assert "embedding_failed" in responses["502"]["description"]
+    assert "llm_failed" in responses["502"]["description"]
+    assert "embedding_not_configured" in responses["503"]["description"]
+    assert "llm_not_configured" in responses["503"]["description"]
