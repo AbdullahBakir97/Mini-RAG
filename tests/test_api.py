@@ -97,3 +97,21 @@ def test_upload_disk_failure_is_a_server_error(client, files_dir, monkeypatch, c
     assert response.json() == {"signal": "file_upload_failed"}
     assert "No space left on device" in caplog.text
     assert [p for p in files_dir.rglob("*") if p.is_file()] == []
+
+
+def test_upload_records_project_and_file_in_database(client, query):
+    file_id = upload(client, "project_1", name="my notes.txt", content=b"some text").json()["file_id"]
+    upload(client, "project_1")
+
+    assert query("SELECT name FROM projects") == [("project_1",)]
+    assert query("SELECT key, original_name, content_type, size_bytes FROM files ORDER BY id")[0] == (
+        file_id, "my notes.txt", "text/plain", 9)
+    assert query("SELECT count(*) FROM files") == [(2,)]
+
+
+def test_rejected_upload_leaves_no_database_rows(client, query):
+    upload(client, "p1", name="image.png", content_type="image/png")
+    upload(client, "p1", content=b"x" * (1024 * 1024 + 1))
+
+    assert query("SELECT count(*) FROM projects") == [(0,)]
+    assert query("SELECT count(*) FROM files") == [(0,)]

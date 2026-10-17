@@ -1,0 +1,22 @@
+# Local development services. Start with: docker compose up -d db
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mini_rag
+      POSTGRES_PASSWORD: mini_rag
+      POSTGRES_DB: mini_rag
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # Creates the mini_rag_test database used by the test suite.
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mini_rag -d mini_rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db-data:

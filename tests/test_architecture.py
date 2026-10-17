@@ -8,10 +8,13 @@ import pytest
 PACKAGE = Path(__file__).resolve().parents[1] / "src" / "mini_rag"
 
 # Which mini_rag layers each layer may import. Web frameworks are only
-# allowed in the API layer, so everything below it works without HTTP.
+# allowed in the API layer, so everything below it works without HTTP, and
+# only persistence (and the API, which wires it up) may use SQLAlchemy.
 ALLOWED_LAYERS = {
-    "api": {"api", "core", "domain", "services", "storage", "loaders", "text"},
+    "api": {"api", "core", "domain", "services", "storage", "loaders", "text", "persistence"},
+    # Services use the repository interfaces in domain, never persistence.
     "services": {"core", "domain", "storage", "loaders", "text"},
+    "persistence": {"core", "domain"},
     "storage": {"core", "domain"},
     "loaders": {"core", "domain"},
     "text": set(),
@@ -19,6 +22,7 @@ ALLOWED_LAYERS = {
     "domain": set(),
 }
 WEB_FRAMEWORKS = {"fastapi", "starlette"}
+DATABASE_LIBRARIES = {"sqlalchemy", "asyncpg", "alembic"}
 
 
 def imported_modules(path: Path) -> set[str]:
@@ -45,6 +49,8 @@ def test_layer_imports_follow_the_rules(layer):
         for module in imported_modules(path):
             top, _, rest = module.partition(".")
             if top in WEB_FRAMEWORKS and layer != "api":
+                violations.append(f"{path.name} imports {module}")
+            if top in DATABASE_LIBRARIES and layer not in {"persistence", "api"}:
                 violations.append(f"{path.name} imports {module}")
             if top == "mini_rag":
                 target = rest.partition(".")[0]

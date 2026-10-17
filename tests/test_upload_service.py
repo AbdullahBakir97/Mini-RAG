@@ -6,6 +6,8 @@ from mini_rag.core.errors import FileTooLarge, UnsupportedFileType, UploadFailed
 from mini_rag.services.upload_service import UploadService
 from mini_rag.storage.file_storage import FileStorage
 
+from .fakes import FakeUnitOfWork
+
 
 class FakeStream:
     """Serves `data` in reads; optionally fails after `fail_after` reads."""
@@ -29,8 +31,13 @@ def storage(tmp_path):
 
 
 @pytest.fixture
-def service(storage):
-    return UploadService(storage=storage, allowed_types=["text/plain"],
+def uow():
+    return FakeUnitOfWork()
+
+
+@pytest.fixture
+def service(storage, uow):
+    return UploadService(storage=storage, uow=uow, allowed_types=["text/plain"],
                          max_bytes=100, read_size=10)
 
 
@@ -94,4 +101,36 @@ def test_cancelled_upload_leaves_nothing_behind(service, storage):
     with pytest.raises(asyncio.CancelledError):
         save(service, b"x" * 50, fail_after=1, error=asyncio.CancelledError())
 
+    assert stored_files(storage) == []
+
+
+def test_upload_is_recorded_and_committed(service, uow):
+    file_id = save(service, b"x" * 42)
+
+    project = uow.projects.by_name["p1"]
+    [record] = uow.files.records
+    assert (record.project_id, record.key, record.original_name, record.content_type,
+            record.size_bytes) == (project.id, file_id, "notes.txt", "text/plain", 42)
+    assert uow.commits == 1
+
+
+def test_rejected_upload_is_not_committed(service, uow):
+    with pytest.raises(FileTooLarge):
+        save(service, b"x" * 101)
+
+    assert uow.files.records == [] and uow.commits == 0
+
+
+@pytest.mark.parametrize("failure", ["add", "commit"])
+def test_database_failure_removes_the_stored_file(service, uow, storage, failure):
+    error = RuntimeError("database is down")
+    if failure == "add":
+        uow.files.fail_with = error
+    else:
+        uow.fail_commit_with = error
+
+    with pytest.raises(UploadFailed) as raised:
+        save(service)
+
+    assert raised.value.__cause__ is error
     assert stored_files(storage) == []
