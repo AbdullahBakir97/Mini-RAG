@@ -47,15 +47,14 @@ Nothing else changes: the processing service and the API pick it up automaticall
 ```
 Mini-RAG/
 ├── .github/                  # CI, Dependabot, contributing, conduct and security policies
-├── docker/postgres/init/     # Creates the test database in compose.yaml
 ├── docs/                     # This documentation
-├── migrations/               # Alembic migrations
 ├── src/mini_rag/
 │   ├── main.py               # create_app(): routers, error handler, lifespan
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
 │   ├── services/             # Use cases: upload, processing, project queries, indexing, search
-│   ├── persistence/          # SQLAlchemy tables, engine and repositories (with pgvector)
+│   ├── persistence/          # SQLAlchemy tables, engine, repositories (with pgvector)
+│   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs
 │   ├── storage/              # File storage and path safety
 │   ├── loaders/              # One loader per file type, chosen by extension
@@ -63,9 +62,8 @@ Mini-RAG/
 │   └── domain/               # Domain models, repository and Embedder interfaces, signals
 ├── tests/                    # pytest suite
 ├── .env.example              # Settings template (copy to .env)
-├── alembic.ini               # Alembic configuration
 ├── compose.yaml              # Local PostgreSQL with pgvector
-└── pyproject.toml            # Package, dependencies, pytest and ruff configuration
+└── pyproject.toml            # Package, dependencies; Alembic, pytest and ruff settings
 ```
 
 Uploaded files are stored in `assets/files/` (`FILES_DIR`), which is git-ignored.

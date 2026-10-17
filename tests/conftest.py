@@ -6,15 +6,17 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
+from sqlalchemy import make_url
 from sqlalchemy import text as sql_text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from mini_rag.core.config import get_settings
 from mini_rag.persistence.database import create_engine
 
 ROOT = Path(__file__).resolve().parents[1]
 
-# A disposable database: tests empty its tables. Defaults to the one created
-# by compose.yaml (see docker/postgres/init); CI sets TEST_DATABASE_URL.
+# A disposable database: tests empty its tables. Defaults to one next to the
+# compose.yaml database, created on first use; CI sets TEST_DATABASE_URL.
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL",
     "postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag_test",
@@ -53,11 +55,18 @@ def anyio_backend():
     return "asyncio"
 
 
-async def _check_database(url: str) -> None:
-    engine = create_engine(url)
+async def _ensure_database(url: str) -> None:
+    """Create the test database if the server does not have it yet."""
+    target = make_url(url)
+    # CREATE DATABASE cannot run in a transaction, hence AUTOCOMMIT.
+    engine = create_async_engine(target.set(database="postgres"), isolation_level="AUTOCOMMIT")
     try:
         async with engine.connect() as connection:
-            await connection.execute(sql_text("SELECT 1"))
+            exists = await connection.scalar(
+                sql_text("SELECT 1 FROM pg_database WHERE datname = :name"),
+                {"name": target.database})
+            if not exists:
+                await connection.execute(sql_text(f'CREATE DATABASE "{target.database}"'))
     finally:
         await engine.dispose()
 
@@ -66,7 +75,7 @@ async def _check_database(url: str) -> None:
 def database_url():
     """URL of a reachable test database; stops the run with a hint if there is none."""
     try:
-        asyncio.run(_check_database(TEST_DATABASE_URL))
+        asyncio.run(_ensure_database(TEST_DATABASE_URL))
     except Exception as exc:
         pytest.exit(
             f"PostgreSQL is not reachable at {TEST_DATABASE_URL} ({exc!r}).\n"
@@ -77,8 +86,8 @@ def database_url():
 
 
 def alembic_config(url: str) -> Config:
-    config = Config(str(ROOT / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))
+    config = Config(toml_file=str(ROOT / "pyproject.toml"))
+    config.attributes["database_url"] = url
     config.attributes["configure_logging"] = False
     return config
 
