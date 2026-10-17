@@ -35,26 +35,27 @@ cd Mini-RAG
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r src/requirements.txt
+pip install -r requirements.txt
 
-cd src
 cp .env.example .env             # Windows: copy .env.example .env
-uvicorn main:app --reload
+uvicorn --app-dir src mini_rag.main:app --reload
 ```
 
 Then open **http://localhost:8000**. It redirects to the interactive API docs at `/docs`, where you can try every endpoint from the browser.
 
-> Run `uvicorn` from inside `src/`: the app imports its packages relative to that folder and reads `.env` from there.
+> Run commands from the repository root: `--app-dir src` tells Uvicorn where the `mini_rag` package lives, and `.env` is read from the current directory.
 
 ## Configuration
 
-Settings are read from `src/.env` (copy it from `src/.env.example`) or from environment variables.
+Settings are read from `.env` in the repository root (copy it from `.env.example`) or from environment variables.
 
 | Variable | Example | Description |
 |---|---|---|
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
 | `OPEN_API_KEY` | `""` | API key for the LLM provider (used from the generation stage) |
+| `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
+| `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
 | `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
 | `FILE_DEFAULT_CHUNK_SIZE` | `512000` | Bytes read per chunk while saving an upload |
@@ -70,7 +71,7 @@ Settings are read from `src/.env` (copy it from `src/.env.example`) or from envi
 
 ### Upload a file
 
-`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `src/assets/files/<project_id>/` with a random prefix, so uploads never overwrite each other.
+`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other.
 
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
@@ -83,13 +84,14 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | Case | Status | Response |
 |---|---|---|
 | Upload saved | `200` | `{"signal": "file_uploaded_successfully", "file_id": "..."}` |
-| File type not in `FILE_ALLOWED_TYPES` | `400` | `{"signal": "file_type_not_supported"}` |
-| File larger than `FILE_MAX_SIZE` | `400` | `{"signal": "file_size_exceeded"}` |
+| File type not in `FILE_ALLOWED_TYPES` | `415` | `{"signal": "file_type_not_supported"}` |
+| File larger than `FILE_MAX_SIZE` | `413` | `{"signal": "file_size_exceeded"}` |
 | Invalid `project_id` | `422` | Validation error details |
+| Storage failure on the server | `500` | `{"signal": "file_upload_failed"}` |
 
 ### Process a file into chunks
 
-Send the `file_id` returned by the upload. Text is split on paragraphs first, then lines, then words, and a word is cut only if it alone is longer than a chunk. Every chunk after the first begins with up to `overlap_size` characters of the text just before it, starting at a word boundary, so context carries across chunk borders. Each chunk is at most `chunk_size` characters, overlap included, and is an exact slice of the document text.
+Send the `file_id` returned by the upload. Text is split on paragraphs first, then lines, then words, and a word is cut only if it alone is longer than a chunk. Paragraph breaks are respected: a chunk may hold several whole paragraphs, but part of a paragraph is never joined with another one. Every chunk after the first begins with up to `overlap_size` characters of the text just before it, starting at a word boundary, so context carries across chunk borders. Each chunk is at most `chunk_size` characters, overlap included, and is an exact slice of the document text.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/data/process/demo1 \
@@ -120,10 +122,44 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 |---|---|---|
 | Chunks created | `200` | `{"signal": "processing_success", ...}` |
 | No such file in this project | `404` | `{"signal": "file_not_found"}` |
-| Extension is not `.txt` or `.pdf` | `400` | `{"signal": "file_type_not_supported"}` |
-| No extractable text (e.g. a scanned PDF) | `400` | `{"signal": "file_has_no_text"}` |
-| File could not be read | `400` | `{"signal": "processing_failed"}` |
+| Extension is not `.txt` or `.pdf` | `415` | `{"signal": "file_type_not_supported"}` |
+| No extractable text (e.g. a scanned PDF) | `422` | `{"signal": "file_has_no_text"}` |
+| File could not be read | `422` | `{"signal": "processing_failed"}` |
 | Invalid `file_id` or chunk settings | `422` | Validation error details |
+
+## Architecture
+
+The code is split into layers. Each layer only depends on the layers below it, and only the API layer knows about HTTP, so the business logic can be reused from a CLI or a background worker and tested without a web server. `tests/test_architecture.py` enforces these rules.
+
+```
+api        routes, request/response schemas, dependency wiring, error handler
+ │
+services   UploadService, ProcessingService: the use cases
+ │
+storage · loaders · text     files on disk · one loader per file type · text splitter
+ │
+domain     Document, Chunk, response signals
+```
+
+`core` holds settings and the `AppError` hierarchy; `api`, `services`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, so they stay reusable on their own.
+
+| Concern | Where it lives |
+|---|---|
+| Validation of IDs and request bodies | `api/schemas.py` (`ProjectId`, `FileId`, request models) |
+| Turning errors into responses | Services raise an `AppError` subclass; `api/error_handlers.py` maps it to `{"signal": ...}` and its status code |
+| Wiring objects together | `api/dependencies.py`, using FastAPI `Depends` |
+| Path safety | `storage/file_storage.py`: every path is checked to stay inside `FILES_DIR` |
+
+### Adding a file type
+
+Write a loader with a `load(path, source)` method that returns `Document`s, and register its extension in `loaders/registry.py`:
+
+```python
+def default_loader_registry() -> LoaderRegistry:
+    return LoaderRegistry({".txt": TextLoader(), ".pdf": PdfLoader(), ".md": MarkdownLoader()})
+```
+
+Nothing else changes: the processing service and the API pick it up automatically.
 
 ## Development
 
@@ -140,23 +176,27 @@ ruff check .
 pytest
 ```
 
-Tests use temporary directories and their own settings, so they need no `.env` file and never write to `src/assets`.
+Tests use temporary directories and their own settings, so they need no `.env` file and never write to `assets/`.
 
 ## Project structure
 
 ```
 Mini-RAG/
 ├── src/
-│   ├── main.py               # FastAPI app and router setup
-│   ├── routes/               # HTTP endpoints
-│   ├── controllers/          # Upload validation, file naming, document processing
-│   ├── models/enums/         # Response signals
-│   ├── helpers/              # Settings (.env) and the text splitter
-│   ├── assets/files/         # Uploaded files (git-ignored)
-│   ├── requirements.txt
-│   └── .env.example
+│   ├── mini_rag/
+│   │   ├── main.py           # create_app(): routers and error handler
+│   │   ├── core/             # Settings, application errors, logging setup
+│   │   ├── api/              # Routes, schemas, dependency wiring, error handler
+│   │   ├── services/         # Upload rules and document processing
+│   │   ├── storage/          # File storage and path safety
+│   │   ├── loaders/          # One loader per file type, chosen by extension
+│   │   ├── text/             # Recursive text splitter
+│   │   └── domain/           # Document, Chunk and response signals
+├── assets/files/             # Uploaded files (git-ignored, FILES_DIR)
 ├── tests/                    # pytest suite
+├── requirements.txt
 ├── requirements-dev.txt
+├── .env.example
 └── pyproject.toml            # pytest and ruff configuration
 ```
 

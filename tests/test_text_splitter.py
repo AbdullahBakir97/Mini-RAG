@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from helpers.text_splitter import RecursiveTextSplitter
+from mini_rag.text.splitter import RecursiveTextSplitter
 
 PARAGRAPHS = (
     "Retrieval-augmented generation combines search with a language model.\n\n"
@@ -80,12 +80,33 @@ def test_long_lines_do_not_leave_fragments():
     assert all(len(chunk) > 50 - longest_word - 1 for chunk in chunks[:-1])
 
 
-def test_short_piece_before_a_long_one_is_filled_up():
-    text = "Intro.\n\n" + " ".join(["word"] * 30)
+def test_short_line_before_a_long_one_is_filled_up():
+    text = "Intro.\n" + " ".join(["word"] * 30)
 
     first = split(text, chunk_size=40)[0]
 
     assert first.startswith("Intro.") and "word" in first
+
+
+def test_part_of_a_paragraph_is_never_joined_with_another_paragraph():
+    # Regression: with fill-up across paragraph breaks this produced
+    # "Line one.\n\nLine" as the first chunk.
+    text = "Line one.\n\nLine two of the notes."
+
+    assert split(text, chunk_size=15) == ["Line one.", "Line two of the", "notes."]
+
+
+def test_whole_paragraphs_still_share_a_chunk():
+    text = "Short one.\n\nShort two.\n\n" + " ".join(["long"] * 20)
+
+    assert split(text, chunk_size=30)[0] == "Short one.\n\nShort two."
+
+
+def test_hard_separators_are_configurable():
+    text = "Line one.\nLine two of the notes."
+
+    assert split(text, chunk_size=15)[0] == "Line one.\nLine"
+    assert RecursiveTextSplitter(15, hard_separators=("\n\n", "\n")).split(text)[0] == "Line one."
 
 
 def test_overlap_carries_preceding_words():

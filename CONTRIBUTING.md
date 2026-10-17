@@ -15,6 +15,23 @@ Thanks for considering a contribution!
    ```
 5. Open a pull request describing **what** changed and **why**.
 
+## Architecture rules
+
+The layers and their allowed dependencies are described in the README's
+[Architecture](./README.md#architecture) section and enforced by
+`tests/test_architecture.py`. In practice:
+
+- Keep routes thin: validate input with the schemas, call a service, return
+  a response model.
+- Never import FastAPI or Starlette outside `mini_rag.api`.
+- Report failures by raising an `AppError` subclass from `core/errors.py`;
+  don't build error responses by hand. A new kind of failure gets its own
+  subclass with its signal and HTTP status.
+- Receive collaborators through the constructor; wire them in
+  `api/dependencies.py`.
+- Give every service and loader unit tests, plus an API test for each new
+  endpoint or response.
+
 ## Style
 
 - Keep code readable; use clear names over clever ones.
