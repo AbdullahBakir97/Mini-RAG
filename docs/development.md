@@ -2,7 +2,7 @@
 
 ## Setup
 
-Install the runtime and dev dependencies from the repository root, and start PostgreSQL (the compose file also creates the `mini_rag_test` database the tests use):
+Install the runtime and dev dependencies from the repository root, and start PostgreSQL:
 
 ```bash
 pip install -e ".[dev]"
@@ -16,11 +16,11 @@ ruff check .
 pytest
 ```
 
-Tests use temporary directories, their own settings and the `mini_rag_test` database (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings come from a deterministic fake, so the tests need no API key or network.
+Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings come from a deterministic fake, so the tests need no API key or network.
 
 ## Database migrations
 
-The schema is managed with Alembic; the app never creates tables itself.
+The schema is managed with Alembic; the app never creates tables itself. Migrations live in `src/mini_rag/persistence/migrations/`, and Alembic's settings are in `pyproject.toml`, so run these commands from the repository root:
 
 ```bash
 alembic upgrade head                                  # apply all migrations

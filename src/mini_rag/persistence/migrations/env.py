@@ -1,27 +1,30 @@
 """Alembic environment: runs migrations with the app's async engine."""
 
 import asyncio
-from logging.config import fileConfig
+import logging
 
 from alembic import context
 from sqlalchemy.engine import Connection
 
 from mini_rag.core.config import get_settings
+from mini_rag.core.logging_config import configure_logging
 from mini_rag.persistence.database import create_engine
 from mini_rag.persistence.tables import Base
 
 config = context.config
 target_metadata = Base.metadata
 
-# Programmatic callers (e.g. the tests) keep their own logging setup.
-if config.config_file_name and config.attributes.get("configure_logging", True):
-    fileConfig(config.config_file_name, disable_existing_loggers=False)
+# Programmatic callers (e.g. the tests) keep their own logging setup. The
+# CLI uses the app's log format and reports each migration it runs.
+if config.attributes.get("configure_logging", True):
+    configure_logging("WARNING")
+    logging.getLogger("alembic").setLevel(logging.INFO)
 
 
 def database_url() -> str:
-    # An explicit sqlalchemy.url (set by callers such as the tests) wins
-    # over the application settings.
-    return config.get_main_option("sqlalchemy.url") or get_settings().DATABASE_URL
+    # A URL passed by programmatic callers (such as the tests) wins over the
+    # application settings.
+    return config.attributes.get("database_url") or get_settings().DATABASE_URL
 
 
 def run_migrations_offline() -> None:

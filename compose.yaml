@@ -11,8 +11,6 @@ services:
       - "5432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
-      # Creates the mini_rag_test database used by the test suite.
-      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mini_rag -d mini_rag"]
       interval: 5s

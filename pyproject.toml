@@ -50,6 +50,15 @@ Documentation = "https://github.com/AbdullahBakir97/Mini-RAG/tree/start-001/docs
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"mini_rag.persistence" = ["migrations/script.py.mako"]
+
+# Database migrations. Run from the repository root: alembic upgrade head
+# The database URL comes from DATABASE_URL (see .env.example).
+[tool.alembic]
+script_location = "mini_rag.persistence:migrations"
+file_template = "%%(rev)s_%%(slug)s"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
