@@ -7,7 +7,8 @@ The code is split into layers. Each layer only depends on the layers below it, a
 ```
 api          routes, request/response schemas, dependency wiring, error handler
  │
-services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService
+services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService,
+             AnswerService
  │
 persistence · embeddings · llm · prompts · storage · loaders · text
              PostgreSQL + pgvector repositories · embedding client · chat model client ·
@@ -58,7 +59,7 @@ Mini-RAG/
 │   ├── main.py               # create_app(): routers, error handler, lifespan
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
-│   ├── services/             # Use cases: upload, processing, project queries, indexing, search
+│   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers
 │   ├── persistence/          # SQLAlchemy tables, engine, repositories (with pgvector)
 │   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs

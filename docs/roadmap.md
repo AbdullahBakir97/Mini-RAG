@@ -27,12 +27,12 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 1: Answer generation
 
-- [ ] `POST /api/v1/ask/{project_id}`: answers with citations (file, page, chunk) to the retrieved sources.
+- [x] `POST /api/v1/ask/{project_id}`: answers with citations (file, page, chunk) to the retrieved sources.
 - [ ] Streaming responses (Server-Sent Events).
-- [ ] An explicit "I don't know" when no source matches well enough.
+- [x] An explicit "I don't know" when no source matches well enough.
 - [ ] Conversations with follow-up questions.
-- [ ] An `LLM` interface: OpenAI by default, any OpenAI-compatible server as an option.
-- [ ] Versioned prompts that treat document text as data, not instructions.
+- [x] An `LLM` interface: OpenAI by default, any OpenAI-compatible server as an option.
+- [x] Versioned prompts that treat document text as data, not instructions.
 - [ ] Token usage and cost recorded per request.
 
 ### Phase 2: Evaluation

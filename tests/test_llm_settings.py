@@ -11,6 +11,7 @@ def test_defaults_use_openai():
     assert settings.LLM_MODEL == "gpt-4.1-mini"
     assert settings.LLM_MAX_TOKENS == 1024
     assert settings.LLM_TEMPERATURE is None
+    assert settings.ANSWER_MIN_SCORE == 0.3
 
 
 @pytest.mark.parametrize("name", ["LLM_BASE_URL", "LLM_TEMPERATURE"])
@@ -45,6 +46,7 @@ def test_llm_server_is_independent_of_the_embedding_server(monkeypatch):
     ("LLM_MAX_TOKENS", "0"),
     ("LLM_TEMPERATURE", "-0.1"),
     ("LLM_TEMPERATURE", "2.5"),
+    ("ANSWER_MIN_SCORE", "1.5"),
 ])
 def test_llm_numbers_are_validated(monkeypatch, name, value):
     monkeypatch.setenv(name, value)

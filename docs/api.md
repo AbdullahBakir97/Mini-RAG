@@ -15,6 +15,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
 | `POST` | `/api/v1/index/{project_id}` | Embed a project's chunks so they can be searched |
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
+| `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
@@ -145,3 +146,50 @@ Results are the project's indexed chunks closest in meaning to the query, best f
 | `min_score` | none | -1 to 1; leaves out weaker results |
 
 Errors are the same as for indexing, without `file_not_found`.
+
+## Ask a question
+
+Asking searches the project like the search endpoint, then has a language model answer from the best matching chunks only, citing each source with a `[n]` marker. It needs a language model as well as embeddings: `OPENAI_API_KEY`, or an OpenAI-compatible server in `LLM_BASE_URL`.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ask/demo1 \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does the overlap work?"}'
+```
+
+```json
+{
+  "signal": "answer_success",
+  "answer": "Each chunk begins with up to overlap_size characters of the text before it [1], starting at a word boundary [2].",
+  "citations": [
+    {"number": 1, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 2, "page": 1, "score": 0.83, "text": "..."},
+    {"number": 2, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 5, "page": 2, "score": 0.71, "text": "..."}
+  ],
+  "prompt_version": "answer-v1"
+}
+```
+
+`citations` lists the sources the answer cites, in the order they are first cited; `number` matches the `[n]` marker in `answer`. `page` is set for PDFs and `null` otherwise. `prompt_version` names the prompt that produced the answer, so answers can be compared when prompts change.
+
+When the documents do not answer the question, the response is `200` with signal `no_answer`, `answer` `null` and no citations, rather than a guess:
+
+```json
+{"signal": "no_answer", "answer": null, "citations": [], "prompt_version": "answer-v1"}
+```
+
+That happens when no indexed chunk scores at least `min_score` (the model is then not called at all), or when the model finds no answer in the chunks it is given. Document text is passed to the model as quoted data, so instructions hidden in a document are not followed; see [Prompts](architecture.md#prompts).
+
+| Field | Default | Rules |
+|---|---|---|
+| `question` | required | 1–2000 characters, not blank |
+| `top_k` | `5` | 1–20; most chunks the answer may use |
+| `min_score` | `ANSWER_MIN_SCORE` (`0.3`) | -1 to 1; chunks scoring below it are not used |
+
+| Case | Status | Response |
+|---|---|---|
+| Answered | `200` | `{"signal": "answer_success", ...}` |
+| The documents do not answer the question | `200` | `{"signal": "no_answer", "answer": null, ...}` |
+| No such project | `404` | `{"signal": "project_not_found"}` |
+| Invalid request | `422` | Validation error details |
+| The embedding provider or the language model failed | `502` | `{"signal": "embedding_failed"}` / `{"signal": "llm_failed"}` |
+| Embeddings or the language model are not configured | `503` | `{"signal": "embedding_not_configured"}` / `{"signal": "llm_not_configured"}` |
