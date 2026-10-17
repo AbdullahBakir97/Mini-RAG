@@ -1,8 +1,10 @@
 """Request and response models, and the shared ID types used by routes."""
 
-from typing import Annotated, Any
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Annotated, Any, Literal
 
-from fastapi import Path
+from fastapi import Path, Query
 from pydantic import BaseModel, Field, model_validator
 
 from mini_rag.core.errors import AppError
@@ -13,11 +15,21 @@ ProjectId = Annotated[str, Path(
     description="Project name: letters, digits, '_' and '-' (1-64 characters).",
 )]
 
-FileId = Annotated[str, Field(
-    pattern=r"^[\w.]+$",
-    max_length=255,
-    description="The file_id returned by the upload endpoint.",
-)]
+FILE_ID_PATTERN = r"^[\w.]+$"
+FILE_ID_DESCRIPTION = "The file_id returned by the upload endpoint."
+
+FileId = Annotated[str, Field(pattern=FILE_ID_PATTERN, max_length=255,
+                              description=FILE_ID_DESCRIPTION)]
+FileIdPath = Annotated[str, Path(pattern=FILE_ID_PATTERN, max_length=255,
+                                 description=FILE_ID_DESCRIPTION)]
+
+
+@dataclass
+class Pagination:
+    """Shared offset/limit query parameters for list endpoints."""
+
+    offset: Annotated[int, Query(ge=0, description="Items to skip.")] = 0
+    limit: Annotated[int, Query(ge=1, le=100, description="Items to return (1-100).")] = 20
 
 
 class ErrorResponse(BaseModel):
@@ -34,6 +46,11 @@ def error_responses(*errors: type[AppError]) -> dict[int | str, dict[str, Any]]:
         status: {"model": entry["model"], "description": "Signal: " + ", ".join(entry["signals"])}
         for status, entry in responses.items()
     }
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "unavailable"]
+    database: Literal["ok", "unavailable"]
 
 
 class WelcomeResponse(BaseModel):
@@ -61,13 +78,42 @@ class ProcessRequest(BaseModel):
         return self
 
 
-class ChunkResponse(BaseModel):
-    text: str
-    metadata: dict[str, Any]
-
-
 class ProcessResponse(BaseModel):
     signal: ResponseSignal
     file_id: str
     chunks_count: int
-    chunks: list[ChunkResponse]
+
+
+class ProjectResponse(BaseModel):
+    name: str
+    created_at: datetime
+    files_count: int
+    chunks_count: int
+
+
+class FileResponse(BaseModel):
+    file_id: str
+    original_name: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+
+
+class FileListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[FileResponse]
+
+
+class ChunkResponse(BaseModel):
+    chunk_index: int
+    text: str
+    metadata: dict[str, Any]
+
+
+class ChunkListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[ChunkResponse]

@@ -11,12 +11,13 @@ from mini_rag.core.errors import (
     FileTooLarge,
     NoTextExtracted,
     ProcessingFailed,
+    ProjectNotFound,
     UnsupportedFileType,
     UploadFailed,
 )
 
 ERRORS = [FileNotFound, FileTooLarge, NoTextExtracted, ProcessingFailed,
-          UnsupportedFileType, UploadFailed]
+          ProjectNotFound, UnsupportedFileType, UploadFailed]
 
 
 def call_handler(error: AppError):
