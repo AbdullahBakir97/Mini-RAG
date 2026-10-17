@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from mini_rag.api.dependencies import get_embedder, get_llm
@@ -145,3 +147,76 @@ def test_without_embedding_configuration(client, llm):
     response = ask(client, question="anything")
 
     assert (response.status_code, response.json()) == (503, {"signal": "embedding_not_configured"})
+
+
+def stream_events(client, project="demo", **body):
+    """POST to the streaming endpoint; the status and the (event, data) pairs it sent."""
+    with client.stream("POST", f"/api/v1/ask/{project}/stream", json=body) as response:
+        if response.headers["content-type"].startswith("application/json"):
+            response.read()
+            return response.status_code, response.json()
+        assert response.headers["content-type"].startswith("text/event-stream")
+        text = "".join(response.iter_text())
+    events = []
+    for block in text.strip().split("\n\n"):
+        fields = dict(line.split(": ", 1) for line in block.splitlines())
+        events.append((fields["event"], json.loads(fields["data"])))
+    return response.status_code, events
+
+
+def test_stream_sends_the_answer_as_it_is_written(client, embedder, llm):
+    file_id = upload_process_and_index(client)
+    llm.piece_size = 6
+
+    status, events = stream_events(client, question="Where is the embedding vector stored?",
+                                   min_score=0.2)
+
+    assert status == 200
+    *deltas, (last, answer) = events
+    assert {name for name, _ in deltas} == {"delta"} and len(deltas) > 1
+    assert "".join(data["text"] for _, data in deltas) == "Each chunk gets an embedding vector [1]."
+    assert last == "answer"
+    assert answer["signal"] == "answer_success"
+    assert answer["answer"] == "Each chunk gets an embedding vector [1]."
+    assert [(c["number"], c["file_id"], c["chunk_index"]) for c in answer["citations"]] == [
+        (1, file_id, 2)]
+
+
+def test_stream_no_answer_sends_only_the_final_event(client, embedder, llm):
+    upload_process_and_index(client)
+
+    status, events = stream_events(client, question="Where is Paris?")
+
+    assert (status, events) == (200, [("answer", {"signal": "no_answer", "answer": None,
+                                                  "citations": [],
+                                                  "prompt_version": "answer-v1"})])
+    assert llm.calls == []
+
+
+def test_stream_reports_a_model_failure_as_an_event(client, embedder):
+    client.app.dependency_overrides[get_llm] = lambda: FakeLLM("Each chunk [1].", fail_after=1)
+    upload_process_and_index(client)
+
+    status, events = stream_events(client, question="embedding vector", min_score=0.2)
+
+    assert status == 200
+    assert events == [("delta", {"text": "Each"}), ("error", {"signal": "llm_failed"})]
+
+
+@pytest.mark.parametrize(("project", "status", "signal"), [
+    ("missing", 404, "project_not_found"),
+])
+def test_stream_errors_before_streaming_are_plain_responses(client, embedder, llm, project,
+                                                            status, signal):
+    assert stream_events(client, project=project, question="anything") == (
+        status, {"signal": signal})
+
+
+def test_stream_without_llm_configuration(client, embedder):
+    client.app.state.llm = None
+
+    assert stream_events(client, question="anything") == (503, {"signal": "llm_not_configured"})
+
+
+def test_stream_validates_the_request(client, embedder, llm):
+    assert client.post("/api/v1/ask/demo/stream", json={"question": " "}).status_code == 422

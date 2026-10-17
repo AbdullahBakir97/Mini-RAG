@@ -43,6 +43,17 @@ class AnswerPrompt:
         """Whether the model said that the sources do not answer the question."""
         return re.fullmatch(rf"\W*{NO_ANSWER}\W*", reply) is not None
 
+    def could_be_no_answer(self, partial_reply: str) -> bool:
+        """Whether a reply that starts like this may still be the no-answer reply.
+
+        Lets a stream hold text back until it is clearly a real answer.
+        """
+        match = re.fullmatch(r"\W*(\w*)(\W*)", partial_reply)
+        if match is None:
+            return False
+        word, after = match.groups()
+        return word == NO_ANSWER if after else NO_ANSWER.startswith(word)
+
     def cited_numbers(self, reply: str) -> list[int]:
         """The source numbers the reply cites, in order of first citation."""
         numbers = (int(number) for marker in _CITATION.findall(reply)

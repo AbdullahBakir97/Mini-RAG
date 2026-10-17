@@ -16,6 +16,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `POST` | `/api/v1/index/{project_id}` | Embed a project's chunks so they can be searched |
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
+| `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
@@ -193,3 +194,32 @@ That happens when no indexed chunk scores at least `min_score` (the model is the
 | Invalid request | `422` | Validation error details |
 | The embedding provider or the language model failed | `502` | `{"signal": "embedding_failed"}` / `{"signal": "llm_failed"}` |
 | Embeddings or the language model are not configured | `503` | `{"signal": "embedding_not_configured"}` / `{"signal": "llm_not_configured"}` |
+
+### Streaming the answer
+
+`POST /api/v1/ask/{project_id}/stream` takes the same request and returns the same answer as [Server-Sent Events](https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events), so a client can show the text while the model writes it:
+
+```bash
+curl -N -X POST http://localhost:8000/api/v1/ask/demo1/stream \
+  -H "Content-Type: application/json" \
+  -d '{"question": "How does the overlap work?"}'
+```
+
+```text
+event: delta
+data: {"text": "Each chunk begins with"}
+
+event: delta
+data: {"text": " up to overlap_size characters [1]."}
+
+event: answer
+data: {"signal": "answer_success", "answer": "Each chunk begins with up to overlap_size characters [1].", "citations": [...], "prompt_version": "answer-v1"}
+```
+
+| Event | Data | When |
+|---|---|---|
+| `delta` | `{"text": "..."}` | The next piece of the answer; joined in order, they give the full text |
+| `answer` | The same JSON as `POST /api/v1/ask/{project_id}` | Once, at the end, with the citations |
+| `error` | `{"signal": "llm_failed"}` | The language model failed partway; the stream ends |
+
+A `no_answer` reply sends no `delta` events, only the final `answer` event: text that might still be the model's no-answer reply is held back until it is clearly an answer. Errors found before streaming starts, such as an unknown project or a missing model configuration, are ordinary JSON responses with the status codes in the table above.

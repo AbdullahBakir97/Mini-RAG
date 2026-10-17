@@ -15,10 +15,10 @@
 - **Process** them into chunks that respect paragraphs, with exact overlap between chunks and page numbers for PDFs.
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
 - **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
-- **Ask** questions and get answers with citations to the file, page and chunk, or an explicit "no answer" when the documents don't say.
+- **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
 
-Streaming answers and conversations are next; see the [roadmap](docs/roadmap.md).
+Conversations with follow-up questions are next; see the [roadmap](docs/roadmap.md).
 
 ## How it works
 

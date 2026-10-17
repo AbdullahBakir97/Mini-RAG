@@ -64,3 +64,11 @@ def test_ask_endpoint_is_documented(schema):
     assert "llm_failed" in responses["502"]["description"]
     assert "embedding_not_configured" in responses["503"]["description"]
     assert "llm_not_configured" in responses["503"]["description"]
+
+
+def test_ask_stream_endpoint_is_documented(schema):
+    responses = schema["paths"]["/api/v1/ask/{project_id}/stream"]["post"]["responses"]
+
+    assert "text/event-stream" in responses["200"]["content"]
+    assert "project_not_found" in responses["404"]["description"]
+    assert "llm_not_configured" in responses["503"]["description"]
