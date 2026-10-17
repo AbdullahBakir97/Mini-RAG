@@ -1,5 +1,56 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-rag"
+version = "0.1.0"
+description = "A retrieval-augmented generation (RAG) service built with FastAPI, PostgreSQL and pgvector."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Abdullah Bakir" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+# Exact pins: this is an application, so every install gets the tested
+# versions. Dependabot proposes upgrades.
+dependencies = [
+    "fastapi==0.143.3",
+    "uvicorn[standard]==0.54.0",
+    "python-multipart==0.0.32",
+    "python-dotenv==1.2.4",
+    "pydantic-settings==2.16.0",
+    "aiofiles==25.1.0",
+    "pypdf==6.21.0",
+    "sqlalchemy[asyncio]==2.1.5",
+    "asyncpg==0.32.0",
+    "alembic==1.20.0",
+    "pgvector==0.5.1",
+    "openai==3.32.0",
+    # Imported directly by the OpenAI embedder (for its HTTP client type).
+    "httpx2==2.13.1",
+    "anyio==4.15.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.17.1",
+]
+
+[project.urls]
+Repository = "https://github.com/AbdullahBakir97/Mini-RAG"
+Documentation = "https://github.com/AbdullahBakir97/Mini-RAG/tree/start-001/docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]

@@ -9,7 +9,7 @@ Thanks for considering a contribution!
 3. Make your change. Keep diffs focused — small PRs land faster.
 4. Run the local checks before opening the PR (the same ones CI runs):
    ```bash
-   pip install -r requirements-dev.txt
+   pip install -e ".[dev]"
    docker compose up -d db
    ruff check .
    pytest

@@ -37,17 +37,17 @@ cd Mini-RAG
 
 python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -e .
 
 cp .env.example .env             # Windows: copy .env.example .env
 docker compose up -d db          # PostgreSQL 16 with pgvector on localhost:5432
 alembic upgrade head             # create or update the database tables
-uvicorn --app-dir src mini_rag.main:app --reload
+uvicorn mini_rag.main:app --reload
 ```
 
 Then open **http://localhost:8000**. It redirects to the interactive API docs at `/docs`, where you can try every endpoint from the browser.
 
-> Run commands from the repository root: `--app-dir src` tells Uvicorn where the `mini_rag` package lives, and `.env` is read from the current directory.
+> Run commands from the repository root: `.env` is read from the current directory.
 
 ## Configuration
 
@@ -280,7 +280,7 @@ alembic upgrade head
 Install the runtime and dev dependencies from the repository root, and start PostgreSQL (the compose file also creates the `mini_rag_test` database the tests use):
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 docker compose up -d db
 ```
 
@@ -313,12 +313,10 @@ Mini-RAG/
 ├── docker/postgres/init/     # Creates the test database in docker-compose
 ├── migrations/               # Alembic migrations
 ├── tests/                    # pytest suite
-├── requirements.txt
-├── requirements-dev.txt
 ├── .env.example
 ├── alembic.ini
 ├── docker-compose.yml        # Local PostgreSQL with pgvector
-└── pyproject.toml            # pytest and ruff configuration
+└── pyproject.toml            # Dependencies, pytest and ruff configuration
 ```
 
 ## Contributing
