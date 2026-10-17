@@ -65,7 +65,7 @@ def test_embedder_is_created_only_when_configured(db, monkeypatch):
     with TestClient(create_app()) as client:
         assert client.app.state.embedder is not None
 
-    monkeypatch.setenv("OPEN_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     get_settings.cache_clear()
     with TestClient(create_app()) as client:
         assert client.app.state.embedder is None

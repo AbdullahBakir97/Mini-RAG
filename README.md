@@ -57,7 +57,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 |---|---|---|
 | `APP_NAME` | `"mini-RAG"` | Name returned by the welcome endpoint |
 | `APP_VERSION` | `"0.1"` | Version returned by the welcome endpoint |
-| `OPEN_API_KEY` | `""` | API key for OpenAI (embeddings now, answer generation later). Leave empty for a local server set in `EMBEDDING_BASE_URL` |
+| `OPENAI_API_KEY` | `""` | API key for OpenAI (embeddings now, answer generation later). Leave empty for a local server set in `EMBEDDING_BASE_URL` |
 | `DATABASE_URL` | `"postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"` | PostgreSQL connection (must use the `postgresql+asyncpg://` driver); the default matches `docker-compose.yml` |
 | `EMBEDDING_BASE_URL` | `""` | OpenAI-compatible server for embeddings, e.g. `"http://localhost:11434/v1"` for Ollama; empty means OpenAI |
 | `EMBEDDING_MODEL` | `"text-embedding-3-small"` | Embedding model name |
@@ -162,7 +162,7 @@ Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `
 
 ### Index chunks for search
 
-Indexing turns each chunk into an embedding: a vector that captures its meaning. It needs `OPEN_API_KEY`, or an OpenAI-compatible server in `EMBEDDING_BASE_URL`.
+Indexing turns each chunk into an embedding: a vector that captures its meaning. It needs `OPENAI_API_KEY`, or an OpenAI-compatible server in `EMBEDDING_BASE_URL`.
 
 ```bash
 curl -X POST http://localhost:8000/api/v1/index/demo1

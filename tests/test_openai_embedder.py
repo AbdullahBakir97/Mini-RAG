@@ -95,13 +95,13 @@ async def test_unreachable_server_raises_embedding_failed():
 
 
 def test_factory_returns_none_without_key_or_server(monkeypatch):
-    monkeypatch.setenv("OPEN_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
 
     assert create_embedder(Settings()) is None
 
 
 def test_factory_uses_the_embedding_settings(monkeypatch):
-    monkeypatch.setenv("OPEN_API_KEY", "")
+    monkeypatch.setenv("OPENAI_API_KEY", "")
     monkeypatch.setenv("EMBEDDING_BASE_URL", "http://localhost:11434/v1")
     monkeypatch.setenv("EMBEDDING_MODEL", "local-model")
     monkeypatch.setenv("EMBEDDING_DIMENSIONS", "768")
