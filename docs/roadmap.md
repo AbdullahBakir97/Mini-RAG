@@ -1,0 +1,106 @@
+# Roadmap
+
+Mini RAG is growing from a retrieval service into a complete, reusable RAG platform: one deployment that answers questions over any collection of documents, for any number of separate apps, sites, bots and agents.
+
+Phases are delivered in order, each as reviewed, tested pull requests. A phase is done when its acceptance criteria pass in CI.
+
+## Completed
+
+| Step | Delivered | Pull request |
+|---|---|---|
+| 1 | Working uploads, path-traversal fix, real tests and CI | [#6](https://github.com/AbdullahBakir97/Mini-RAG/pull/6) |
+| 2 | MIT license, README, current dependencies, Dependabot | [#7](https://github.com/AbdullahBakir97/Mini-RAG/pull/7) |
+| 3 | Document processing with an exact-overlap text splitter | [#8](https://github.com/AbdullahBakir97/Mini-RAG/pull/8) |
+| 4 | Layered architecture, correct status codes, logging | [#9](https://github.com/AbdullahBakir97/Mini-RAG/pull/9) |
+| 5 | PostgreSQL storage, migrations, read endpoints, health check | [#14](https://github.com/AbdullahBakir97/Mini-RAG/pull/14) |
+| 6 | Embeddings and vector search with pgvector | [#15](https://github.com/AbdullahBakir97/Mini-RAG/pull/15) |
+
+## Planned
+
+| Stage | Phases | Ends when |
+|---|---|---|
+| 1. Answer | 1 Answer generation, 2 Evaluation | Quality scores are recorded in the repository |
+| 2. Reuse | 3 Platform, plus a first live deployment | A separate app uses Mini RAG through an API key |
+| 3. Automate | 4 Ingestion and automation, 5 Agents | Connected sources stay in sync without manual steps |
+| 4. Improve | 6 Retrieval quality, 7 Study mode | Evaluation scores improve over the stage 1 baseline |
+| 5. Harden | 8 Security, 9 Production, 10 Web app | New tenants can onboard themselves |
+
+### Phase 1: Answer generation
+
+- [ ] `POST /api/v1/ask/{project_id}`: answers with citations (file, page, chunk) to the retrieved sources.
+- [ ] Streaming responses (Server-Sent Events).
+- [ ] An explicit "I don't know" when no source matches well enough.
+- [ ] Conversations with follow-up questions.
+- [ ] An `LLM` interface: OpenAI by default, any OpenAI-compatible server as an option.
+- [ ] Versioned prompts that treat document text as data, not instructions.
+- [ ] Token usage and cost recorded per request.
+
+### Phase 2: Evaluation
+
+- [ ] A versioned test set of questions, expected sources and reference answers.
+- [ ] Retrieval metrics (recall@k, MRR) and answer metrics (groundedness, relevance, citation accuracy).
+- [ ] A `mini-rag eval` command with JSON reports.
+- [ ] Retrieval metrics checked on every pull request; changes that lower them fail CI.
+- [ ] Thumbs up/down feedback stored to grow the test set.
+
+### Phase 3: Platform and white-label
+
+- [ ] Tenants with hashed, scoped, revocable API keys; strict data isolation between tenants.
+- [ ] Usage accounting, quotas and rate limits per tenant.
+- [ ] TypeScript and Python SDKs generated from the OpenAPI schema.
+- [ ] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations.
+- [ ] **White-label:** per-project name, logo, colours and welcome text for the widget; an assistant persona and instructions per project; allowed website origins and custom domains.
+- [ ] **Collections and categories:** group documents within a project and filter search and answers by collection or tag.
+- [ ] A versioning policy for `/api/v1`.
+
+### Phase 4: Ingestion and automation
+
+- [ ] Background jobs for processing and indexing, with status, retries and progress.
+- [ ] Deleting files and projects everywhere at once; duplicate detection by content hash.
+- [ ] More formats: DOCX, Markdown, HTML, and OCR for scanned PDFs.
+- [ ] Connectors: website crawler, GitHub, Notion, Google Drive, RSS, with scheduled incremental sync.
+- [ ] Signed outgoing webhooks for automation tools such as n8n, Make and Zapier.
+- [ ] Telegram, Slack and WhatsApp bots.
+
+### Phase 5: Agents
+
+- [ ] An MCP server with tools such as `search_knowledge`, `ask` and `list_projects`.
+- [ ] Tool-calling schemas for agent frameworks.
+- [ ] Agentic retrieval: multi-step search for complex questions, with step and cost limits.
+
+### Phase 6: Retrieval quality
+
+- [ ] Hybrid search: PostgreSQL full-text search combined with vector search.
+- [ ] A reranking step behind a `Reranker` interface.
+- [ ] Filters by file, page, date and metadata; diversity in the top results.
+- [ ] Index and chunking parameters tuned from measured results.
+
+### Phase 7: Study mode
+
+- [ ] Summaries, flashcards and quizzes generated from documents, each answer linked to its source page.
+- [ ] Spaced-repetition review and export to Anki.
+- [ ] Code-aware chunking for source repositories.
+
+### Phase 8: Security and privacy
+
+- [ ] User accounts with roles per tenant.
+- [ ] File type checked from content, not the declared type; optional malware scanning.
+- [ ] Prompt-injection test cases; encryption at rest; per-tenant export and deletion.
+- [ ] An audit log, dependency vulnerability scanning and secret scanning in CI.
+
+### Phase 9: Production
+
+- [ ] A multi-stage, non-root Docker image and a full `compose.yaml` stack.
+- [ ] Automated deployments to staging and production.
+- [ ] Structured logs with request IDs, metrics and tracing.
+- [ ] Cost dashboards and budget alerts; backups with tested restores.
+- [ ] Type checking and a coverage threshold in CI.
+
+### Phase 10: Web app
+
+- [ ] A chat interface with citations, conversation history and feedback.
+- [ ] Document management with upload, job status and connectors.
+- [ ] An admin dashboard for keys, usage, cost and evaluation scores.
+- [ ] Accessible, responsive, tested end to end with Playwright.
+
+Ideas and feedback are welcome in [issues](https://github.com/AbdullahBakir97/Mini-RAG/issues).
