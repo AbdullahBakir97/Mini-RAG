@@ -25,6 +25,8 @@ from .models import (
     RatedAnswer,
     ScoredChunk,
     SearchFilters,
+    Source,
+    SourcePage,
     Tenant,
     TenantUsage,
     UnembeddedChunk,
@@ -367,6 +369,49 @@ class AuditRepository(Protocol):
     async def count_for_tenant(self, tenant_id: int, *, action: str | None) -> int: ...
 
 
+class SourceRepository(Protocol):
+
+    async def create(self, *, project_id: int, kind: str, url: str, max_pages: int,
+                     sync_interval_hours: int) -> Source:
+        """A new source, due for its first sync at once."""
+        ...
+
+    async def get(self, project_id: int, source_id: str) -> Source | None: ...
+
+    async def list_for_project(self, project_id: int) -> list[Source]:
+        """Oldest first."""
+        ...
+
+    async def delete(self, project_id: int, source_id: str) -> bool: ...
+
+    async def request_sync(self, source_id: str) -> None:
+        """Make the source due for a sync now."""
+        ...
+
+    async def claim_due(self, lease_seconds: int) -> Source | None:
+        """Take the source most overdue for a sync, of any tenant, for ``lease_seconds``."""
+        ...
+
+    async def finish_sync(self, source_id: str, *, error: str | None,
+                          next_sync_at: datetime | None) -> None: ...
+
+    async def pages(self, source_id: str, *, offset: int = 0,
+                    limit: int | None = None) -> list[SourcePage]:
+        """In URL order."""
+        ...
+
+    async def save_page(self, source_id: str, *, url: str, file_id: int, content_sha256: str,
+                        owns_file: bool) -> None:
+        """Add the page, or replace what was kept for its URL."""
+        ...
+
+    async def remove_page(self, source_id: str, url: str) -> None: ...
+
+    async def file_used_elsewhere(self, file_id: int, source_id: str, url: str) -> bool:
+        """Whether a page other than this one, of any source, uses the file."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -382,6 +427,7 @@ class UnitOfWork(Protocol):
     webhooks: WebhookRepository
     widgets: WidgetRepository
     audit: AuditRepository
+    sources: SourceRepository
     tenants: TenantRepository
     api_keys: ApiKeyRepository
     usage: UsageRepository

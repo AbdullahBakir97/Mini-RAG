@@ -29,3 +29,6 @@ JOBS = Counter("mini_rag_jobs_total", "Background job attempts, by outcome.", ["
 WEBHOOK_DELIVERIES = Counter(
     "mini_rag_webhook_deliveries_total", "Webhook delivery attempts, by outcome.", ["outcome"])
 UPLOADS = Counter("mini_rag_uploads_total", "Uploads, by outcome.", ["outcome"])
+SOURCE_SYNCS = Counter("mini_rag_source_syncs_total", "Website syncs, by outcome.", ["outcome"])
+SOURCE_PAGES = Counter("mini_rag_source_pages_total",
+                       "Pages website syncs added, updated and removed.", ["change"])

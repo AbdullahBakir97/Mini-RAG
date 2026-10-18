@@ -240,7 +240,7 @@ export interface ConversationDetail extends Conversation {
   messages: ConversationMessage[];
 }
 
-export const WEBHOOK_EVENTS = ["file.uploaded", "file.deleted", "job.succeeded", "job.failed"] as const;
+export const WEBHOOK_EVENTS = ["file.uploaded", "file.deleted", "job.succeeded", "job.failed", "source.synced"] as const;
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
 
 export interface Webhook {
@@ -286,4 +286,26 @@ export interface ChatWidgetSettings {
   welcome: string | null;
   accent: string;
   allowed_origins: string[];
+}
+
+export interface WebsiteSource {
+  id: string;
+  kind: "website";
+  url: string;
+  max_pages: number;
+  /** 0: synced only when asked. */
+  sync_interval_hours: number;
+  pages_count: number;
+  syncing: boolean;
+  last_synced_at: string | null;
+  next_sync_at: string | null;
+  /** Why the last sync could not crawl the site; its pages are kept meanwhile. */
+  last_error: string | null;
+  created_at: string;
+}
+
+export interface SourcePage {
+  url: string;
+  file_id: string;
+  synced_at: string;
 }

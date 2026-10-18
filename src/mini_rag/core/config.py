@@ -112,6 +112,10 @@ class Settings(BaseSettings):
     # tcp://clamav:3310; a file that cannot be scanned is refused.
     CLAMAV_URL: str | None = Field(default=None, pattern=r"^tcp://[^/:]+:\d+$")
     CLAMAV_TIMEOUT_SECONDS: float = Field(default=60, gt=0, le=600)
+    # Website sources: crawls reach only public addresses unless allowed.
+    CRAWLER_ALLOW_PRIVATE_URLS: bool = False
+    CRAWLER_DELAY_SECONDS: float = Field(default=0.5, ge=0, le=10)
+    CRAWLER_TIMEOUT_SECONDS: float = Field(default=15, gt=0, le=120)
     WEBHOOK_TIMEOUT_SECONDS: float = Field(
         default=10, gt=0, le=60, description="How long a webhook's receiver has to answer")
 

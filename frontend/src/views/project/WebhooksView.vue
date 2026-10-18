@@ -20,6 +20,7 @@ const EVENT_HELP: Record<WebhookEvent, string> = {
   "file.deleted": "A file was deleted with its chunks",
   "job.succeeded": "A file was processed and indexed",
   "job.failed": "Processing a file failed, after its last attempt",
+  "source.synced": "A website source was synced: pages added, updated and removed",
 };
 
 const webhooks = ref<Webhook[]>([]);

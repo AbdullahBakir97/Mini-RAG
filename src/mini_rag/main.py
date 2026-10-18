@@ -23,10 +23,12 @@ from mini_rag.api.routes import (
     metrics,
     projects,
     search,
+    sources,
     webhooks,
     widgets,
 )
 from mini_rag.api.widget_cors import WidgetCors
+from mini_rag.connectors.factory import create_crawler
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
@@ -40,6 +42,7 @@ from mini_rag.persistence.repositories import unit_of_work_factory
 from mini_rag.rerankers.factory import create_reranker
 from mini_rag.scanners.factory import create_scanner
 from mini_rag.services.job_runner import JobRunner
+from mini_rag.services.source_syncer import SourceSyncer
 from mini_rag.services.webhook_dispatcher import WebhookDispatcher
 from mini_rag.storage.file_storage import FileStorage
 from mini_rag.webhooks.factory import create_webhook_sender
@@ -74,10 +77,11 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         app.state.reranker = reranker = create_reranker(settings)
         app.state.scanner = scanner = create_scanner(settings)
         sender = create_webhook_sender(settings)
+        crawler = create_crawler(settings)
         workers: list[asyncio.Task] = []
         try:
             await _check_embedding_dimensions(engine, settings)
-            # Background work: jobs, and webhook deliveries. With JOB_WORKERS=0
+            # Background work: jobs, webhook deliveries and website syncs. With JOB_WORKERS=0
             # it is left to `mini-rag worker`.
             unit_of_work = unit_of_work_factory(app.state.session_factory)
             runner = JobRunner(unit_of_work, FileStorage(root=settings.FILES_DIR),
@@ -87,6 +91,8 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             if settings.JOB_WORKERS:
                 dispatcher = WebhookDispatcher(unit_of_work, sender)
                 workers.append(asyncio.create_task(dispatcher.run(), name="webhook-dispatcher"))
+                syncer = SourceSyncer.from_settings(settings, unit_of_work, crawler, scanner)
+                workers.append(asyncio.create_task(syncer.run(), name="source-syncer"))
             yield
         finally:
             for worker in workers:
@@ -94,6 +100,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
             # A running job goes back to the queue for the next start.
             await asyncio.gather(*workers, return_exceptions=True)
             await sender.aclose()
+            await crawler.aclose()
             if embedder is not None:
                 await embedder.aclose()
             if llm is not None:
@@ -120,6 +127,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(index.router)
     app.include_router(jobs.router)
+    app.include_router(sources.router)
     app.include_router(webhooks.router)
     app.include_router(widgets.router)
     app.include_router(widgets.public_router)

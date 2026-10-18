@@ -32,6 +32,9 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `WEBHOOK_ALLOW_PRIVATE_URLS` | `false` | Let webhooks reach `localhost` and private networks, e.g. n8n next to the API. Off, they reach only public addresses |
 | `CLAMAV_URL` | unset | ClamAV's daemon, as `tcp://host:port` (e.g. `tcp://clamav:3310` with `docker compose --profile scan`): every new upload is scanned for malware before it is kept, and refused when it cannot be scanned. Unset, uploads are not scanned. clamd refuses files over its `StreamMaxLength` (25 MB by default), so keep `FILE_MAX_SIZE` below it |
 | `CLAMAV_TIMEOUT_SECONDS` | `60` | How long one scan may take (up to 600) |
+| `CRAWLER_ALLOW_PRIVATE_URLS` | `false` | Let website sources reach `localhost` and private networks, e.g. an intranet wiki. Off, only public addresses are crawled |
+| `CRAWLER_DELAY_SECONDS` | `0.5` | Pause between a crawl's requests (0–10); a site's robots.txt `Crawl-delay` can make it longer |
+| `CRAWLER_TIMEOUT_SECONDS` | `15` | How long one page may take to arrive (up to 120) |
 | `WEBHOOK_TIMEOUT_SECONDS` | `10` | How long a webhook's receiver has to answer (up to 60) |
 | `SEARCH_MODE` | `"hybrid"` | `hybrid` ranks chunks by meaning and by the words they share with the question, merged by reciprocal rank fusion; `vector` by meaning only. Scores are the cosine similarity either way |
 | `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |

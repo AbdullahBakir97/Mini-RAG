@@ -28,6 +28,9 @@ const MESSAGES: Record<string, string> = {
   webhook_not_found: "That webhook no longer exists.",
   webhook_url_not_allowed:
     "Webhooks may not reach this server's network (localhost or private addresses). Set WEBHOOK_ALLOW_PRIVATE_URLS=true on the server to allow it.",
+  source_not_found: "That website source no longer exists.",
+  source_url_not_allowed:
+    "Websites on this server's network (localhost or private addresses) cannot be crawled. Set CRAWLER_ALLOW_PRIVATE_URLS=true on the server to allow it.",
   widget_not_found: "That chat widget no longer exists.",
   widget_origin_invalid:
     "An allowed origin is not a website's origin. Use the scheme, host and any port only, like https://example.com.",
