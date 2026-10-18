@@ -91,3 +91,15 @@ def test_paging_limits_are_validated(client, params):
     upload(client, "demo")
 
     assert client.get("/api/v1/projects/demo/files", params=params).status_code == 422
+
+
+def test_projects_are_listed_by_name(client):
+    assert client.get("/api/v1/projects").json() == {"total": 0, "offset": 0, "limit": 20, "items": []}
+    for project in ("notes", "demo", "papers"):
+        upload(client, project)
+
+    page = client.get("/api/v1/projects", params={"offset": 1, "limit": 5}).json()
+
+    assert (page["total"], page["offset"], page["limit"]) == (3, 1, 5)
+    assert [p["name"] for p in page["items"]] == ["notes", "papers"]
+    assert set(page["items"][0]) == {"name", "created_at"}

@@ -98,6 +98,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 10: Web app
 
+- [x] A first web app: projects, document upload with progress, streamed answers with clickable citations, search and usage ([Web app](web.md)).
 - [ ] A chat interface with citations, conversation history and feedback.
 - [ ] Document management with upload, job status and connectors.
 - [ ] An admin dashboard for keys, usage, cost and evaluation scores.

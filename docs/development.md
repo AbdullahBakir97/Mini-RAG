@@ -18,9 +18,26 @@ pytest
 
 Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings and answers come from deterministic fakes, so the tests need no API key or network.
 
+## Web app
+
+The web interface in `frontend/` is a Vue 3 app written in TypeScript and built with Vite. During development it runs on its own dev server, which forwards `/api`, `/docs` and `/openapi.json` to the API at `http://localhost:8000` (set `API_URL` to use another address):
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173, reloads on every change
+npm run typecheck    # vue-tsc
+npm test             # Vitest unit tests
+npm run build        # type check, then the production build in dist/
+```
+
+See [Web app](web.md) for what it does and how it is built.
+
 ## Docker
 
 The `Dockerfile` builds the API image in two stages: the first installs the package and its dependencies into a virtual environment, the second copies only that environment into a slim Python image and runs as an unprivileged user (UID 10001). `compose.yaml` runs the image as the `app` service next to the database, with settings from `.env` and the database address and file storage path set for the stack; uploaded files live in the `files` volume. On every start the service applies any missing migrations, then starts the API.
+
+`frontend/Dockerfile` builds the web app the same way: Node builds the static files, and an unprivileged nginx image serves them and forwards `/api`, `/docs` and `/openapi.json` to the `app` service. It is the `web` service in `compose.yaml`, on port 3000.
 
 ```bash
 docker compose up --build            # the whole stack, rebuilt after code changes
@@ -29,7 +46,7 @@ docker compose logs -f app           # follow the API's logs
 docker compose down                  # stop; add --volumes to delete the data too
 ```
 
-CI builds the image and starts the stack on every push, checks `/api/v1/health` and an upload, and checks that the API does not run as root.
+CI builds the images and starts the stack on every push, checks `/api/v1/health` through the web app, an upload, the app's pages and API forwarding, and checks that neither the API nor the web app runs as root.
 
 ## Database migrations
 
@@ -56,5 +73,5 @@ alembic upgrade head
 ## Workflow
 
 - Branch from `start-001`, the default branch, and keep each pull request to one topic.
-- Every change comes with tests; CI runs `ruff check .` and `pytest` on Python 3.11 and 3.12 against PostgreSQL 16 with pgvector, and a pull request merges only when it passes.
+- Every change comes with tests; CI runs `ruff check .` and `pytest` on Python 3.11 and 3.12 against PostgreSQL 16 with pgvector, type-checks, tests and builds the web app, and a pull request merges only when it passes.
 - See [CONTRIBUTING.md](../.github/CONTRIBUTING.md) for the architecture rules and style.

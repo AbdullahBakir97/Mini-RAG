@@ -1,8 +1,8 @@
 # Mini RAG
 
-> A retrieval-augmented generation (RAG) service: upload documents, split them into chunks, index them with embeddings, and find the passages that answer a question.
+> A retrieval-augmented generation (RAG) service with a web app: upload documents, split them into chunks, index them with embeddings, and get answers that cite the passages they come from.
 
-[![CI](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
+[![CI](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![Vue](https://img.shields.io/badge/Vue_3-4FC08D?style=flat-square&logo=vuedotjs&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 
 <p align="center">
   <img src="docs/media/how-an-answer-is-made.gif" width="880" alt="Animation of how Mini RAG answers a question: a PDF is uploaded, read page by page, split into overlapping chunks, embedded as vectors and indexed; a question is then embedded, the nearest chunks above the minimum score become numbered sources, and the model answers from them with citations.">
@@ -18,8 +18,17 @@
 - **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Track** the tokens and cost of every answer, per answer and per project.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
+- **Use it in the browser** with the web app: projects, drag-and-drop uploads, streamed answers with clickable sources, search and usage, in light and dark.
 
 Conversations with follow-up questions are next; see the [roadmap](docs/roadmap.md).
+
+## Web app
+
+<p align="center">
+  <img src="docs/media/web-ask.png" width="880" alt="The Ask page of the web app: a question, its streamed answer with numbered citations, the cited sources with their similarity scores, and the answer's tokens and cost.">
+</p>
+
+Upload documents and ask questions in the browser: each file is uploaded, split and indexed as soon as it is dropped, answers stream in with their sources, and every source opens at its passage. It uses only the public API. See [Web app](docs/web.md).
 
 ## How it works
 
@@ -38,7 +47,7 @@ Documents are indexed once: uploaded, read, split into overlapping chunks, embed
 
 ### With Docker
 
-Requires only Docker. One command starts PostgreSQL with pgvector, applies the migrations and serves the API:
+Requires only Docker. One command starts PostgreSQL with pgvector, applies the migrations, and serves the API and the web app:
 
 ```bash
 git clone https://github.com/AbdullahBakir97/Mini-RAG.git
@@ -46,6 +55,8 @@ cd Mini-RAG
 cp .env.example .env             # Windows: copy .env.example .env; then add your API key
 docker compose up --build
 ```
+
+Open **http://localhost:3000** for the web app.
 
 ### With Python
 
@@ -63,9 +74,11 @@ cp .env.example .env             # Windows: copy .env.example .env
 docker compose up -d db          # PostgreSQL 16 with pgvector on localhost:5432
 alembic upgrade head             # create or update the database tables
 uvicorn mini_rag.main:app --reload
+
+cd frontend && npm install && npm run dev   # optional: the web app on http://localhost:5173 (Node 20.19+)
 ```
 
-Either way, open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
+Either way, **http://localhost:8000** shows the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
 
 ### Try it
 
@@ -90,12 +103,13 @@ curl -X POST http://localhost:8000/api/v1/ask/demo \
 | [Configuration](docs/configuration.md) | Every setting, with defaults |
 | [API](docs/api.md) | Endpoints, requests, responses and errors |
 | [Architecture](docs/architecture.md) | Layers, rules and extension points |
+| [Web app](docs/web.md) | Pages, how it is built, running it |
 | [Development](docs/development.md) | Tests, migrations and workflow |
 | [Roadmap](docs/roadmap.md) | Completed and planned work |
 
 ## Tech stack
 
-FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · pytest and ruff in GitHub Actions
+FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · Vue 3, TypeScript and Vite, served by nginx · pytest, ruff and Vitest in GitHub Actions
 
 ## Contributing
 

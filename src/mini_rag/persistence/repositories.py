@@ -52,6 +52,14 @@ class SqlProjectRepository:
             raise RuntimeError(f"Project {name!r} vanished while being created")
         return project
 
+    async def list_all(self, *, offset: int, limit: int) -> list[Project]:
+        rows = await self.session.scalars(
+            select(ProjectRow).order_by(ProjectRow.name).offset(offset).limit(limit))
+        return [_project(row) for row in rows]
+
+    async def count(self) -> int:
+        return await self.session.scalar(select(func.count()).select_from(ProjectRow))
+
 
 class SqlFileRepository:
 

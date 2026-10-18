@@ -31,6 +31,14 @@ class ProjectService:
     def __init__(self, uow: UnitOfWork):
         self.uow = uow
 
+    async def list_projects(self, offset: int, limit: int) -> Page[Project]:
+        """Projects in name order. A project exists once a file was uploaded into it."""
+        return Page(
+            items=await self.uow.projects.list_all(offset=offset, limit=limit),
+            total=await self.uow.projects.count(),
+            offset=offset, limit=limit,
+        )
+
     async def get_summary(self, project_name: str) -> ProjectSummary:
         project = await self._project(project_name)
         return ProjectSummary(

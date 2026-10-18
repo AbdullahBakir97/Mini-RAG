@@ -1,4 +1,4 @@
-# Only what the image needs: pyproject.toml, README.md, LICENSE and src/.
+# Only what the API image needs: pyproject.toml, README.md, LICENSE and src/.
 # Secrets and local data must never reach an image.
 .env
 .git
@@ -7,6 +7,7 @@
 venv
 assets
 docs
+frontend
 tests
 **/__pycache__
 **/*.py[cod]

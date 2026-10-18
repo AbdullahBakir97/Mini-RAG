@@ -54,3 +54,12 @@ async def test_unknown_project_and_file(uow):
         await service.get_summary("other")
     with pytest.raises(FileNotFound):
         await service.list_chunks("demo", "missing.txt", offset=0, limit=10)
+
+
+async def test_projects_are_listed_by_name(uow):
+    await uow.projects.get_or_create("alpha")
+    await uow.projects.get_or_create("zeta")
+
+    page = await ProjectService(uow).list_projects(offset=1, limit=1)
+
+    assert ([p.name for p in page.items], page.total) == (["demo"], 3)

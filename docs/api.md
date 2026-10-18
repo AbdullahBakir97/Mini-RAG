@@ -17,6 +17,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
+| `GET` | `/api/v1/projects` | List projects in name order (paged) |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
 | `GET` | `/api/v1/projects/{project_id}/usage` | Token usage and cost of the project's answers |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
@@ -78,6 +79,7 @@ Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `
 ## Read projects, files and chunks
 
 ```bash
+curl http://localhost:8000/api/v1/projects
 curl http://localhost:8000/api/v1/projects/demo1
 curl "http://localhost:8000/api/v1/projects/demo1/files?offset=0&limit=20"
 curl "http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/chunks?limit=5"
@@ -96,7 +98,7 @@ curl "http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/c
 }
 ```
 
-Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `100`); `total` is the number of items overall. Files are listed in upload order, chunks by `chunk_index`. An unknown project returns `404` `{"signal": "project_not_found"}`, an unknown file `404` `{"signal": "file_not_found"}`.
+Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `100`); `total` is the number of items overall. Projects are listed by name, with only `name` and `created_at`; a project exists once a file was uploaded into it. Files are listed in upload order, chunks by `chunk_index`. An unknown project returns `404` `{"signal": "project_not_found"}`, an unknown file `404` `{"signal": "file_not_found"}`.
 
 ## Index chunks for search
 

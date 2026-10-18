@@ -41,6 +41,12 @@ class FakeProjects:
             self.by_name[name] = Project(id=next(self._ids), name=name, created_at=datetime.now(UTC))
         return self.by_name[name]
 
+    async def list_all(self, *, offset: int, limit: int) -> list[Project]:
+        return [self.by_name[name] for name in sorted(self.by_name)][offset:offset + limit]
+
+    async def count(self) -> int:
+        return len(self.by_name)
+
 
 class FakeFiles:
 

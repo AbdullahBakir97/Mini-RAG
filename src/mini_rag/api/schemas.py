@@ -189,6 +189,18 @@ class ProjectResponse(BaseModel):
         description="Chunks that are indexed for search; equals chunks_count when the index is complete.")
 
 
+class ProjectListItem(BaseModel):
+    name: str
+    created_at: datetime
+
+
+class ProjectListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[ProjectListItem]
+
+
 class ProjectUsageResponse(BaseModel):
     answers: int = Field(description="Questions asked, streamed or not.")
     answered: int = Field(description="Of those, how many got an answer rather than `no_answer`.")
