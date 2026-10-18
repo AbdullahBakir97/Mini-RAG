@@ -18,6 +18,7 @@ from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.conversation_service import ConversationService
 from mini_rag.services.deletion_service import DeletionService
 from mini_rag.services.indexing_service import IndexingService
+from mini_rag.services.job_service import JobService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
 from mini_rag.services.search_service import SearchService
@@ -105,6 +106,13 @@ def get_deletion_service(uow: UnitOfWorkDep, storage: FileStorageDep) -> Deletio
 
 
 DeletionServiceDep = Annotated[DeletionService, Depends(get_deletion_service)]
+
+
+def get_job_service(uow: UnitOfWorkDep, settings: SettingsDep) -> JobService:
+    return JobService(uow=uow, max_attempts=settings.JOB_MAX_ATTEMPTS)
+
+
+JobServiceDep = Annotated[JobService, Depends(get_job_service)]
 
 
 def get_conversation_service(uow: UnitOfWorkDep) -> ConversationService:

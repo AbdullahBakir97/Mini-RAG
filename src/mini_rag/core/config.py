@@ -87,6 +87,11 @@ class Settings(BaseSettings):
         default="hybrid",
         description="hybrid: chunks close in meaning or sharing the question's words; "
                     "vector: close in meaning only")
+    JOB_WORKERS: int = Field(
+        default=1, ge=0, le=32,
+        description="Background jobs the app runs at once; 0 leaves them to `mini-rag worker`")
+    JOB_MAX_ATTEMPTS: int = Field(
+        default=3, ge=1, le=10, description="Tries per job before it fails, for passing errors")
 
     @model_validator(mode="before")
     @classmethod

@@ -186,3 +186,37 @@ class SearchFilters:
     uploaded_before: datetime | None = None
     metadata: Mapping[str, Any] | None = None
     max_per_file: int | None = None
+
+
+JobStatus = Literal["queued", "running", "succeeded", "failed"]
+JobStage = Literal["processing", "indexing"]
+
+
+@dataclass(frozen=True)
+class Job:
+    """Processing and indexing one file in the background.
+
+    A job is ``queued``, then ``running`` (``stage`` says which step, and
+    ``progress`` goes from 0 to 1 while chunks are indexed), then
+    ``succeeded`` or ``failed``. A failure that may pass, such as the
+    embedding provider being down, queues it again until ``max_attempts``.
+    """
+
+    id: str
+    project_id: int
+    project_name: str
+    file_id: int
+    file_key: str
+    chunk_size: int
+    overlap_size: int
+    status: JobStatus
+    attempts: int
+    max_attempts: int
+    created_at: datetime
+    stage: JobStage | None = None
+    progress: float = 0.0
+    chunks_count: int | None = None
+    error_signal: str | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+

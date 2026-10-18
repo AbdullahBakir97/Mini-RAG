@@ -57,6 +57,18 @@ class MessageNotFound(AppError):
     status_code = HTTPStatus.NOT_FOUND
 
 
+class JobNotFound(AppError):
+    signal = ResponseSignal.JOB_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
+class JobNotFailed(AppError):
+    """Only a failed job can be retried."""
+
+    signal = ResponseSignal.JOB_NOT_FAILED
+    status_code = HTTPStatus.CONFLICT
+
+
 class NoTextExtracted(AppError):
     signal = ResponseSignal.FILE_HAS_NO_TEXT
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

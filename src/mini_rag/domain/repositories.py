@@ -5,6 +5,7 @@ fakes. Nothing here knows about SQL.
 """
 
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from typing import Protocol
 
 from .models import (
@@ -15,6 +16,9 @@ from .models import (
     Feedback,
     FeedbackCounts,
     FileRecord,
+    Job,
+    JobStage,
+    JobStatus,
     Project,
     RatedAnswer,
     ScoredChunk,
@@ -163,6 +167,57 @@ class ConversationRepository(Protocol):
     async def count_feedback(self, project_id: int) -> FeedbackCounts: ...
 
 
+class JobRepository(Protocol):
+
+    async def add(self, *, project_id: int, file_id: int, chunk_size: int, overlap_size: int,
+                  max_attempts: int) -> Job:
+        """A new queued job."""
+        ...
+
+    async def get(self, project_id: int, job_id: str) -> Job | None:
+        """The project's job; None for another project's."""
+        ...
+
+    async def list_for_project(self, project_id: int, *, status: JobStatus | None, offset: int,
+                               limit: int) -> list[Job]:
+        """Most recently created first; only ``status`` when given."""
+        ...
+
+    async def count_for_project(self, project_id: int, *, status: JobStatus | None) -> int: ...
+
+    async def claim(self, lease_seconds: int) -> Job | None:
+        """Start the oldest job due to run, for ``lease_seconds``; None when none is due.
+
+        Due are queued jobs whose retry time has come, and running jobs
+        whose lease ran out (their worker stopped) with attempts left. Each
+        claim counts as an attempt. Workers never claim the same job.
+        """
+        ...
+
+    async def fail_abandoned(self) -> int:
+        """Fail running jobs whose lease ran out with no attempts left; returns how many."""
+        ...
+
+    async def set_progress(self, job_id: str, stage: JobStage, progress: float,
+                           lease_seconds: int) -> None:
+        """Record how far a running job is, and extend its lease."""
+        ...
+
+    async def succeed(self, job_id: str, chunks_count: int) -> None: ...
+
+    async def fail(self, job_id: str, signal: str, retry_at: datetime | None) -> None:
+        """Record a failure; with ``retry_at``, queue the job again to run from then."""
+        ...
+
+    async def release(self, job_id: str) -> None:
+        """Queue a running job again without counting its attempt (its worker stopped)."""
+        ...
+
+    async def requeue(self, job_id: str) -> None:
+        """Queue a failed job again, with its attempts reset."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -174,6 +229,7 @@ class UnitOfWork(Protocol):
     chunks: ChunkRepository
     answers: AnswerRepository
     conversations: ConversationRepository
+    jobs: JobRepository
 
     async def commit(self) -> None: ...
 

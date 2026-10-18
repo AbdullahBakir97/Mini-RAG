@@ -39,6 +39,12 @@ The `Dockerfile` builds the API image in two stages: the first installs the pack
 
 `frontend/Dockerfile` builds the web app the same way: Node builds the static files, and an unprivileged nginx image serves them and forwards `/api`, `/docs` and `/openapi.json` to the `app` service. It is the `web` service in `compose.yaml`, on port 3000.
 
+The API runs background jobs itself (`JOB_WORKERS`). To run them apart, for example on a machine of their own, set `JOB_WORKERS=0` for the API and start `mini-rag worker` (as many as you like) with the same database and files:
+
+```bash
+docker compose run --rm app mini-rag worker --workers 4
+```
+
 ```bash
 docker compose up --build            # the whole stack, rebuilt after code changes
 docker compose up -d db              # only the database, to run the API with uvicorn

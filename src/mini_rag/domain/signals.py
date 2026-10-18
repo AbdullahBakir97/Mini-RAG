@@ -24,3 +24,7 @@ class ResponseSignal(Enum):
     LLM_NOT_CONFIGURED = "llm_not_configured"
     LLM_FAILED = "llm_failed"
     RERANK_FAILED = "rerank_failed"
+    JOB_NOT_FOUND = "job_not_found"
+    JOB_NOT_FAILED = "job_not_failed"
+    JOB_ABANDONED = "job_abandoned"
+    JOB_FAILED = "job_failed"

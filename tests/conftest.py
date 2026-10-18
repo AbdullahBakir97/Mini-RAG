@@ -35,6 +35,8 @@ TEST_ENV = {
     "FILE_MAX_SIZE": "1",
     "FILE_DEFAULT_CHUNK_SIZE": "1024",
     "DATABASE_URL": TEST_DATABASE_URL,
+    # Tests run jobs themselves (see test_jobs.py), so they never race a worker.
+    "JOB_WORKERS": "0",
 }
 
 
@@ -109,7 +111,7 @@ async def _empty_tables(url: str) -> None:
     try:
         async with engine.begin() as connection:
             await connection.execute(sql_text(
-                "TRUNCATE projects, files, chunks, answers, conversations, conversation_messages RESTART IDENTITY CASCADE"))
+                "TRUNCATE projects, files, chunks, answers, conversations, conversation_messages, jobs RESTART IDENTITY CASCADE"))
     finally:
         await engine.dispose()
 

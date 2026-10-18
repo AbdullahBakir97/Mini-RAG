@@ -14,6 +14,7 @@ from sqlalchemy import (
     CheckConstraint,
     Computed,
     DateTime,
+    Float,
     ForeignKey,
     Identity,
     Index,
@@ -179,3 +180,40 @@ class ConversationMessageRow(Base):
         Index("ix_conversation_messages_feedback_at", "feedback_at",
               postgresql_where=text("feedback_at IS NOT NULL")),
     )
+
+
+class JobRow(Base):
+    """Processing and indexing one file in the background."""
+
+    __tablename__ = "jobs"
+    __table_args__ = (
+        CheckConstraint("status IN ('queued', 'running', 'succeeded', 'failed')", name="status"),
+        CheckConstraint("stage IN ('processing', 'indexing')", name="stage"),
+        Index("ix_jobs_project_id_created_at", "project_id", "created_at"),
+        # Workers look for due jobs: queued ones, and running ones whose lease ran out.
+        Index("ix_jobs_run_after", "run_after", postgresql_where=text("status = 'queued'")),
+        Index("ix_jobs_locked_until", "locked_until", postgresql_where=text("status = 'running'")),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    # Deleting the file deletes its jobs.
+    file_id: Mapped[int] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), index=True)
+    chunk_size: Mapped[int] = mapped_column(Integer)
+    overlap_size: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(16), server_default="queued")
+    stage: Mapped[str | None] = mapped_column(String(16))
+    progress: Mapped[float] = mapped_column(Float, server_default="0")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer)
+    chunks_count: Mapped[int | None] = mapped_column(Integer)
+    # Why the last attempt failed; the details are in the worker's log.
+    error_signal: Mapped[str | None] = mapped_column(String(64))
+    # A queued job waits until then (retries back off).
+    run_after: Mapped[datetime] = _created_at()
+    # A running job belongs to its worker until then; after, another may take it.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = _created_at()
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+

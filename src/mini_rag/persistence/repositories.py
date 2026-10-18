@@ -3,14 +3,27 @@
 import json
 import uuid
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import asdict
+from datetime import datetime, timedelta
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import bindparam, delete, func, insert, select, text, update
+from sqlalchemy import (
+    Interval,
+    and_,
+    bindparam,
+    delete,
+    func,
+    insert,
+    or_,
+    select,
+    text,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
 from mini_rag.domain.models import (
@@ -21,6 +34,9 @@ from mini_rag.domain.models import (
     Feedback,
     FeedbackCounts,
     FileRecord,
+    Job,
+    JobStage,
+    JobStatus,
     Project,
     RatedAnswer,
     ScoredChunk,
@@ -37,6 +53,7 @@ from .tables import (
     ConversationMessageRow,
     ConversationRow,
     FileRow,
+    JobRow,
     ProjectRow,
 )
 
@@ -500,6 +517,127 @@ class SqlConversationRepository:
         return conditions
 
 
+def _job(row: JobRow, project_name: str, file_key: str) -> Job:
+    return Job(id=row.id, project_id=row.project_id, project_name=project_name,
+               file_id=row.file_id, file_key=file_key, chunk_size=row.chunk_size,
+               overlap_size=row.overlap_size, status=row.status, attempts=row.attempts,
+               max_attempts=row.max_attempts, created_at=row.created_at, stage=row.stage,
+               progress=row.progress, chunks_count=row.chunks_count,
+               error_signal=row.error_signal, started_at=row.started_at, finished_at=row.finished_at)
+
+
+def _lease(seconds: int):
+    return func.now() + bindparam("lease", timedelta(seconds=seconds), type_=Interval)
+
+
+class SqlJobRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    def _select(self):
+        return (select(JobRow, ProjectRow.name, FileRow.key)
+                .join(ProjectRow, ProjectRow.id == JobRow.project_id)
+                .join(FileRow, FileRow.id == JobRow.file_id))
+
+    async def _by_id(self, job_id: str) -> Job | None:
+        row = (await self.session.execute(self._select().where(JobRow.id == job_id))).first()
+        return _job(*row) if row else None
+
+    async def add(self, *, project_id: int, file_id: int, chunk_size: int, overlap_size: int,
+                  max_attempts: int) -> Job:
+        job_id = await self.session.scalar(
+            insert(JobRow).values(id=str(uuid.uuid4()), project_id=project_id, file_id=file_id,
+                                  chunk_size=chunk_size, overlap_size=overlap_size,
+                                  max_attempts=max_attempts)
+            .returning(JobRow.id))
+        return await self._by_id(job_id)
+
+    async def get(self, project_id: int, job_id: str) -> Job | None:
+        row = (await self.session.execute(
+            self._select().where(JobRow.id == job_id, JobRow.project_id == project_id))).first()
+        return _job(*row) if row else None
+
+    async def list_for_project(self, project_id: int, *, status: JobStatus | None, offset: int,
+                               limit: int) -> list[Job]:
+        query = self._select().where(*self._in_project(project_id, status))
+        rows = await self.session.execute(
+            query.order_by(JobRow.created_at.desc(), JobRow.id).offset(offset).limit(limit))
+        return [_job(*row) for row in rows]
+
+    async def count_for_project(self, project_id: int, *, status: JobStatus | None) -> int:
+        return await self.session.scalar(
+            select(func.count()).select_from(JobRow).where(*self._in_project(project_id, status)))
+
+    @staticmethod
+    def _in_project(project_id: int, status: JobStatus | None) -> list:
+        conditions = [JobRow.project_id == project_id]
+        if status is not None:
+            conditions.append(JobRow.status == status)
+        return conditions
+
+    async def claim(self, lease_seconds: int) -> Job | None:
+        due = (
+            select(JobRow.id)
+            .where(or_(
+                and_(JobRow.status == "queued", JobRow.run_after <= func.now()),
+                and_(JobRow.status == "running", JobRow.locked_until < func.now(),
+                     JobRow.attempts < JobRow.max_attempts)))
+            .order_by(JobRow.run_after, JobRow.created_at)
+            .limit(1)
+            # Workers skip the rows another is claiming, rather than wait for them.
+            .with_for_update(skip_locked=True)
+            .scalar_subquery())
+        job_id = await self.session.scalar(
+            update(JobRow).where(JobRow.id == due)
+            .values(status="running", attempts=JobRow.attempts + 1, stage="processing",
+                    progress=0, started_at=func.now(), locked_until=_lease(lease_seconds))
+            .returning(JobRow.id))
+        return await self._by_id(job_id) if job_id else None
+
+    async def fail_abandoned(self) -> int:
+        result = await self.session.execute(
+            update(JobRow)
+            .where(JobRow.status == "running", JobRow.locked_until < func.now(),
+                   JobRow.attempts >= JobRow.max_attempts)
+            .values(status="failed", finished_at=func.now(), locked_until=None,
+                    error_signal="job_abandoned"))
+        return result.rowcount
+
+    async def set_progress(self, job_id: str, stage: JobStage, progress: float,
+                           lease_seconds: int) -> None:
+        await self.session.execute(
+            update(JobRow).where(JobRow.id == job_id, JobRow.status == "running")
+            .values(stage=stage, progress=progress, locked_until=_lease(lease_seconds)))
+
+    async def succeed(self, job_id: str, chunks_count: int) -> None:
+        await self.session.execute(
+            update(JobRow).where(JobRow.id == job_id)
+            .values(status="succeeded", progress=1, chunks_count=chunks_count,
+                    error_signal=None, locked_until=None, finished_at=func.now()))
+
+    async def fail(self, job_id: str, signal: str, retry_at: datetime | None) -> None:
+        values = {"error_signal": signal, "locked_until": None}
+        if retry_at is None:
+            values |= {"status": "failed", "finished_at": func.now()}
+        else:
+            values |= {"status": "queued", "run_after": retry_at}
+        await self.session.execute(update(JobRow).where(JobRow.id == job_id).values(**values))
+
+    async def release(self, job_id: str) -> None:
+        await self.session.execute(
+            update(JobRow).where(JobRow.id == job_id, JobRow.status == "running")
+            .values(status="queued", attempts=JobRow.attempts - 1, stage=None, progress=0,
+                    locked_until=None, run_after=func.now()))
+
+    async def requeue(self, job_id: str) -> None:
+        await self.session.execute(
+            update(JobRow).where(JobRow.id == job_id, JobRow.status == "failed")
+            .values(status="queued", attempts=0, stage=None, progress=0, chunks_count=None,
+                    error_signal=None, run_after=func.now(),
+                    started_at=None, finished_at=None))
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession):
@@ -509,9 +647,24 @@ class SqlUnitOfWork:
         self.chunks = SqlChunkRepository(session)
         self.answers = SqlAnswerRepository(session)
         self.conversations = SqlConversationRepository(session)
+        self.jobs = SqlJobRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
 
     async def rollback(self) -> None:
         await self.session.rollback()
+
+
+def unit_of_work_factory(
+        session_factory: async_sessionmaker[AsyncSession],
+) -> Callable[[], AbstractAsyncContextManager[SqlUnitOfWork]]:
+    """Opens a unit of work on a new session, closed (and rolled back if uncommitted) after."""
+
+    @asynccontextmanager
+    async def unit_of_work() -> AsyncIterator[SqlUnitOfWork]:
+        async with session_factory() as session:
+            yield SqlUnitOfWork(session)
+
+    return unit_of_work
+

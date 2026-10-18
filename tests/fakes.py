@@ -11,7 +11,7 @@ import uuid
 import zlib
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from itertools import count
 
 from mini_rag.core.errors import EmbeddingFailed, LLMFailed
@@ -24,6 +24,7 @@ from mini_rag.domain.models import (
     Feedback,
     FeedbackCounts,
     FileRecord,
+    Job,
     Project,
     RatedAnswer,
     ScoredChunk,
@@ -269,6 +270,97 @@ class FakeConversations:
                               down=sum(r.feedback.rating == "down" for r in rated))
 
 
+class FakeJobs:
+    """Jobs in memory; leases and retry times use the wall clock."""
+
+    def __init__(self, projects: FakeProjects, files: FakeFiles):
+        self.projects, self.files = projects, files
+        self.by_id: dict[str, Job] = {}
+        self.locked_until: dict[str, datetime] = {}
+        self.run_after: dict[str, datetime] = {}
+
+    def _set(self, job_id: str, **changes) -> None:
+        self.by_id[job_id] = replace(self.by_id[job_id], **changes)
+
+    async def add(self, *, project_id, file_id, chunk_size, overlap_size, max_attempts) -> Job:
+        project = next(p for p in self.projects.by_name.values() if p.id == project_id)
+        file = next(f for f in self.files.records if f.id == file_id)
+        job = Job(id=str(uuid.uuid4()), project_id=project_id, project_name=project.name,
+                  file_id=file_id, file_key=file.key, chunk_size=chunk_size,
+                  overlap_size=overlap_size, status="queued", attempts=0,
+                  max_attempts=max_attempts, created_at=datetime.now(UTC))
+        self.by_id[job.id] = job
+        self.run_after[job.id] = job.created_at
+        return job
+
+    async def get(self, project_id: int, job_id: str) -> Job | None:
+        job = self.by_id.get(job_id)
+        return job if job and job.project_id == project_id else None
+
+    def _in_project(self, project_id, status):
+        return [j for j in sorted(self.by_id.values(), key=lambda j: j.created_at, reverse=True)
+                if j.project_id == project_id and (status is None or j.status == status)]
+
+    async def list_for_project(self, project_id: int, *, status, offset: int,
+                               limit: int) -> list[Job]:
+        return self._in_project(project_id, status)[offset:offset + limit]
+
+    async def count_for_project(self, project_id: int, *, status) -> int:
+        return len(self._in_project(project_id, status))
+
+    def _expired(self, job: Job, now: datetime) -> bool:
+        return job.status == "running" and self.locked_until.get(job.id, now) < now
+
+    async def claim(self, lease_seconds: int) -> Job | None:
+        now = datetime.now(UTC)
+        due = [j for j in self.by_id.values()
+               if (j.status == "queued" and self.run_after[j.id] <= now)
+               or (self._expired(j, now) and j.attempts < j.max_attempts)]
+        if not due:
+            return None
+        job = min(due, key=lambda j: (self.run_after[j.id], j.created_at))
+        self._set(job.id, status="running", attempts=job.attempts + 1, stage="processing",
+                  progress=0.0, started_at=now)
+        self.locked_until[job.id] = now + timedelta(seconds=lease_seconds)
+        return self.by_id[job.id]
+
+    async def fail_abandoned(self) -> int:
+        now = datetime.now(UTC)
+        abandoned = [j for j in self.by_id.values()
+                     if self._expired(j, now) and j.attempts >= j.max_attempts]
+        for job in abandoned:
+            self._set(job.id, status="failed", finished_at=now, error_signal="job_abandoned")
+        return len(abandoned)
+
+    async def set_progress(self, job_id: str, stage, progress: float, lease_seconds: int) -> None:
+        self._set(job_id, stage=stage, progress=progress)
+        self.locked_until[job_id] = datetime.now(UTC) + timedelta(seconds=lease_seconds)
+
+    async def succeed(self, job_id: str, chunks_count: int) -> None:
+        self._set(job_id, status="succeeded", progress=1.0, chunks_count=chunks_count,
+                  error_signal=None, finished_at=datetime.now(UTC))
+
+    async def fail(self, job_id: str, signal: str, retry_at) -> None:
+        if retry_at is None:
+            self._set(job_id, status="failed", error_signal=signal, finished_at=datetime.now(UTC))
+        else:
+            self._set(job_id, status="queued", error_signal=signal)
+            self.run_after[job_id] = retry_at
+
+    async def release(self, job_id: str) -> None:
+        job = self.by_id[job_id]
+        if job.status == "running":
+            self._set(job_id, status="queued", attempts=job.attempts - 1, stage=None,
+                      progress=0.0)
+            self.run_after[job_id] = datetime.now(UTC)
+
+    async def requeue(self, job_id: str) -> None:
+        if self.by_id[job_id].status == "failed":
+            self._set(job_id, status="queued", attempts=0, stage=None, progress=0.0,
+                      chunks_count=None, error_signal=None, started_at=None, finished_at=None)
+            self.run_after[job_id] = datetime.now(UTC)
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -277,6 +369,7 @@ class FakeUnitOfWork:
         self.chunks = FakeChunks()
         self.answers = FakeAnswers()
         self.conversations = FakeConversations()
+        self.jobs = FakeJobs(self.projects, self.files)
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 
@@ -308,6 +401,9 @@ class FakeEmbedder:
         if len(self.calls) == self.fail_on_call:
             raise EmbeddingFailed("fake failure")
         return [self.vector(text) for text in texts]
+
+    async def aclose(self) -> None:
+        pass
 
     def vector(self, text: str) -> list[float]:
         vector = [0.0] * self.dimensions

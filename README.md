@@ -13,7 +13,7 @@
 
 - **Upload** PDF, Word (`.docx`), Markdown, HTML and text files into separate projects, with type checks and a size limit enforced while streaming.
 - **Process** them into chunks that respect paragraphs, with exact overlap between chunks, page numbers for PDFs, and the section headings for Markdown, HTML and Word files.
-- **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
+- **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama, in background jobs with progress and retries, run by the API or by separate workers.
 - **Search** by meaning and by words at once (hybrid search: pgvector and PostgreSQL full-text search, merged by rank fusion), best match first, with a similarity score.
 - **Ask** questions and get answers with citations to the file, page or section, and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept, with thumbs up or down on each answer.

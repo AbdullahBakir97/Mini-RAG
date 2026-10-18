@@ -161,4 +161,17 @@ describe("api", () => {
     expect([fileInit.method, fileUrl]).toEqual(["DELETE", "/api/v1/projects/my%20docs/files/a_guide.txt"]);
     expect([projectInit.method, projectUrl]).toEqual(["DELETE", "/api/v1/projects/my%20docs"]);
   });
+
+  it("queues and follows jobs", async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ id: "j 1" })));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.createJob("demo", "a_cats.txt", { chunk_size: 500, overlap_size: 50 });
+    await api.job("demo", "j 1");
+
+    const [createUrl, create] = fetch.mock.calls[0]!;
+    expect([create.method, createUrl]).toEqual(["POST", "/api/v1/projects/demo/jobs"]);
+    expect(JSON.parse(create.body)).toEqual({ file_id: "a_cats.txt", chunk_size: 500, overlap_size: 50 });
+    expect(fetch.mock.calls[1]![0]).toBe("/api/v1/projects/demo/jobs/j%201");
+  });
 });

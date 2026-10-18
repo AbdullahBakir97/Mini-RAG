@@ -1,3 +1,4 @@
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from mini_rag.core.errors import FileNotFound, ProjectNotFound
@@ -21,12 +22,14 @@ class IndexingService:
         self.embedder = embedder
         self.batch_size = batch_size
 
-    async def index(self, project_name: str, file_key: str | None = None) -> IndexResult:
+    async def index(self, project_name: str, file_key: str | None = None,
+                    on_batch: Callable[[int], Awaitable[None]] | None = None) -> IndexResult:
         """Embed the project's chunks, or one file's, that have no embedding yet.
 
         Each batch is committed on its own: after a failure the work done so
         far is kept, and calling again continues where it stopped. Chunks
-        that already have an embedding are never sent again.
+        that already have an embedding are never sent again. ``on_batch``
+        hears how many chunks were embedded so far, after each batch.
         """
         project = await self.uow.projects.get_by_name(project_name)
         if project is None:
@@ -46,6 +49,8 @@ class IndexingService:
                 {chunk.id: vector for chunk, vector in zip(pending, vectors, strict=True)})
             await self.uow.commit()
             embedded += len(pending)
+            if on_batch is not None:
+                await on_batch(embedded)
 
         if file_id is None:
             total = await self.uow.chunks.count_for_project(project.id)
