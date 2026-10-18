@@ -65,3 +65,45 @@ async def test_embedding_failures_propagate(uow):
 
     with pytest.raises(EmbeddingFailed):
         await SearchService(uow, FakeEmbedder(fail_on_call=1)).search("p1", "cats", top_k=5)
+
+
+class FakeReranker:
+    """Scores texts by a fixed table; ``fail`` makes it fail like a server that is down."""
+
+    model = "fake-reranker"
+
+    def __init__(self, scores: dict[str, float], fail: bool = False):
+        self.scores = scores
+        self.fail = fail
+        self.calls: list[list[str]] = []
+
+    async def rerank(self, query, texts):
+        from mini_rag.core.errors import RerankFailed
+
+        self.calls.append(list(texts))
+        if self.fail:
+            raise RerankFailed("fake failure")
+        return [self.scores.get(text, 0.0) for text in texts]
+
+
+async def test_a_reranker_reorders_more_candidates_and_keeps_top_k(uow):
+    await index(uow)
+    reranker = FakeReranker({"Dogs bark at cats.": 0.9, "Cats purr and sleep all day.": 0.1})
+
+    hits = await SearchService(uow, FakeEmbedder(), reranker=reranker,
+                               rerank_candidates=3).search("p1", "cats", top_k=1)
+
+    assert [hit.chunk.text for hit in hits] == ["Dogs bark at cats."]
+    # It saw all three candidates, not just the one asked for.
+    assert len(reranker.calls[0]) == 3
+
+
+async def test_when_reranking_fails_the_search_order_stays(uow, caplog):
+    await index(uow)
+    expected = await SearchService(uow, FakeEmbedder()).search("p1", "cats", top_k=2)
+
+    hits = await SearchService(uow, FakeEmbedder(), reranker=FakeReranker({}, fail=True)).search(
+        "p1", "cats", top_k=2)
+
+    assert hits == expected
+    assert "Reranking with fake-reranker failed" in caplog.text

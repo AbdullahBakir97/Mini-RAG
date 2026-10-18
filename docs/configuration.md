@@ -19,6 +19,10 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `LLM_STREAM_USAGE` | `true` | Ask for token usage at the end of streamed answers (`stream_options`); set to `false` if your server rejects that option |
 | `LLM_INPUT_PRICE_PER_MILLION` | `""` | US dollars per million prompt tokens, e.g. `0.4`; `0` for a free tier. Empty: costs are unknown (`null`) |
 | `LLM_OUTPUT_PRICE_PER_MILLION` | `""` | US dollars per million tokens the model writes, e.g. `1.6`. Both prices are needed for a cost |
+| `RERANK_BASE_URL` | `""` | A server with the `POST /rerank` API of Cohere, Jina, vLLM, Infinity or LiteLLM, e.g. `"http://localhost:8080/v1"`; empty turns reranking off |
+| `RERANK_MODEL` | `""` | The reranking model, e.g. `"BAAI/bge-reranker-v2-m3"` |
+| `RERANK_API_KEY` | `""` | Sent as a bearer token when set |
+| `RERANK_CANDIDATES` | `20` | Results reranked per search (1–100); the best `top_k` of them are kept. If the reranker fails, the search order stays and a warning is logged |
 | `SEARCH_MODE` | `"hybrid"` | `hybrid` ranks chunks by meaning and by the words they share with the question, merged by reciprocal rank fusion; `vector` by meaning only. Scores are the cosine similarity either way |
 | `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |

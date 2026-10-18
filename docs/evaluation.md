@@ -151,4 +151,4 @@ A change that lowers a metric by more than the tolerance fails CI; the report is
 mini-rag eval evals/handbook/v1 --save-baseline evals/baselines/handbook-v1.json
 ```
 
-A baseline is only compared with a run of the same dataset, embedding model, vector size, top k, chunking and minimum score; anything else exits with `2` before embedding anything.
+A baseline is only compared with a run of the same dataset, embedding model, vector size, search mode, reranker, top k, chunking and minimum score; anything else exits with `2` before embedding anything. With `RERANK_BASE_URL` set, `mini-rag eval` measures search with the reranker, so a reranker is judged by the same numbers.

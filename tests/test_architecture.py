@@ -13,7 +13,7 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "mini_rag"
 # Only embeddings and llm may use a model provider's SDK.
 ALLOWED_LAYERS = {
     "api": {"api", "core", "domain", "services", "storage", "loaders", "text", "persistence",
-            "embeddings", "llm"},
+            "embeddings", "llm", "rerankers"},
     # Services use the repository interfaces in domain, never persistence.
     "services": {"core", "domain", "storage", "loaders", "text", "prompts", "evaluation"},
     "persistence": {"core", "domain"},
@@ -22,6 +22,7 @@ ALLOWED_LAYERS = {
     # Services use the Embedder and LLM interfaces in domain, never a provider SDK.
     "embeddings": {"core", "domain"},
     "llm": {"core", "domain"},
+    "rerankers": {"core", "domain"},
     "text": set(),
     "prompts": {"domain"},
     # Datasets and metrics; services run them, the CLI wires them up.

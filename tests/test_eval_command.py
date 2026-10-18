@@ -47,7 +47,7 @@ def test_evaluates_the_handbook_and_writes_a_report(db, embedder, tmp_path, caps
     report = json.loads(report_path.read_text())
     assert report["parameters"] == {
         "dataset": "handbook/v1", "embedding_model": "text-embedding-3-small",
-        "embedding_dimensions": 1536, "search_mode": "hybrid", "top_k": 5, "chunk_size": 1000, "overlap_size": 200,
+        "embedding_dimensions": 1536, "search_mode": "hybrid", "reranker": None, "top_k": 5, "chunk_size": 1000, "overlap_size": 200,
         "min_score": 0.3}
     assert len(report["cases"]) == 53
     assert 0 < report["metrics"]["hit_rate"] <= 1
