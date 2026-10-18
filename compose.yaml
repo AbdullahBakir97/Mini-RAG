@@ -1,5 +1,6 @@
 # The whole stack: docker compose up --build
 #   web app on http://localhost:3000, API on http://localhost:8000
+#   (other ports: set WEB_PORT, API_PORT or DB_PORT in .env)
 # Only the database, to run the API with uvicorn: docker compose up -d db
 # Settings are read from .env (copy .env.example first).
 services:
@@ -11,7 +12,7 @@ services:
       POSTGRES_PASSWORD: mini_rag
       POSTGRES_DB: mini_rag
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +33,7 @@ services:
     # every start: Alembic applies only the missing ones.
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn mini_rag.main:app --host 0.0.0.0 --port 8000"]
     ports:
-      - "8000:8000"
+      - "${API_PORT:-8000}:8000"
     volumes:
       - files:/app/assets/files
     depends_on:
@@ -45,7 +46,7 @@ services:
     build: ./frontend
     image: mini-rag-web
     ports:
-      - "3000:8080"
+      - "${WEB_PORT:-3000}:8080"
     depends_on:
       app:
         condition: service_healthy

@@ -54,6 +54,18 @@ Prices change, so they are not built in: copy them from your provider's pricing 
 
 **Ollama** (local, no key): set `EMBEDDING_BASE_URL` and `LLM_BASE_URL` to `"http://localhost:11434/v1"` and the model settings to models you pulled. Ollama's embedding models usually produce other vector sizes, such as 768, so change the column and `EMBEDDING_DIMENSIONS` to match first (see [Development](development.md#database-migrations)).
 
+## Docker ports
+
+`docker compose` publishes the stack on these ports of your computer. When one is already in use (`port is already allocated`), set another in `.env`:
+
+| Variable | Default | Service |
+|---|---|---|
+| `WEB_PORT` | `3000` | The web app |
+| `API_PORT` | `8000` | The API and its docs |
+| `DB_PORT` | `5432` | PostgreSQL |
+
+For example `WEB_PORT=3001` serves the web app on http://localhost:3001. Inside the stack the services still reach each other on their usual ports. If you change `DB_PORT` and run the API outside Docker, change the port in `DATABASE_URL` too.
+
 ## Validation
 
 Every setting has a default, so `.env` only needs what you change, typically the model settings above. Settings are validated when the app starts: an invalid value stops it with a message naming the setting. Values are never printed in these messages, so secrets such as `OPENAI_API_KEY` or the database password cannot end up in logs.
