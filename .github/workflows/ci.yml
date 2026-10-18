@@ -91,10 +91,6 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
-      ollama:
-        image: ollama/ollama:0.35.1
-        ports:
-          - 11434:11434
     env:
       DATABASE_URL: postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag_eval
       EMBEDDING_BASE_URL: http://localhost:11434/v1
@@ -111,13 +107,15 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-      - name: Pull the embedding model
+      - name: Start Ollama with the embedding model
+        # Started here rather than as a service, so its log does not flood the job's.
         run: |
+          docker run --detach --name ollama --publish 11434:11434 ollama/ollama:0.35.1
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://localhost:11434/api/version; then break; fi
             sleep 2
           done
-          docker exec ${{ job.services.ollama.id }} ollama pull nomic-embed-text:v1.5
+          docker exec ollama ollama pull nomic-embed-text:v1.5
       - name: Migrate the database
         run: alembic upgrade head
       - name: Evaluate retrieval
