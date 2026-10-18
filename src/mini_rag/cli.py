@@ -583,11 +583,19 @@ def main(argv: list[str] | None = None) -> int:
     revoke_key = key_actions.add_parser("revoke", help="revoke a key at once")
     revoke_key.add_argument("--tenant", required=True)
     revoke_key.add_argument("key_id", type=_key_id, help="the id `keys list` shows")
+    openapi = commands.add_parser(
+        "openapi",
+        help="write the API's OpenAPI schema, which the SDKs are generated from",
+        description="Write the OpenAPI schema of the API as JSON, as served at /openapi.json. "
+                    "sdk/openapi.json is this output, and the SDKs are generated from it.")
+    openapi.add_argument("--output", type=Path, help="write it here instead of to stdout")
     audit = commands.add_parser("audit", help="show a tenant's audit log, most recent first")
     audit.add_argument("--tenant", required=True)
     audit.add_argument("--action", help="only actions that start with this, e.g. api_key")
     audit.add_argument("--limit", type=_positive, default=50, help="events to show (default 50)")
     args = parser.parse_args(argv)
+    if args.command == "openapi":
+        return _write_openapi(args.output)
     if args.command in ("tenants", "keys", "audit"):
         return asyncio.run(_tenants_and_keys(args))
     if args.command == "worker":
@@ -606,6 +614,17 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--judge-model needs --answers")
         return asyncio.run(_evaluate(args))
     return asyncio.run(_resize_embeddings())
+
+
+def _write_openapi(output: Path | None) -> int:
+    from mini_rag.main import create_app  # The API, only for this command.
+
+    schema = json.dumps(create_app().openapi(), indent=2, ensure_ascii=False) + "\n"
+    if output is None:
+        sys.stdout.write(schema)
+    else:
+        output.write_text(schema, encoding="utf-8")
+    return 0
 
 
 def _limits_line(tenant) -> str:

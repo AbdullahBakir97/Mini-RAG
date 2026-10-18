@@ -79,7 +79,7 @@ Mini-RAG/
 ├── evals/                    # Versioned evaluation datasets and their baselines (see evaluation.md)
 ├── src/mini_rag/
 │   ├── main.py               # create_app(): routers, error handler, lifespan
-│   ├── cli.py                # The mini-rag command: resize-embeddings, eval
+│   ├── cli.py                # The mini-rag command: eval, worker, tenants, keys, openapi…
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
 │   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers, conversations, evaluation
@@ -96,13 +96,14 @@ Mini-RAG/
 │   └── domain/               # Domain models, repository, Embedder and LLM interfaces, signals
 ├── tests/                    # pytest suite
 ├── frontend/                 # Web app: Vue 3, TypeScript, Vite; nginx image (see web.md)
+├── sdk/                      # The OpenAPI schema and the TypeScript and Python clients generated from it
 ├── .env.example              # Settings template (copy to .env)
 ├── Dockerfile                # API image: multi-stage, runs as an unprivileged user
 ├── compose.yaml              # The stack: PostgreSQL with pgvector, the API and the web app
 └── pyproject.toml            # Package, dependencies; Alembic, pytest and ruff settings
 ```
 
-The web app in `frontend/` is a client of the public API only: it uses the same endpoints as any other app, so everything it does can also be done with `curl`. See [Web app](web.md).
+The web app in `frontend/` is a client of the public API only: it uses the same endpoints as any other app, so everything it does can also be done with `curl`. See [Web app](web.md). So are the [SDKs](../sdk/README.md) in `sdk/`, generated from the schema in `sdk/openapi.json`, which a test keeps equal to the API's.
 
 Uploaded files are stored in `assets/files/` (`FILES_DIR`), which is git-ignored.
 

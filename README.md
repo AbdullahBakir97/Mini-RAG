@@ -19,6 +19,7 @@
 - **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept, with thumbs up or down on each answer.
 - **Track** the tokens and cost of every answer, per answer and per project.
 - **Embed a chat widget** in any website with one `<script>` tag: streamed answers with clickable citations, in the site's colour, allowed only on the websites you list, without API keys in the page.
+- **Build on it** with the [TypeScript and Python SDKs](sdk/README.md), generated from the OpenAPI schema: every endpoint typed, streamed answers, uploads and jobs.
 - **Connect agents** through a built-in MCP server (`/api/v1/mcp`) with `list_projects`, `search_knowledge` and `ask` tools, or the same tools as function-calling schemas.
 - **Sync websites** into a project: their pages are crawled (within the site, obeying robots.txt), indexed and kept up to date on a schedule, with new, changed and removed pages handled.
 - **Automate** with signed webhooks: uploads, deletions and finished jobs are sent to n8n, Make, Zapier or any URL, retried for a day until received.
@@ -110,6 +111,7 @@ curl -X POST http://localhost:8000/api/v1/ask/demo \
 |---|---|
 | [Configuration](docs/configuration.md) | Every setting, with defaults |
 | [API](docs/api.md) | Endpoints, requests, responses and errors |
+| [SDKs](sdk/README.md) | The TypeScript and Python clients |
 | [Architecture](docs/architecture.md) | Layers, rules and extension points |
 | [Web app](docs/web.md) | Pages, how it is built, running it |
 | [Evaluation](docs/evaluation.md) | Datasets, retrieval metrics and the CI check |

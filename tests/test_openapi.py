@@ -1,4 +1,9 @@
+import json
+from pathlib import Path
+
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.fixture
@@ -103,3 +108,31 @@ def test_error_examples_show_each_signal(schema):
     assert examples == {"file_has_no_text": {"value": {"signal": "file_has_no_text"}},
                         "processing_failed": {"value": {"signal": "processing_failed"}}}
     assert response_schema(schema, "/api/v1/data/process/{project_id}", "422") == "ErrorResponse"
+
+
+def test_operations_are_named_after_their_route_functions(schema):
+    upload = schema["paths"]["/api/v1/data/upload/{project_id}"]["post"]
+
+    assert upload["operationId"] == "upload_data"
+    assert "Body_upload_data" in schema["components"]["schemas"]
+
+
+def test_the_sdks_schema_is_up_to_date(schema):
+    """sdk/openapi.json is what the SDKs are generated from: regenerate both after API changes.
+
+    Run `mini-rag openapi --output sdk/openapi.json`, then see sdk/README.md.
+    """
+    committed = json.loads((ROOT / "sdk" / "openapi.json").read_text(encoding="utf-8"))
+
+    assert {**committed, "info": None} == {**schema, "info": None}
+
+
+def test_the_cli_writes_the_schema(tmp_path, capsys):
+    from mini_rag.cli import main
+
+    assert main(["openapi", "--output", str(tmp_path / "openapi.json")]) == 0
+    assert main(["openapi"]) == 0
+
+    written = json.loads((tmp_path / "openapi.json").read_text(encoding="utf-8"))
+    assert written["paths"]["/api/v1/data/upload/{project_id}"]["post"]["operationId"] == "upload_data"
+    assert json.loads(capsys.readouterr().out) == written
