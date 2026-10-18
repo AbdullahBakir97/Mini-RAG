@@ -50,12 +50,15 @@ def _heading_styles(archive: zipfile.ZipFile) -> dict[str, int]:
         return {}
     levels = {}
     for style in _read_xml(archive, "word/styles.xml").iter(f"{_W}style"):
-        name = style.find(f"{_W}name")
-        name = (name.get(f"{_W}val") or "").lower() if name is not None else ""
+        style_id = style.get(f"{_W}styleId")
+        named = style.find(f"{_W}name")
+        name = (named.get(f"{_W}val") or "").lower() if named is not None else ""
+        if style_id is None:
+            continue
         if name == "title":
-            levels[style.get(f"{_W}styleId")] = 1
+            levels[style_id] = 1
         elif match := _HEADING_STYLE.match(name):
-            levels[style.get(f"{_W}styleId")] = int(match.group(1))
+            levels[style_id] = int(match.group(1))
     return levels
 
 
@@ -67,7 +70,7 @@ def _blocks(parent: ElementTree.Element, styles: dict[str, int]) -> Iterator[Blo
                 continue
             properties = element.find(f"{_W}pPr")
             style = properties.find(f"{_W}pStyle") if properties is not None else None
-            level = styles.get(style.get(f"{_W}val")) if style is not None else None
+            level = styles.get(style.get(f"{_W}val", "")) if style is not None else None
             if level:
                 yield Heading(level, text)
             elif properties is not None and properties.find(f"{_W}numPr") is not None:

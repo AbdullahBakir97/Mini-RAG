@@ -152,7 +152,7 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
                           chunks=run.chunks, seconds=run.seconds, version=settings.APP_VERSION)
     if answers is not None:
         add_answers(report, run.answers, parameters={
-            "llm_model": settings.LLM_MODEL, "judge_model": judge.model,
+            "llm_model": settings.LLM_MODEL, "judge_model": answers.judge.model,
             "answer_prompt": answers.answers.prompt.version,
             "judge_prompt": answers.judge_prompt.version,
         }, usage={"answers": _usage(run.answer_usage), "judge": _usage(run.judge_usage)})
@@ -407,40 +407,41 @@ async def _tenants_and_keys(args: argparse.Namespace) -> int:
                 print(f"Tenant {tenant.name} (id {tenant.id}) is ready.")
                 return 0
             if args.command == "tenants" and args.action == "limits":
-                tenant = await uow.tenants.get_by_name(args.name)
-                if tenant is None:
+                limited = await uow.tenants.get_by_name(args.name)
+                if limited is None:
                     print(f"There is no tenant {args.name!r}.", file=sys.stderr)
                     return 1
                 changes = {name: (None if value == "default" else int(value))
                            for name in ("requests_per_minute", "answers_per_month", "storage_mb")
                            if (value := getattr(args, name)) is not None}
-                await uow.tenants.set_limits(tenant.id, changes)
+                await uow.tenants.set_limits(limited.id, changes)
                 await uow.commit()
-                print(_limits_line(await uow.tenants.get_by_id(tenant.id)))
+                print(_limits_line(await uow.tenants.get_by_id(limited.id)))
                 return 0
             if args.command == "tenants":
                 for tenant in await uow.tenants.list_all():
                     print(f"{tenant.id}\t{tenant.name}\t{tenant.created_at:%Y-%m-%d}\t"
                           f"{_limits_line(tenant)}")
                 return 0
-            tenant = await uow.tenants.get_by_name(args.tenant)
-            if tenant is None:
+            owner = await uow.tenants.get_by_name(args.tenant)
+            if owner is None:
                 print(f"There is no tenant {args.tenant!r}; create it with "
                       f"`mini-rag tenants create {args.tenant}`.", file=sys.stderr)
                 return 1
             if args.action == "create":
-                record, key = await service.create_key(tenant.id, args.name,
+                record, key = await service.create_key(owner.id, args.name,
                                                        args.scope or list(SCOPES))
-                print(f"Key {record.id} for {tenant.name}, with {', '.join(record.scopes)}:")
+                print(f"Key {record.id} for {owner.name}, with {', '.join(record.scopes)}:")
                 print(key)
                 print("Keep it now: it is not stored and cannot be shown again.", file=sys.stderr)
                 return 0
             if args.action == "list":
-                for key in await service.list_keys(tenant.id):
-                    state = "revoked" if key.revoked_at else "active"
-                    print(f"{key.id}\t{key.prefix}…\t{key.name}\t{','.join(key.scopes)}\t{state}")
+                for api_key in await service.list_keys(owner.id):
+                    state = "revoked" if api_key.revoked_at else "active"
+                    print(f"{api_key.id}\t{api_key.prefix}…\t{api_key.name}\t"
+                          f"{','.join(api_key.scopes)}\t{state}")
                 return 0
-            await service.revoke_key(tenant.id, args.key_id)
+            await service.revoke_key(owner.id, args.key_id)
             print(f"Key {args.key_id} is revoked.")
             return 0
     except AppError as exc:

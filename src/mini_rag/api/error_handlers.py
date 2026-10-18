@@ -22,4 +22,4 @@ async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
 
 
 def register_error_handlers(app: FastAPI) -> None:
-    app.add_exception_handler(AppError, handle_app_error)
+    app.exception_handler(AppError)(handle_app_error)

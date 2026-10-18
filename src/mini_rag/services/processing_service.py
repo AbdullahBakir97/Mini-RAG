@@ -27,8 +27,8 @@ class ProcessingService:
         previous chunks in the same transaction, so readers never see a mix.
         """
         project = await self.uow.projects.get_by_name(project_name)
-        record = project and await self.uow.files.get_by_key(project.id, file_key)
-        if record is None:
+        record = await self.uow.files.get_by_key(project.id, file_key) if project else None
+        if project is None or record is None:
             raise FileNotFound()
 
         path = self.storage.get_file_path(project.folder, file_key)

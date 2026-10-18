@@ -13,8 +13,11 @@ Run the same checks as CI:
 
 ```bash
 ruff check .
-pytest
+mypy
+pytest --cov
 ```
+
+`mypy` checks the types of everything in `src/`, the bodies of untyped functions included; the repositories are typed as their interfaces, so a SQL repository that drifts from its interface fails here as well as in `tests/test_repository_contracts.py`. `pytest --cov` measures line and branch coverage and fails below 95% (`fail_under` in `pyproject.toml`); without `--cov`, tests run without measuring.
 
 Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings and answers come from deterministic fakes, so the tests need no API key or network.
 
@@ -79,6 +82,6 @@ alembic upgrade head
 ## Workflow
 
 - Branch from `start-001`, the default branch, and keep each pull request to one topic.
-- Every change comes with tests; CI runs `ruff check .` and `pytest` on Python 3.11 and 3.12 against PostgreSQL 16 with pgvector, type-checks, tests and builds the web app, and a pull request merges only when it passes.
+- Every change comes with tests; CI runs `ruff check .`, `mypy` and `pytest --cov` (failing below 95% coverage) on Python 3.11 and 3.12 against PostgreSQL 16 with pgvector, type-checks, tests and builds the web app, and a pull request merges only when it passes.
 - CI also measures retrieval with `mini-rag eval` and a real embedding model, and fails when it gets worse than the baseline. A change that improves it updates the baseline in the same pull request; see [Evaluation](evaluation.md#baselines-and-ci).
 - See [CONTRIBUTING.md](../.github/CONTRIBUTING.md) for the architecture rules and style.

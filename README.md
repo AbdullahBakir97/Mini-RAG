@@ -116,7 +116,7 @@ curl -X POST http://localhost:8000/api/v1/ask/demo \
 
 ## Tech stack
 
-FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · Vue 3, TypeScript and Vite, served by nginx · pytest, ruff and Vitest in GitHub Actions
+FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · Vue 3, TypeScript and Vite, served by nginx · pytest, ruff, mypy and Vitest in GitHub Actions
 
 ## Contributing
 

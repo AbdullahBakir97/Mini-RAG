@@ -86,7 +86,8 @@ def answer_metrics(results: Iterable[AnswerResult]) -> AnswerMetrics:
         cites_expected=_mean([float(any(c.relevant for c in result.citations))
                               for result in answered]),
         grounded=_mean([result.grounded for result in judged if result.grounded is not None]),
-        correct=_mean([0.0 if not result.answered else result.correct
+        # An unanswered question counts as wrong; an answer the judge did not grade, not at all.
+        correct=_mean([result.correct if result.answered and result.correct is not None else 0.0
                        for result in answerable
                        if not result.answered or result.correct is not None]),
         unjudged=sum(1 for result in judged

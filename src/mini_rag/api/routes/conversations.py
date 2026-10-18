@@ -46,13 +46,17 @@ def _citations(citations: list[StoredCitation]) -> list[CitationResponse]:
 
 
 def _feedback(feedback: Feedback | None) -> FeedbackResponse | None:
-    if feedback is None:
-        return None
+    return None if feedback is None else _given_feedback(feedback)
+
+
+def _given_feedback(feedback: Feedback) -> FeedbackResponse:
+    assert feedback.created_at is not None  # Feedback read back is stored.
     return FeedbackResponse(rating=feedback.rating, comment=feedback.comment,
                             created_at=feedback.created_at)
 
 
 def _message(message: ConversationMessage) -> MessageResponse:
+    assert message.id is not None and message.created_at is not None  # Read back, so stored.
     return MessageResponse(
         id=message.id, role=message.role, content=message.content,
         citations=_citations(message.citations),
@@ -141,5 +145,5 @@ async def list_feedback(project_id: ProjectId, page: PaginationDep, service: Con
         items=[RatedAnswerResponse(conversation_id=item.conversation_id,
                                    message_id=item.message_id, question=item.question,
                                    answer=item.answer, citations=_citations(item.citations),
-                                   feedback=_feedback(item.feedback))
+                                   feedback=_given_feedback(item.feedback))
                for item in result.page.items])

@@ -21,12 +21,12 @@ class _ContextFilter(logging.Filter):
     """Adds the current request id and tenant to each record."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = log_context.request_id.get()
-        record.tenant = log_context.tenant.get()
-        tags = [f"request_id={record.request_id}"] if record.request_id else []
-        if record.tenant:
-            tags.append(f"tenant={record.tenant}")
-        record.context = f" [{' '.join(tags)}]" if tags else ""
+        request_id, tenant = log_context.request_id.get(), log_context.tenant.get()
+        tags = [f"request_id={request_id}"] if request_id else []
+        if tenant:
+            tags.append(f"tenant={tenant}")
+        record.__dict__.update(request_id=request_id, tenant=tenant,
+                               context=f" [{' '.join(tags)}]" if tags else "")
         return True
 
 

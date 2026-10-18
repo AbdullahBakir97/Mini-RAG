@@ -38,7 +38,7 @@ class Usage:
     cost_usd: float | None = 0.0
 
     def add(self, usage: TokenUsage | None, cost: float | None) -> "Usage":
-        if usage is None or self.input_tokens is None:
+        if usage is None or self.input_tokens is None or self.output_tokens is None:
             return Usage(None, None, None)
         return Usage(self.input_tokens + usage.input_tokens,
                      self.output_tokens + usage.output_tokens,

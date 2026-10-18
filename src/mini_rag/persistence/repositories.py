@@ -7,13 +7,17 @@ from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    CursorResult,
     DateTime,
     Interval,
+    Result,
+    Select,
     String,
+    Table,
     and_,
     any_,
     bindparam,
@@ -38,6 +42,7 @@ from mini_rag.domain.models import (
     Chunk,
     Conversation,
     ConversationMessage,
+    DeliveryStatus,
     Feedback,
     FeedbackCounts,
     FileRecord,
@@ -46,6 +51,8 @@ from mini_rag.domain.models import (
     JobStatus,
     Project,
     RatedAnswer,
+    Rating,
+    Role,
     ScoredChunk,
     SearchFilters,
     StoredCitation,
@@ -56,6 +63,19 @@ from mini_rag.domain.models import (
     Webhook,
     WebhookDelivery,
     Widget,
+)
+from mini_rag.domain.repositories import (
+    AnswerRepository,
+    ApiKeyRepository,
+    ChunkRepository,
+    ConversationRepository,
+    FileRepository,
+    JobRepository,
+    ProjectRepository,
+    TenantRepository,
+    UsageRepository,
+    WebhookRepository,
+    WidgetRepository,
 )
 
 from .tables import (
@@ -74,6 +94,16 @@ from .tables import (
     WebhookRow,
     WidgetRow,
 )
+
+
+async def _number(session: AsyncSession, query: Select[Any]) -> int:
+    """The single number a query returns, such as a count or a sum."""
+    return await session.scalar(query) or 0
+
+
+def _affected(result: Result[Any]) -> int:
+    """How many rows an INSERT, UPDATE or DELETE changed."""
+    return cast(CursorResult[Any], result).rowcount
 
 
 def _project(row: ProjectRow) -> Project:
@@ -126,7 +156,7 @@ class SqlProjectRepository:
     async def get_or_create(self, name: str) -> Project:
         if self.tenant_id is None:
             raise RuntimeError("Projects can only be created for a tenant")
-        tenant = _tenant(await self.session.get(TenantRow, self.tenant_id))
+        tenant = _tenant(await self.session.get_one(TenantRow, self.tenant_id))
         # INSERT ... ON CONFLICT DO NOTHING avoids a race between two
         # requests creating the same project.
         await self.session.execute(
@@ -145,14 +175,14 @@ class SqlProjectRepository:
         return [_project(row) for row in rows]
 
     async def count(self) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(ProjectRow).where(*self._mine()))
 
     async def delete(self, name: str) -> bool:
         # Files, chunks, answers and conversations go with it (ON DELETE CASCADE).
         result = await self.session.execute(
             delete(ProjectRow).where(ProjectRow.name == name, *self._mine()))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
 
 def _tenant(row: TenantRow) -> Tenant:
@@ -177,7 +207,8 @@ class SqlTenantRepository:
     async def get_or_create(self, name: str) -> Tenant:
         await self.session.execute(
             pg_insert(TenantRow).values(name=name).on_conflict_do_nothing(index_elements=["name"]))
-        return await self.get_by_name(name)
+        return _tenant((await self.session.execute(
+            select(TenantRow).where(TenantRow.name == name))).scalar_one())
 
     async def list_all(self) -> list[Tenant]:
         rows = await self.session.scalars(select(TenantRow).order_by(TenantRow.name))
@@ -204,19 +235,19 @@ class SqlUsageRepository:
 
     async def count_request(self, tenant_id: int) -> tuple[int, datetime]:
         window = func.date_trunc("minute", func.now())
-        row = (await self.session.execute(
+        count, window_start = (await self.session.execute(
             pg_insert(RequestCountRow).values(tenant_id=tenant_id, window_start=window, count=1)
             .on_conflict_do_update(index_elements=["tenant_id", "window_start"],
                                    set_={"count": RequestCountRow.count + 1})
             .returning(RequestCountRow.count, RequestCountRow.window_start))).one()
-        if row.count == 1:
+        if count == 1:
             # A new minute: forget the tenant's minutes from over an hour ago.
             await self.session.execute(
                 delete(RequestCountRow).where(
                     RequestCountRow.tenant_id == tenant_id,
                     RequestCountRow.window_start
                     < func.now() - bindparam("hour", timedelta(hours=1), type_=Interval)))
-        return row.count, row.window_start
+        return count, window_start
 
     async def tenant_usage(self, tenant_id: int) -> TenantUsage:
         mine = select(ProjectRow.id).where(ProjectRow.tenant_id == tenant_id).scalar_subquery()
@@ -228,7 +259,7 @@ class SqlUsageRepository:
                 func.coalesce(func.sum(AnswerRow.cost_usd), 0).label("cost_usd"),
                 _MONTH_START.label("period_start"),
             ).where(AnswerRow.project_id.in_(mine), AnswerRow.created_at >= _MONTH_START))).one()
-        storage = await self.session.scalar(
+        storage = await _number(self.session,
             select(func.coalesce(func.sum(FileRow.size_bytes), 0))
             .where(FileRow.project_id.in_(mine)))
         return TenantUsage(period_start=answers.period_start, answers=answers.answers,
@@ -250,10 +281,10 @@ class SqlApiKeyRepository:
 
     async def create(self, *, tenant_id: int, name: str, prefix: str, key_hash: str,
                      scopes: Sequence[str]) -> ApiKey:
-        row = await self.session.scalar(
+        row = (await self.session.execute(
             insert(ApiKeyRow).values(id=str(uuid.uuid4()), tenant_id=tenant_id, name=name,
                                      prefix=prefix, key_hash=key_hash, scopes=list(scopes))
-            .returning(ApiKeyRow))
+            .returning(ApiKeyRow))).scalar_one()
         return _api_key(row)
 
     async def find_active(self, key_hash: str) -> ApiKey | None:
@@ -274,7 +305,7 @@ class SqlApiKeyRepository:
             .where(ApiKeyRow.id == key_id, ApiKeyRow.tenant_id == tenant_id,
                    ApiKeyRow.revoked_at.is_(None))
             .values(revoked_at=func.now()))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
     async def touch(self, key_id: str) -> None:
         await self.session.execute(
@@ -315,7 +346,7 @@ class SqlFileRepository:
         # Its chunks go with it (ON DELETE CASCADE).
         result = await self.session.execute(
             delete(FileRow).where(FileRow.project_id == project_id, FileRow.key == key))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
     async def get_by_key(self, project_id: int, key: str) -> FileRecord | None:
         row = await self.session.scalar(
@@ -330,7 +361,7 @@ class SqlFileRepository:
         return [_file(row) for row in rows]
 
     async def count_for_project(self, project_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(FileRow).where(FileRow.project_id == project_id))
 
 
@@ -355,11 +386,11 @@ class SqlChunkRepository:
         return [_chunk(row) for row in rows]
 
     async def count_for_file(self, file_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(ChunkRow).where(ChunkRow.file_id == file_id))
 
     async def count_for_project(self, project_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(ChunkRow).where(ChunkRow.project_id == project_id))
 
     async def list_unembedded(self, project_id: int, *, file_id: int | None,
@@ -376,7 +407,7 @@ class SqlChunkRepository:
             return
         # A plain UPDATE per ID: unlike the ORM's bulk update, it does not
         # fail when a chunk was deleted meanwhile (e.g. by reprocessing).
-        table = ChunkRow.__table__
+        table = cast(Table, ChunkRow.__table__)
         await self.session.execute(
             update(table).where(table.c.id == bindparam("chunk_id"))
             .values(embedding=bindparam("vector")),
@@ -384,7 +415,7 @@ class SqlChunkRepository:
              for chunk_id, vector in embeddings.items()])
 
     async def count_embedded_for_project(self, project_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(ChunkRow)
             .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None)))
 
@@ -512,7 +543,8 @@ def _at_most_per_file(hits: list[ScoredChunk], per_file: int | None,
                       top_k: int) -> list[ScoredChunk]:
     if per_file is None:
         return hits[:top_k]
-    kept, counts = [], Counter()
+    kept: list[ScoredChunk] = []
+    counts: Counter[str] = Counter()
     for hit in hits:
         if counts[hit.file_key] < per_file:
             kept.append(hit)
@@ -555,15 +587,18 @@ def _conversation(row: ConversationRow) -> Conversation:
 
 
 def _feedback(row: ConversationMessageRow) -> Feedback | None:
-    if row.feedback_rating is None:
-        return None
-    return Feedback(rating=row.feedback_rating, comment=row.feedback_comment,
+    return None if row.feedback_rating is None else _given_feedback(row)
+
+
+def _given_feedback(row: ConversationMessageRow) -> Feedback:
+    """The rating of an answer that was rated."""
+    return Feedback(rating=cast(Rating, row.feedback_rating), comment=row.feedback_comment,
                     created_at=row.feedback_at)
 
 
 def _message(row: ConversationMessageRow) -> ConversationMessage:
     return ConversationMessage(
-        role=row.role, content=row.content,
+        role=cast(Role, row.role), content=row.content,
         citations=[StoredCitation(**citation) for citation in row.citations],
         prompt_version=row.prompt_version, search_question=row.search_question,
         created_at=row.created_at, id=row.id, feedback=_feedback(row))
@@ -576,11 +611,11 @@ class SqlConversationRepository:
 
     async def create(self, project_id: int, title: str | None,
                      widget_id: str | None = None) -> Conversation:
-        row = await self.session.scalar(
+        row = (await self.session.execute(
             insert(ConversationRow)
             .values(id=str(uuid.uuid4()), project_id=project_id, title=title,
                     widget_id=widget_id)
-            .returning(ConversationRow))
+            .returning(ConversationRow))).scalar_one()
         return _conversation(row)
 
     async def get(self, project_id: int, conversation_id: str) -> Conversation | None:
@@ -598,7 +633,7 @@ class SqlConversationRepository:
         return [_conversation(row) for row in rows]
 
     async def count_for_project(self, project_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(ConversationRow)
             .where(ConversationRow.project_id == project_id))
 
@@ -606,7 +641,7 @@ class SqlConversationRepository:
         result = await self.session.execute(
             delete(ConversationRow).where(ConversationRow.id == conversation_id,
                                           ConversationRow.project_id == project_id))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
     async def messages(self, conversation_id: str, *,
                        last: int | None = None) -> list[ConversationMessage]:
@@ -623,13 +658,13 @@ class SqlConversationRepository:
         ids = []
         # One insert per message keeps their ids in order.
         for message in messages:
-            ids.append(await self.session.scalar(
+            ids.append((await self.session.execute(
                 insert(ConversationMessageRow).values(
                     conversation_id=conversation_id, role=message.role, content=message.content,
                     citations=[asdict(citation) for citation in message.citations],
                     prompt_version=message.prompt_version,
                     search_question=message.search_question)
-                .returning(ConversationMessageRow.id)))
+                .returning(ConversationMessageRow.id))).scalar_one())
         values: dict = {"updated_at": func.now()}
         if title is not None:
             values["title"] = title
@@ -671,7 +706,7 @@ class SqlConversationRepository:
         return [RatedAnswer(conversation_id=row.conversation_id, message_id=row.id,
                             question=asked_text or "", answer=row.content,
                             citations=[StoredCitation(**c) for c in row.citations],
-                            feedback=_feedback(row))
+                            feedback=_given_feedback(row))
                 for row, asked_text in rows]
 
     async def count_feedback(self, project_id: int) -> FeedbackCounts:
@@ -695,8 +730,9 @@ class SqlConversationRepository:
 def _job(row: JobRow, project_name: str, file_key: str, tenant_id: int) -> Job:
     return Job(id=row.id, project_id=row.project_id, project_name=project_name,
                file_id=row.file_id, file_key=file_key, chunk_size=row.chunk_size,
-               overlap_size=row.overlap_size, status=row.status, attempts=row.attempts,
-               max_attempts=row.max_attempts, created_at=row.created_at, stage=row.stage,
+               overlap_size=row.overlap_size, status=cast(JobStatus, row.status),
+               attempts=row.attempts, max_attempts=row.max_attempts, created_at=row.created_at,
+               stage=cast(JobStage | None, row.stage),
                progress=row.progress, chunks_count=row.chunks_count,
                error_signal=row.error_signal, started_at=row.started_at,
                finished_at=row.finished_at, tenant_id=tenant_id)
@@ -722,12 +758,13 @@ class SqlJobRepository:
 
     async def add(self, *, project_id: int, file_id: int, chunk_size: int, overlap_size: int,
                   max_attempts: int) -> Job:
-        job_id = await self.session.scalar(
+        job_id = (await self.session.execute(
             insert(JobRow).values(id=str(uuid.uuid4()), project_id=project_id, file_id=file_id,
                                   chunk_size=chunk_size, overlap_size=overlap_size,
                                   max_attempts=max_attempts)
-            .returning(JobRow.id))
-        return await self._by_id(job_id)
+            .returning(JobRow.id))).scalar_one()
+        return _job(*(await self.session.execute(
+            self._select().where(JobRow.id == job_id))).one())
 
     async def get(self, project_id: int, job_id: str) -> Job | None:
         row = (await self.session.execute(
@@ -742,7 +779,7 @@ class SqlJobRepository:
         return [_job(*row) for row in rows]
 
     async def count_for_project(self, project_id: int, *, status: JobStatus | None) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(JobRow).where(*self._in_project(project_id, status)))
 
     @staticmethod
@@ -778,7 +815,7 @@ class SqlJobRepository:
                    JobRow.attempts >= JobRow.max_attempts)
             .values(status="failed", finished_at=func.now(), locked_until=None,
                     error_signal="job_abandoned"))
-        return result.rowcount
+        return _affected(result)
 
     async def set_progress(self, job_id: str, stage: JobStage, progress: float,
                            lease_seconds: int) -> None:
@@ -793,7 +830,7 @@ class SqlJobRepository:
                     error_signal=None, locked_until=None, finished_at=func.now()))
 
     async def fail(self, job_id: str, signal: str, retry_at: datetime | None) -> None:
-        values = {"error_signal": signal, "locked_until": None}
+        values: dict[str, Any] = {"error_signal": signal, "locked_until": None}
         if retry_at is None:
             values |= {"status": "failed", "finished_at": func.now()}
         else:
@@ -821,7 +858,8 @@ def _webhook(row: WebhookRow) -> Webhook:
 
 def _delivery(row: WebhookDeliveryRow) -> WebhookDelivery:
     return WebhookDelivery(id=row.id, webhook_id=row.webhook_id, event=row.event,
-                           payload=row.payload, status=row.status, attempts=row.attempts,
+                           payload=row.payload, status=cast(DeliveryStatus, row.status),
+                           attempts=row.attempts,
                            created_at=row.created_at, next_attempt_at=row.next_attempt_at,
                            response_status=row.response_status, error=row.error,
                            delivered_at=row.delivered_at)
@@ -834,11 +872,11 @@ class SqlWebhookRepository:
 
     async def create(self, *, project_id: int, url: str, events: Sequence[str], secret: str,
                      description: str | None) -> Webhook:
-        row = await self.session.scalar(
+        row = (await self.session.execute(
             insert(WebhookRow).values(id=str(uuid.uuid4()), project_id=project_id, url=url,
                                       events=list(events), secret=secret,
                                       description=description)
-            .returning(WebhookRow))
+            .returning(WebhookRow))).scalar_one()
         return _webhook(row)
 
     async def get(self, project_id: int, webhook_id: str) -> Webhook | None:
@@ -855,7 +893,7 @@ class SqlWebhookRepository:
         return [_webhook(row) for row in rows]
 
     async def count_for_project(self, project_id: int) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(WebhookRow)
             .where(WebhookRow.project_id == project_id))
 
@@ -863,7 +901,7 @@ class SqlWebhookRepository:
         result = await self.session.execute(
             delete(WebhookRow).where(WebhookRow.id == webhook_id,
                                      WebhookRow.project_id == project_id))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
     async def enqueue(self, project_id: int, event: str, payload: Mapping[str, Any]) -> int:
         subscribed = select(
@@ -874,14 +912,14 @@ class SqlWebhookRepository:
         result = await self.session.execute(
             insert(WebhookDeliveryRow)
             .from_select(["id", "webhook_id", "event", "payload"], subscribed))
-        return result.rowcount
+        return _affected(result)
 
     async def add_delivery(self, webhook_id: str, event: str,
                            payload: Mapping[str, Any]) -> WebhookDelivery:
-        row = await self.session.scalar(
+        row = (await self.session.execute(
             insert(WebhookDeliveryRow).values(id=str(uuid.uuid4()), webhook_id=webhook_id,
                                               event=event, payload=dict(payload))
-            .returning(WebhookDeliveryRow))
+            .returning(WebhookDeliveryRow))).scalar_one()
         return _delivery(row)
 
     async def claim_delivery(self, lease_seconds: int) -> tuple[WebhookDelivery, Webhook] | None:
@@ -900,7 +938,7 @@ class SqlWebhookRepository:
             .returning(WebhookDeliveryRow))
         if row is None:
             return None
-        webhook = await self.session.get(WebhookRow, row.webhook_id)
+        webhook = await self.session.get_one(WebhookRow, row.webhook_id)
         return _delivery(row), _webhook(webhook)
 
     async def record_attempt(self, delivery_id: str, *, delivered: bool,
@@ -925,7 +963,7 @@ class SqlWebhookRepository:
         return [_delivery(row) for row in rows]
 
     async def count_deliveries(self, webhook_id: str) -> int:
-        return await self.session.scalar(
+        return await _number(self.session,
             select(func.count()).select_from(WebhookDeliveryRow)
             .where(WebhookDeliveryRow.webhook_id == webhook_id))
 
@@ -953,7 +991,8 @@ class SqlWidgetRepository:
             insert(WidgetRow).values(id=widget_id, project_id=project_id, name=name,
                                      welcome=welcome, accent=accent,
                                      allowed_origins=list(allowed_origins)))
-        return await self.get(widget_id)
+        return _widget(*(await self.session.execute(
+            self._select().where(WidgetRow.id == widget_id))).one())
 
     async def get(self, widget_id: str) -> Widget | None:
         found = (await self.session.execute(
@@ -973,13 +1012,13 @@ class SqlWidgetRepository:
         result = await self.session.execute(
             update(WidgetRow).where(WidgetRow.id == widget_id, WidgetRow.project_id == project_id)
             .values(**values))
-        return await self.get(widget_id) if result.rowcount else None
+        return await self.get(widget_id) if _affected(result) else None
 
     async def delete(self, project_id: int, widget_id: str) -> bool:
         result = await self.session.execute(
             delete(WidgetRow).where(WidgetRow.id == widget_id,
                                     WidgetRow.project_id == project_id))
-        return result.rowcount > 0
+        return _affected(result) > 0
 
 
 class SqlUnitOfWork:
@@ -988,17 +1027,18 @@ class SqlUnitOfWork:
         """``tenant_id`` limits projects to that tenant's; workers act for any."""
         self.session = session
         self.tenant_id = tenant_id
-        self.projects = SqlProjectRepository(session, tenant_id)
-        self.files = SqlFileRepository(session)
-        self.chunks = SqlChunkRepository(session)
-        self.answers = SqlAnswerRepository(session)
-        self.conversations = SqlConversationRepository(session)
-        self.jobs = SqlJobRepository(session)
-        self.webhooks = SqlWebhookRepository(session)
-        self.widgets = SqlWidgetRepository(session)
-        self.tenants = SqlTenantRepository(session)
-        self.api_keys = SqlApiKeyRepository(session)
-        self.usage = SqlUsageRepository(session)
+        # Typed as the interfaces, so the type checker holds each class to its interface.
+        self.projects: ProjectRepository = SqlProjectRepository(session, tenant_id)
+        self.files: FileRepository = SqlFileRepository(session)
+        self.chunks: ChunkRepository = SqlChunkRepository(session)
+        self.answers: AnswerRepository = SqlAnswerRepository(session)
+        self.conversations: ConversationRepository = SqlConversationRepository(session)
+        self.jobs: JobRepository = SqlJobRepository(session)
+        self.webhooks: WebhookRepository = SqlWebhookRepository(session)
+        self.widgets: WidgetRepository = SqlWidgetRepository(session)
+        self.tenants: TenantRepository = SqlTenantRepository(session)
+        self.api_keys: ApiKeyRepository = SqlApiKeyRepository(session)
+        self.usage: UsageRepository = SqlUsageRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
