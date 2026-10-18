@@ -10,10 +10,10 @@
     "min_score": 0.3
   },
   "metrics": {
-    "hit_rate": 0.9565,
-    "recall": 0.9565,
-    "mrr": 0.9022,
-    "above_min_score": 0.9565,
+    "hit_rate": 0.9783,
+    "recall": 0.9783,
+    "mrr": 0.9185,
+    "above_min_score": 0.9783,
     "rejected": 0.0
   }
 }
