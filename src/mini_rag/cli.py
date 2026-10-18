@@ -452,7 +452,7 @@ async def _tenants_and_keys(args: argparse.Namespace) -> int:
 
 async def _work(workers: int) -> int:
     settings = get_settings()
-    configure_logging(settings.LOG_LEVEL)
+    configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
     engine = create_engine(settings.DATABASE_URL)
     embedder = create_embedder(settings)
     sender = create_webhook_sender(settings)

@@ -36,6 +36,7 @@ const MESSAGES: Record<string, string> = {
   rate_limited: "Too many requests this minute. Wait a moment and try again.",
   answer_quota_exceeded: "This month's answers are used up. Ask the administrator for a higher quota.",
   storage_quota_exceeded: "The file does not fit in the storage left. Delete files or ask for more room.",
+  internal_error: "The server failed unexpectedly. Its log has the details, under the request's id.",
   validation_error: "The request was not valid.",
   network_error: "The server could not be reached. Is the API running?",
 };

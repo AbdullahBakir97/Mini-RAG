@@ -1,0 +1,25 @@
+"""What the current log lines are about: a request (or a job), and its tenant.
+
+The values live in context variables, so each request, and each job a
+worker runs, has its own, and every log line written meanwhile carries
+them (see logging_config).
+"""
+
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+request_id: ContextVar[str | None] = ContextVar("request_id", default=None)
+tenant: ContextVar[str | None] = ContextVar("tenant", default=None)
+
+
+@contextmanager
+def log_context(request: str | None, tenant_name: str | None = None) -> Iterator[None]:
+    """Tag the log lines written inside with ``request`` and ``tenant_name``."""
+    request_token = request_id.set(request)
+    tenant_token = tenant.set(tenant_name)
+    try:
+        yield
+    finally:
+        tenant.reset(tenant_token)
+        request_id.reset(request_token)

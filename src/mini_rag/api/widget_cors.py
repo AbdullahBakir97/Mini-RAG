@@ -20,9 +20,9 @@ PREFLIGHT = {
 }
 RESPONSE = {
     "Access-Control-Allow-Origin": "*",
-    # So the widget can say when to try again.
+    # So the widget can say when to try again, and which request failed.
     "Access-Control-Expose-Headers":
-        "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset",
+        "Retry-After, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-Request-ID",
 }
 
 

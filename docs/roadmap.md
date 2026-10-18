@@ -94,7 +94,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 - [x] A multi-stage, non-root Docker image and a full `compose.yaml` stack.
 - [ ] Automated deployments to staging and production.
-- [ ] Structured logs with request IDs, metrics and tracing.
+- [x] Structured logs (text or JSON) with a request id on every line and response, and the tenant.
+- [ ] Metrics and tracing.
 - [ ] Cost dashboards and budget alerts; backups with tested restores.
 - [ ] Type checking and a coverage threshold in CI.
 

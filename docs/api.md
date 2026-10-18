@@ -2,7 +2,9 @@
 
 All endpoints are under `/api/v1` (only `/` sits outside it, redirecting to `/docs`). The interactive reference, generated from the code, is at `/docs` on a running server (and the schema at `/openapi.json`).
 
-Every error response has the form `{"signal": "<name>"}` with a matching HTTP status; validation errors (`422`) list the fields that failed.
+Every error response has the form `{"signal": "<name>"}` with a matching HTTP status; validation errors (`422`) list the fields that failed. An unexpected failure is `500` `{"signal": "internal_error", "request_id": "…"}`.
+
+Every response carries an `X-Request-ID` header, which the server's log lines for that request carry too: quote it when reporting a problem. A client, or a proxy in front of the API, may send its own `X-Request-ID` (up to 128 letters, digits and `._:-`) to follow a request across services; it is kept.
 
 ## Authentication and tenants
 

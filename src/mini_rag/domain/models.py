@@ -336,6 +336,7 @@ class Widget:
     accent: str
     allowed_origins: tuple[str, ...]
     created_at: datetime
+    tenant_name: str = ""
 
 
 DeliveryStatus = Literal["pending", "delivered", "failed"]

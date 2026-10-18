@@ -40,6 +40,7 @@ from mini_rag.api.schemas import (
     WidgetUpdateRequest,
     error_responses,
 )
+from mini_rag.core import log_context
 from mini_rag.core.errors import (
     AnswerQuotaExceeded,
     AppError,
@@ -133,6 +134,7 @@ async def open_widget(widget_id: WidgetIdPath, request: Request, session: Sessio
     """The widget, if the page asking may use it; counted against its tenant's rate limit."""
     widget = await WidgetService(SqlUnitOfWork(session)).open(
         widget_id, request.headers.get("origin"), request.headers.get("host"))
+    log_context.tenant.set(widget.tenant_name)
     response.headers.update(rate_headers(await limits.count_request(widget.tenant_id)))
     return widget
 

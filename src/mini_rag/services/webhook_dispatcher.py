@@ -9,6 +9,8 @@ from contextlib import AbstractAsyncContextManager
 from datetime import UTC, datetime, timedelta
 
 from mini_rag.core.errors import WebhookFailed
+from mini_rag.core.log_context import log_context
+from mini_rag.domain.models import Webhook, WebhookDelivery
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.domain.webhook_sender import WebhookSender
 
@@ -67,7 +69,11 @@ class WebhookDispatcher:
         if claimed is None:
             return False
         delivery, webhook = claimed
+        with log_context(f"delivery:{delivery.id}"):
+            await self._deliver(delivery, webhook)
+        return True
 
+    async def _deliver(self, delivery: WebhookDelivery, webhook: Webhook) -> None:
         body = json.dumps({"id": delivery.id, **delivery.payload},
                           separators=(",", ":"), ensure_ascii=False).encode()
         headers = {
@@ -98,4 +104,3 @@ class WebhookDispatcher:
             then = f"trying again at {retry_at.isoformat()}" if retry_at else "giving up"
             logger.warning("Webhook delivery %s (%s) to %s failed: %s; %s", delivery.id,
                            delivery.event, webhook.url, error, then)
-        return True

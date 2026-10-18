@@ -8,6 +8,7 @@ from fastapi import Depends, Request, Response, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from mini_rag.core import log_context
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.errors import EmbeddingNotConfigured, LLMNotConfigured, ScopeMissing
 from mini_rag.domain.embedder import Embedder
@@ -70,8 +71,13 @@ async def get_principal(
     """Who the request acts for: the API key's tenant, or the default tenant when auth is off."""
     service = AuthService(SqlUnitOfWork(session))
     if not settings.AUTH_ENABLED:
-        return await service.anonymous()
-    return await service.authenticate(credentials.credentials if credentials else header_key)
+        principal = await service.anonymous()
+    else:
+        principal = await service.authenticate(
+            credentials.credentials if credentials else header_key)
+    # The request's log lines name its tenant (RequestContext ends this with the request).
+    log_context.tenant.set(principal.tenant_name)
+    return principal
 
 
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
