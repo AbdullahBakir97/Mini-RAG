@@ -418,3 +418,56 @@ async def test_a_rating_must_be_up_or_down(uow):
 
     with pytest.raises(IntegrityError):
         await uow.conversations.set_feedback(message_id, Feedback("sideways"))
+
+
+async def hybrid_project(uow):
+    project = await uow.projects.get_or_create("demo")
+    file = await add_file(uow, project, key="k_guide.txt")
+    await uow.chunks.replace_for_file(file, [
+        Chunk(0, "Deploys run from the main branch."),
+        Chunk(1, "Rollbacks restore the previous release."),
+        Chunk(2, "Not indexed, and about rollbacks too.")])
+    await embed_all(uow, project, {
+        "Deploys run from the main branch.": vector(1.0, 0.0),
+        "Rollbacks restore the previous release.": vector(0.8, 0.6)})
+    return project
+
+
+async def test_hybrid_search_ranks_chunks_sharing_the_questions_words_higher(uow):
+    project = await hybrid_project(uow)
+
+    by_meaning = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=5, min_score=None)
+    hybrid = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=5, min_score=None,
+                                     query="How do I roll back a release?")
+
+    assert [hit.chunk.index for hit in by_meaning] == [0, 1]
+    # Second by meaning but first by words ("release"), so first overall.
+    assert [hit.chunk.index for hit in hybrid] == [1, 0]
+    # Scores stay the cosine similarity, which the minimum score is compared with.
+    assert [round(hit.score, 4) for hit in hybrid] == [0.8, 1.0]
+    assert hybrid[0].file_key == "k_guide.txt"
+
+
+async def test_hybrid_search_keeps_the_minimum_score_and_top_k(uow):
+    project = await hybrid_project(uow)
+
+    strict = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=5, min_score=0.9,
+                                     query="release")
+    one = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=1, min_score=None,
+                                  query="release")
+
+    assert [hit.chunk.index for hit in strict] == [0]
+    assert [hit.chunk.index for hit in one] == [1]
+
+
+async def test_hybrid_search_without_searchable_words_ranks_by_meaning(uow):
+    project = await hybrid_project(uow)
+    other = await uow.projects.get_or_create("other")
+
+    hits = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=5, min_score=None,
+                                   query="the of and")
+    elsewhere = await uow.chunks.search(other.id, vector(1.0, 0.0), top_k=5, min_score=None,
+                                        query="release")
+
+    assert [hit.chunk.index for hit in hits] == [0, 1]
+    assert elsewhere == []

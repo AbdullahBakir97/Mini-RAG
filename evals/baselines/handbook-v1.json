@@ -3,6 +3,7 @@
     "dataset": "handbook/v1",
     "embedding_model": "nomic-embed-text:v1.5",
     "embedding_dimensions": 768,
+    "search_mode": "hybrid",
     "top_k": 5,
     "chunk_size": 1000,
     "overlap_size": 200,

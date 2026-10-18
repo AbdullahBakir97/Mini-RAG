@@ -1,15 +1,24 @@
+from typing import Literal
+
 from mini_rag.core.errors import ProjectNotFound
 from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.models import ScoredChunk
 from mini_rag.domain.repositories import UnitOfWork
 
+SearchMode = Literal["hybrid", "vector"]
+
 
 class SearchService:
-    """Finds the chunks of a project that best match a question."""
+    """Finds the chunks of a project that best match a question.
 
-    def __init__(self, uow: UnitOfWork, embedder: Embedder):
+    In hybrid mode, chunks that share the question's words count as well as
+    chunks close to it in meaning; in vector mode only meaning counts.
+    """
+
+    def __init__(self, uow: UnitOfWork, embedder: Embedder, mode: SearchMode = "hybrid"):
         self.uow = uow
         self.embedder = embedder
+        self.mode = mode
 
     async def search(self, project_name: str, query: str, top_k: int,
                      min_score: float | None = None) -> list[ScoredChunk]:
@@ -25,4 +34,6 @@ class SearchService:
             return []
 
         [vector] = await self.embedder.embed([query])
-        return await self.uow.chunks.search(project.id, vector, top_k=top_k, min_score=min_score)
+        return await self.uow.chunks.search(
+            project.id, vector, top_k=top_k, min_score=min_score,
+            query=query if self.mode == "hybrid" else None)

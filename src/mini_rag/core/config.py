@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     ANSWER_MIN_SCORE: float = Field(
         default=0.3, ge=-1, le=1,
         description="Chunks scoring below this are not used for answers; none left means no answer")
+    SEARCH_MODE: Literal["hybrid", "vector"] = Field(
+        default="hybrid",
+        description="hybrid: chunks close in meaning or sharing the question's words; "
+                    "vector: close in meaning only")
 
     @model_validator(mode="before")
     @classmethod

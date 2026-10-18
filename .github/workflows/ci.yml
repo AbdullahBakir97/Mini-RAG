@@ -120,7 +120,11 @@ jobs:
       - name: Migrate the database
         run: alembic upgrade head
       - name: Evaluate retrieval
-        run: mini-rag eval evals/handbook/v1 --baseline evals/baselines/handbook-v1.json --output eval-report.json
+        run: mini-rag eval evals/handbook/v1 --baseline evals/baselines/handbook-v1.json --output eval-report.json --save-baseline eval-baseline.json
+      - name: Show this run's baseline
+        # To copy into evals/baselines/handbook-v1.json when retrieval got better.
+        if: always()
+        run: if [ -f eval-baseline.json ]; then cat eval-baseline.json; fi
       - name: Keep the report
         if: always()
         uses: actions/upload-artifact@v4
