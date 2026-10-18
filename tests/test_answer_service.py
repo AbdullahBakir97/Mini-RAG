@@ -1,12 +1,18 @@
 import pytest
 
 from mini_rag.core.errors import EmbeddingFailed, LLMFailed, ProjectNotFound
-from mini_rag.domain.models import Chunk
-from mini_rag.services.answer_service import Answer, AnswerDelta, AnswerService
+from mini_rag.domain.llm import TokenPrices, TokenUsage
+from mini_rag.domain.models import AnswerRecord, Chunk
+from mini_rag.services.answer_service import (
+    NOT_CALLED,
+    Answer,
+    AnswerDelta,
+    AnswerService,
+)
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.search_service import SearchService
 
-from .fakes import FakeEmbedder, FakeLLM, FakeUnitOfWork
+from .fakes import FAKE_USAGE, FakeEmbedder, FakeLLM, FakeUnitOfWork
 
 pytestmark = pytest.mark.anyio
 
@@ -27,8 +33,9 @@ async def uow():
     return uow
 
 
-def service(uow, llm, min_score=0.2, embedder=None):
-    return AnswerService(SearchService(uow, embedder or FakeEmbedder()), llm, min_score=min_score)
+def service(uow, llm, min_score=0.2, embedder=None, prices=None):
+    return AnswerService(SearchService(uow, embedder or FakeEmbedder()), llm, uow,
+                         min_score=min_score, prices=prices)
 
 
 async def test_answers_from_the_matching_chunks_with_citations(uow):
@@ -113,7 +120,7 @@ async def test_provider_failures_propagate(uow, llm, embedder, error):
 
 async def stream(answers, question, top_k=5):
     sources = await answers.retrieve("p1", question, top_k=top_k)
-    return [event async for event in answers.stream(question, sources)]
+    return [event async for event in answers.stream("p1", question, sources)]
 
 
 async def test_stream_sends_the_text_as_written_then_the_answer(uow):
@@ -132,7 +139,8 @@ async def test_stream_sends_the_text_as_written_then_the_answer(uow):
 async def test_stream_holds_back_a_no_answer_reply(uow):
     events = await stream(service(uow, FakeLLM("NO_ANSWER", piece_size=2)), "cats?")
 
-    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1")]
+    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1",
+                             usage=FAKE_USAGE, cost_usd=None)]
 
 
 async def test_stream_releases_text_once_it_cannot_be_no_answer(uow):
@@ -148,7 +156,8 @@ async def test_stream_without_sources_has_no_answer_and_skips_the_model(uow):
 
     events = await stream(service(uow, llm), "Where is Paris?")
 
-    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1")]
+    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1",
+                             usage=NOT_CALLED, cost_usd=0.0)]
     assert llm.calls == []
 
 
@@ -158,6 +167,67 @@ async def test_stream_failure_after_some_text_propagates(uow):
     received = []
 
     with pytest.raises(LLMFailed):
-        async for event in answers.stream("cats?", sources):
+        async for event in answers.stream("p1", "cats?", sources):
             received.append(event)
     assert received == [AnswerDelta("Cats"), AnswerDelta(" pur")]
+
+
+PRICES = TokenPrices(input_per_million=0.4, output_per_million=1.6)
+
+
+async def test_records_each_answer_with_its_usage_and_cost(uow):
+    answers = service(uow, FakeLLM("Cats purr [1]."), prices=PRICES)
+
+    answer = await answers.ask("p1", "cats?", top_k=5)
+
+    assert answer.usage == FAKE_USAGE
+    assert answer.cost_usd == pytest.approx(PRICES.cost(FAKE_USAGE))
+    project = await uow.projects.get_by_name("p1")
+    assert uow.answers.records == [AnswerRecord(
+        project_id=project.id, prompt_version="answer-v1", model="fake-llm", streamed=False,
+        answered=True, input_tokens=1200, output_tokens=40, cost_usd=answer.cost_usd)]
+    assert uow.commits >= 1
+
+
+async def test_cost_is_unknown_without_prices_or_usage(uow):
+    without_prices = await service(uow, FakeLLM("Cats purr [1].")).ask("p1", "cats?", top_k=5)
+    without_usage = await service(uow, FakeLLM("Cats purr [1].", usage=None),
+                                  prices=PRICES).ask("p1", "cats?", top_k=5)
+
+    assert (without_prices.usage, without_prices.cost_usd) == (FAKE_USAGE, None)
+    assert (without_usage.usage, without_usage.cost_usd) == (None, None)
+    assert [(r.input_tokens, r.cost_usd) for r in uow.answers.records] == [(1200, None),
+                                                                           (None, None)]
+
+
+async def test_an_answer_without_sources_costs_nothing(uow):
+    answer = await service(uow, FakeLLM(), prices=PRICES).ask("p1", "Where is Paris?", top_k=5)
+
+    assert (answer.usage, answer.cost_usd) == (TokenUsage(input_tokens=0, output_tokens=0), 0.0)
+    [record] = uow.answers.records
+    assert (record.model, record.answered, record.cost_usd) == (None, False, 0.0)
+
+
+async def test_a_no_answer_reply_still_costs_its_tokens(uow):
+    answer = await service(uow, FakeLLM("NO_ANSWER"), prices=PRICES).ask("p1", "cats?", top_k=5)
+
+    assert answer.text is None and answer.cost_usd == pytest.approx(PRICES.cost(FAKE_USAGE))
+    assert uow.answers.records[0].model == "fake-llm"
+
+
+async def test_stream_records_the_answer_with_the_streamed_usage(uow):
+    events = await stream(service(uow, FakeLLM("Cats purr [1]."), prices=PRICES), "cats?")
+
+    assert all(not isinstance(event, TokenUsage) for event in events)
+    assert events[-1].usage == FAKE_USAGE
+    [record] = uow.answers.records
+    assert (record.streamed, record.input_tokens, record.output_tokens) == (True, 1200, 40)
+
+
+async def test_failed_answers_are_not_recorded(uow):
+    with pytest.raises(LLMFailed):
+        await service(uow, FakeLLM(fail=True)).ask("p1", "cats?", top_k=5)
+    with pytest.raises(LLMFailed):
+        await stream(service(uow, FakeLLM("Cats purr all day.", fail_after=1)), "cats?")
+
+    assert uow.answers.records == []

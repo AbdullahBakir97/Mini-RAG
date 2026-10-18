@@ -72,3 +72,12 @@ def test_ask_stream_endpoint_is_documented(schema):
     assert "text/event-stream" in responses["200"]["content"]
     assert "project_not_found" in responses["404"]["description"]
     assert "llm_not_configured" in responses["503"]["description"]
+
+
+def test_project_usage_endpoint_is_documented(schema):
+    path = schema["paths"]["/api/v1/projects/{project_id}/usage"]["get"]
+
+    assert path["responses"]["200"]["content"]["application/json"]["schema"]["$ref"].endswith(
+        "ProjectUsageResponse")
+    assert "project_not_found" in path["responses"]["404"]["description"]
+    assert "usage" in schema["components"]["schemas"]["AskResponse"]["properties"]

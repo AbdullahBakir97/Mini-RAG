@@ -18,7 +18,7 @@ domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, reposit
              Embedder and LLM interfaces, response signals
 ```
 
-Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
+Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository`, `AnswerRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
 
 `core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, and `prompts` only on `domain`, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
 
@@ -30,6 +30,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Path safety | `storage/file_storage.py`: every path is checked to stay inside `FILES_DIR` |
 | Transactions | One database session per request; services call `uow.commit()`, and anything uncommitted is rolled back |
 | Database schema | `persistence/tables.py`, changed only through Alembic migrations |
+| Usage and cost | `AnswerService` records every answer's tokens and cost in the `answers` table, never the question or answer text; `GET /api/v1/projects/{project_id}/usage` adds them up |
 | Vector search | `chunks.embedding vector(1536)` with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
 
 ## Prompts

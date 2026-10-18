@@ -16,6 +16,7 @@
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
 - **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
 - **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
+- **Track** the tokens and cost of every answer, per answer and per project.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
 
 Conversations with follow-up questions are next; see the [roadmap](docs/roadmap.md).

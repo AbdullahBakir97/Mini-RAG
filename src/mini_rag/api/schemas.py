@@ -146,12 +146,21 @@ class CitationResponse(BaseModel):
     text: str
 
 
+class UsageResponse(BaseModel):
+    input_tokens: int | None = Field(description="Prompt tokens; 0 when the model was not called, "
+                                                 "null when the provider did not report them.")
+    output_tokens: int | None = Field(description="Tokens the model wrote, as for input_tokens.")
+    cost_usd: float | None = Field(description="US dollars; null when the usage or the model's "
+                                               "prices (LLM_*_PRICE_PER_MILLION) are unknown.")
+
+
 class AskResponse(BaseModel):
     signal: ResponseSignal = Field(
         description="`answer_success`, or `no_answer` when the documents do not answer the question.")
     answer: str | None = Field(description="The answer with [n] citation markers; null for `no_answer`.")
     citations: list[CitationResponse] = Field(description="The sources the answer cites, in order of first citation.")
     prompt_version: str = Field(description="The prompt that produced the answer, e.g. `answer-v1`.")
+    usage: UsageResponse = Field(description="Tokens and cost of this answer.")
 
 
 class ProjectResponse(BaseModel):
@@ -161,6 +170,16 @@ class ProjectResponse(BaseModel):
     chunks_count: int
     embedded_chunks_count: int = Field(
         description="Chunks that are indexed for search; equals chunks_count when the index is complete.")
+
+
+class ProjectUsageResponse(BaseModel):
+    answers: int = Field(description="Questions asked, streamed or not.")
+    answered: int = Field(description="Of those, how many got an answer rather than `no_answer`.")
+    input_tokens: int = Field(description="Prompt tokens of all answers that reported usage.")
+    output_tokens: int = Field(description="Tokens the model wrote, likewise.")
+    cost_usd: float = Field(description="US dollars of all answers with a known cost.")
+    unpriced_answers: int = Field(description="Model calls whose cost is unknown and not "
+                                              "included in cost_usd.")
 
 
 class FileResponse(BaseModel):
