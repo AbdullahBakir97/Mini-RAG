@@ -269,7 +269,7 @@ watch(
         {{
           project
             ? "Answers come from indexed chunks. Index the project from the banner above."
-            : "Questions are answered from this project's documents. Upload a PDF or text file to begin."
+            : "Questions are answered from this project's documents. Upload a document to begin."
         }}
       </p>
       <RouterLink v-if="!project" :to="{ name: 'documents', params: { project: name } }" class="btn btn-primary">
@@ -347,6 +347,7 @@ watch(
               :file-name="fileName(citation.file_id)"
               :chunk-index="citation.chunk_index"
               :page="citation.page"
+              :section="citation.section"
               :score="citation.score"
               :text="citation.text"
               :active="active?.turn === turn.id && active.number === citation.number"

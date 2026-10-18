@@ -41,7 +41,10 @@ class Settings(BaseSettings):
 
     # Uploaded files are stored under FILES_DIR/<project_id>/.
     FILES_DIR: Path = Path("assets/files")
-    FILE_ALLOWED_TYPES: list[str] = ["text/plain", "application/pdf"]
+    FILE_ALLOWED_TYPES: list[str] = [
+        "text/plain", "text/markdown", "text/html", "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
     FILE_MAX_SIZE: int = Field(default=10, gt=0, description="Maximum upload size in MB")
     FILE_DEFAULT_CHUNK_SIZE: int = Field(default=512_000, gt=0,
                                          description="Bytes read per upload chunk")

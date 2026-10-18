@@ -117,6 +117,7 @@ async function search() {
           :file-name="fileName(hit.file_id)"
           :chunk-index="hit.chunk_index"
           :page="hit.metadata.page"
+          :section="hit.metadata.section"
           :score="hit.score"
           :text="hit.text"
           :query="searched"

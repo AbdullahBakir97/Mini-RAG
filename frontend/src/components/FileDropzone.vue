@@ -2,6 +2,8 @@
 import { UploadCloud } from "@lucide/vue";
 import { ref } from "vue";
 
+import { ACCEPT, SUPPORTED_LABEL } from "@/lib/fileTypes";
+
 withDefaults(defineProps<{ large?: boolean; disabled?: boolean }>(), { large: false, disabled: false });
 const emit = defineEmits<{ files: [File[]] }>();
 
@@ -51,13 +53,13 @@ function picked() {
     <span class="icon"><UploadCloud :size="large ? 28 : 20" /></span>
     <div>
       <p class="title"><strong>Drop files here</strong> or <span class="link">browse</span></p>
-      <p class="subtle small">PDF and plain-text files</p>
+      <p class="subtle small">{{ SUPPORTED_LABEL }}</p>
     </div>
     <input
       ref="input"
       type="file"
       class="visually-hidden"
-      accept=".pdf,.txt,application/pdf,text/plain"
+      :accept="ACCEPT"
       multiple
       tabindex="-1"
       @change="picked"

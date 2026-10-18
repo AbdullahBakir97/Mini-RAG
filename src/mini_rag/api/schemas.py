@@ -203,6 +203,9 @@ class CitationResponse(BaseModel):
     file_id: str
     chunk_index: int
     page: int | None = Field(description="Page number for PDFs, starting at 1; null otherwise.")
+    section: str | None = Field(default=None, description=(
+        "The headings above the passage in Markdown, HTML and Word files, "
+        "e.g. \"Setup > Install\"; null otherwise."))
     score: float = Field(description="Cosine similarity to the question: 1 is the best match.")
     text: str
 

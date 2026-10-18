@@ -43,6 +43,7 @@ def ask_response(answer: Answer) -> AskResponse:
         citations=[CitationResponse(number=citation.number, file_id=citation.source.file_key,
                                     chunk_index=citation.source.chunk.index,
                                     page=citation.source.chunk.metadata.get("page"),
+                                    section=citation.source.chunk.metadata.get("section"),
                                     score=citation.source.score, text=citation.source.chunk.text)
                    for citation in answer.citations],
         prompt_version=answer.prompt_version,

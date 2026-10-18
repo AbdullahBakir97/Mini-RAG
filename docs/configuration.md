@@ -27,7 +27,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
 | `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
-| `FILE_ALLOWED_TYPES` | `["text/plain", "application/pdf"]` | MIME types accepted for upload |
+| `FILE_ALLOWED_TYPES` | Text, Markdown, HTML, PDF and Word (`.docx`) | MIME types accepted for upload. An upload with no type, or `application/octet-stream`, gets the type of its extension |
 | `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
 | `FILE_DEFAULT_CHUNK_SIZE` | `512000` | Bytes read per chunk while saving an upload |
 

@@ -11,6 +11,7 @@ const props = defineProps<{
   fileName: string;
   chunkIndex: number;
   page: number | null | undefined;
+  section?: string | null;
   score: number;
   text: string;
   number?: number;
@@ -32,6 +33,7 @@ const pieces = computed(() => highlight(text.value, props.query ?? ""));
       <FileText v-else :size="15" class="subtle" />
       <span class="file" :title="fileId">{{ fileName }}</span>
       <span v-if="page" class="badge">p. {{ page }}</span>
+      <span v-if="section" class="badge section" :title="section">{{ section }}</span>
       <span class="badge mono">#{{ chunkIndex }}</span>
       <span class="spacer" />
       <ScoreBar :score="score" />
@@ -50,6 +52,13 @@ const pieces = computed(() => highlight(text.value, props.query ?? ""));
 </template>
 
 <style scoped>
+.section {
+  overflow: hidden;
+  max-width: 220px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .source {
   padding: 12px 14px;
   border: 1px solid var(--border);

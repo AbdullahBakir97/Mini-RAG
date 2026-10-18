@@ -10,7 +10,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-CONTENT_TYPES = {".txt": "text/plain", ".pdf": "application/pdf"}
+from mini_rag.domain.file_types import CONTENT_TYPES
 
 
 class DatasetError(ValueError):

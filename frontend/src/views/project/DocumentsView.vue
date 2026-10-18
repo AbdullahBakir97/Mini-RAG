@@ -4,6 +4,7 @@ import {
   CircleCheck,
   Clock,
   Eye,
+  FileCode,
   FileText,
   FileType2,
   LoaderCircle,
@@ -23,6 +24,7 @@ import { FINISHED, type Stage, useIngest } from "@/composables/useIngest";
 import { useProject } from "@/composables/useProject";
 import { useProjects } from "@/composables/useProjects";
 import { useToasts } from "@/composables/useToasts";
+import { fileKind } from "@/lib/fileTypes";
 import { formatBytes, formatNumber, formatRelative } from "@/lib/format";
 
 const LIMIT = 20;
@@ -178,9 +180,7 @@ async function deleteProject() {
 }
 const isEmpty = computed(() => !loading.value && total.value === 0 && jobs.value.length === 0);
 
-function kind(file: FileInfo) {
-  return file.content_type === "application/pdf" ? "PDF" : "TXT";
-}
+const kind = (file: FileInfo) => fileKind(file);
 
 watch(name, () => {
   loading.value = true;
@@ -276,8 +276,9 @@ onMounted(() => load(0));
           <tr v-for="file in files" :key="file.file_id">
             <td>
               <div class="file-name">
-                <span class="file-icon" :class="kind(file).toLowerCase()">
-                  <FileType2 v-if="kind(file) === 'PDF'" :size="16" />
+                <span class="file-icon" :class="kind(file).toLowerCase()" :title="kind(file)">
+                  <FileType2 v-if="kind(file) === 'PDF' || kind(file) === 'Word'" :size="16" />
+                  <FileCode v-else-if="kind(file) === 'Markdown' || kind(file) === 'HTML'" :size="16" />
                   <FileText v-else :size="16" />
                 </span>
                 <div class="file-text">
@@ -609,6 +610,17 @@ onMounted(() => load(0));
 .file-icon.pdf {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+.file-icon.word {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.file-icon.markdown,
+.file-icon.html {
+  background: var(--warning-soft);
+  color: var(--warning);
 }
 
 .file-text {

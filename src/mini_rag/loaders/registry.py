@@ -4,6 +4,9 @@ from pathlib import PurePath
 from mini_rag.core.errors import UnsupportedFileType
 
 from .base import DocumentLoader
+from .docx_loader import DocxLoader
+from .html_loader import HtmlLoader
+from .markdown_loader import MarkdownLoader
 from .pdf_loader import PdfLoader
 from .text_loader import TextLoader
 
@@ -31,4 +34,13 @@ class LoaderRegistry:
 
 
 def default_loader_registry() -> LoaderRegistry:
-    return LoaderRegistry({".txt": TextLoader(), ".pdf": PdfLoader()})
+    markdown, html = MarkdownLoader(), HtmlLoader()
+    return LoaderRegistry({
+        ".txt": TextLoader(),
+        ".md": markdown,
+        ".markdown": markdown,
+        ".html": html,
+        ".htm": html,
+        ".pdf": PdfLoader(),
+        ".docx": DocxLoader(),
+    })

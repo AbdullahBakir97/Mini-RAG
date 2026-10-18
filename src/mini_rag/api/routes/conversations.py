@@ -40,7 +40,8 @@ def _conversation(conversation: Conversation) -> dict:
 
 def _citations(citations: list[StoredCitation]) -> list[CitationResponse]:
     return [CitationResponse(number=c.number, file_id=c.file_key, chunk_index=c.chunk_index,
-                             page=c.page, score=c.score, text=c.text) for c in citations]
+                             page=c.page, section=c.section, score=c.score, text=c.text)
+            for c in citations]
 
 
 def _feedback(feedback: Feedback | None) -> FeedbackResponse | None:

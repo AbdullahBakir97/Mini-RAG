@@ -50,7 +50,7 @@ def test_answers_with_citations(client, embedder, llm):
         "signal": "answer_success",
         "answer": "Each chunk gets an embedding vector [1].",
         "citations": [{"number": 1, "file_id": file_id, "chunk_index": 2, "page": None,
-                       "text": "Indexing stores an embedding vector per chunk."}],
+                       "section": None, "text": "Indexing stores an embedding vector per chunk."}],
         "prompt_version": "answer-v1",
         # FakeLLM's usage; no prices are configured, so the cost is unknown.
         "usage": {"input_tokens": 1200, "output_tokens": 40, "cost_usd": None},
@@ -72,6 +72,19 @@ def test_pdf_citations_carry_the_page(client, embedder, llm, make_pdf):
     citations = ask(client, question="embedding vector", min_score=0.2).json()["citations"]
 
     assert [citation["page"] for citation in citations] == [2]
+
+
+def test_markdown_citations_carry_the_section(client, embedder, llm):
+    text = b"# Guide\n\n## Indexing\n\nEach chunk gets an embedding vector."
+    upload_process_and_index(client, name="guide.md", text=text, content_type="text/markdown")
+
+    conversation = client.post("/api/v1/projects/demo/conversations", json={}).json()["id"]
+    body = ask(client, question="embedding vector", min_score=0.2,
+               conversation_id=conversation).json()
+    stored = client.get(f"/api/v1/projects/demo/conversations/{conversation}").json()
+
+    assert [c["section"] for c in body["citations"]] == ["Guide > Indexing"]
+    assert [c["section"] for c in stored["messages"][1]["citations"]] == ["Guide > Indexing"]
 
 
 def test_no_matching_chunk_means_no_answer(client, embedder, llm):

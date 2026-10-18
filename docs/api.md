@@ -34,7 +34,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 
 ## Upload a file
 
-`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other. Each file's SHA-256 is kept, and content the project already has is not stored again, whatever the file's name: the response then carries the existing file's id, so uploading the same files twice is safe.
+`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other. A missing or generic content type (`application/octet-stream`, as browsers often send for Markdown) is taken from the file's extension. Each file's SHA-256 is kept, and content the project already has is not stored again, whatever the file's name: the response then carries the existing file's id, so uploading the same files twice is safe.
 
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
@@ -75,13 +75,23 @@ The chunks are stored in the database. Processing a file again (for example with
 | `chunk_size` | `1000` | 1–100000 characters |
 | `overlap_size` | `200` | 0 or more, smaller than `chunk_size` |
 
-Supported files are `.txt` (read as UTF-8) and `.pdf`. PDF chunks also carry a `page` number in their metadata.
+Supported files, chosen by extension:
+
+| Extension | Read as | Extra chunk metadata |
+|---|---|---|
+| `.txt` | UTF-8 text | |
+| `.pdf` | One document per page | `page`, from 1 |
+| `.md`, `.markdown` | One document per section, keeping the Markdown; YAML front matter is left out | `section` |
+| `.html`, `.htm` | The readable text, one document per section; scripts, styles, navigation, footers and forms are left out | `section`, `title` (the page's `<title>`) |
+| `.docx` | One document per section; tables as one line per row, list items with `-` | `section` |
+
+A section starts at a heading (in Word, a paragraph in a heading style) and its text starts with that heading. `section` is the path of headings above it, such as `"Setup > Install"`, so chunks never mix two sections and citations can say where they come from. Scanned PDFs and the older `.doc` format are not read.
 
 | Case | Status | Response |
 |---|---|---|
 | Chunks created | `200` | `{"signal": "processing_success", ...}` |
 | No such file in this project (or not uploaded through the API) | `404` | `{"signal": "file_not_found"}` |
-| Extension is not `.txt` or `.pdf` | `415` | `{"signal": "file_type_not_supported"}` |
+| Extension is not one of the above | `415` | `{"signal": "file_type_not_supported"}` |
 | No extractable text (e.g. a scanned PDF) | `422` | `{"signal": "file_has_no_text"}` |
 | File could not be read | `422` | `{"signal": "processing_failed"}` |
 | Invalid `file_id` or chunk settings | `422` | Validation error details |
@@ -206,8 +216,8 @@ curl -X POST http://localhost:8000/api/v1/ask/demo1 \
   "signal": "answer_success",
   "answer": "Each chunk begins with up to overlap_size characters of the text before it [1], starting at a word boundary [2].",
   "citations": [
-    {"number": 1, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 2, "page": 1, "score": 0.83, "text": "..."},
-    {"number": 2, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 5, "page": 2, "score": 0.71, "text": "..."}
+    {"number": 1, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 2, "page": 1, "section": null, "score": 0.83, "text": "..."},
+    {"number": 2, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 5, "page": 2, "section": null, "score": 0.71, "text": "..."}
   ],
   "prompt_version": "answer-v1",
   "usage": {"input_tokens": 1180, "output_tokens": 41, "cost_usd": 0.0005376}

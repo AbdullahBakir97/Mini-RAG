@@ -54,10 +54,10 @@ Write a loader with a `load(path, source)` method that returns `Document`s, and 
 
 ```python
 def default_loader_registry() -> LoaderRegistry:
-    return LoaderRegistry({".txt": TextLoader(), ".pdf": PdfLoader(), ".md": MarkdownLoader()})
+    return LoaderRegistry({".txt": TextLoader(), ".pdf": PdfLoader(), ".rtf": RtfLoader()})
 ```
 
-Nothing else changes: the processing service and the API pick it up automatically.
+Then add its extension and content type to `domain/file_types.py`, which the upload check, evaluation datasets and a test that every type has a loader share. Nothing else changes: the processing service and the API pick it up automatically. Loaders for formats with headings return one document per section with `loaders/sections.py`, so they share how sections are cut and named.
 
 ## Project structure
 

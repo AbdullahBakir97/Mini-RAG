@@ -1,7 +1,7 @@
 // What each error signal of the API means to someone using the app.
 
 const MESSAGES: Record<string, string> = {
-  file_type_not_supported: "Only PDF and plain-text files can be uploaded.",
+  file_type_not_supported: "Only PDF, Word, Markdown, HTML and text files can be uploaded.",
   file_size_exceeded: "The file is larger than the server allows.",
   file_upload_failed: "The file could not be saved. Try again.",
   file_not_found: "That file does not exist in this project.",

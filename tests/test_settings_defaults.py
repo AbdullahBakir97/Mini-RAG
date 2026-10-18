@@ -25,7 +25,10 @@ def test_every_setting_has_a_default(no_settings):
     assert settings.APP_NAME == "mini-RAG"
     assert settings.APP_VERSION == version("mini-rag")
     assert settings.DATABASE_URL == LOCAL_DATABASE_URL
-    assert settings.FILE_ALLOWED_TYPES == ["text/plain", "application/pdf"]
+    assert settings.FILE_ALLOWED_TYPES == [
+        "text/plain", "text/markdown", "text/html", "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
     assert (settings.FILE_MAX_SIZE, settings.FILE_DEFAULT_CHUNK_SIZE) == (10, 512_000)
 
 

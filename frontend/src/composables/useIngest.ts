@@ -2,6 +2,7 @@ import { ref, type Ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
 import type { ProcessOptions } from "@/api/types";
+import { SUPPORTED_LABEL, isSupported } from "@/lib/fileTypes";
 
 export type Stage =
   | "queued"
@@ -25,7 +26,6 @@ export interface IngestJob {
   error: string | null;
 }
 
-const ACCEPTED = /\.(pdf|txt)$/i;
 export const FINISHED: Stage[] = ["done", "duplicate", "failed", "not-indexed"];
 let nextId = 1;
 
@@ -46,7 +46,7 @@ export function useIngest(project: Ref<string>, options: Ref<ProcessOptions>, on
   function add(selected: File[]) {
     for (const file of selected) {
       const id = nextId++;
-      const supported = ACCEPTED.test(file.name) || ["application/pdf", "text/plain"].includes(file.type);
+      const supported = isSupported(file);
       jobs.value = [
         ...jobs.value,
         {
@@ -57,7 +57,7 @@ export function useIngest(project: Ref<string>, options: Ref<ProcessOptions>, on
           progress: 0,
           fileId: null,
           chunks: null,
-          error: supported ? null : "Only PDF and plain-text files can be uploaded.",
+          error: supported ? null : `Only ${SUPPORTED_LABEL} can be uploaded.`,
         },
       ];
       if (supported) files.set(id, file);
