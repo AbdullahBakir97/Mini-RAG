@@ -1,5 +1,6 @@
 import os
 from functools import lru_cache
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, Literal
 
@@ -9,6 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from mini_rag.domain.llm import TokenPrices
 
 BYTES_PER_MB = 1024 * 1024
+
+# The database in compose.yaml, reached from the host.
+LOCAL_DATABASE_URL = "postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"
 
 # pgvector's HNSW index supports vectors of up to 2000 dimensions.
 MAX_INDEXED_DIMENSIONS = 2000
@@ -24,21 +28,23 @@ class Settings(BaseSettings):
     # out of validation errors, which end up in logs and terminals.
     model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
-    APP_NAME: str
-    APP_VERSION: str
+    APP_NAME: str = "mini-RAG"
+    APP_VERSION: str = Field(default_factory=lambda: version("mini-rag"))
     OPENAI_API_KEY: str = Field(
         default="", description="OpenAI API key; may stay empty with EMBEDDING_BASE_URL")
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     DATABASE_URL: str = Field(
+        default=LOCAL_DATABASE_URL,
         description="PostgreSQL URL for SQLAlchemy, e.g. postgresql+asyncpg://user:password@host:5432/db",
     )
 
     # Uploaded files are stored under FILES_DIR/<project_id>/.
     FILES_DIR: Path = Path("assets/files")
-    FILE_ALLOWED_TYPES: list[str]
-    FILE_MAX_SIZE: int = Field(gt=0, description="Maximum upload size in MB")
-    FILE_DEFAULT_CHUNK_SIZE: int = Field(gt=0, description="Bytes read per upload chunk")
+    FILE_ALLOWED_TYPES: list[str] = ["text/plain", "application/pdf"]
+    FILE_MAX_SIZE: int = Field(default=10, gt=0, description="Maximum upload size in MB")
+    FILE_DEFAULT_CHUNK_SIZE: int = Field(default=512_000, gt=0,
+                                         description="Bytes read per upload chunk")
 
     # Embeddings come from the OpenAI API, or from any OpenAI-compatible
     # server (such as Ollama) when EMBEDDING_BASE_URL is set.
