@@ -21,7 +21,9 @@ from mini_rag.api.routes import (
     projects,
     search,
     webhooks,
+    widgets,
 )
+from mini_rag.api.widget_cors import WidgetCors
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
@@ -111,12 +113,15 @@ def create_app() -> FastAPI:
     app.include_router(index.router)
     app.include_router(jobs.router)
     app.include_router(webhooks.router)
+    app.include_router(widgets.router)
+    app.include_router(widgets.public_router)
     app.include_router(keys.router)
     app.include_router(mcp.router)
     app.include_router(search.router)
     app.include_router(ask.router)
     app.include_router(conversations.router)
     register_error_handlers(app)
+    app.add_middleware(WidgetCors)
 
     @app.get("/", include_in_schema=False)
     async def root() -> RedirectResponse:

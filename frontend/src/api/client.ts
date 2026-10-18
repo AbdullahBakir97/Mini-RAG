@@ -5,6 +5,8 @@ import { readEvents } from "./sse";
 import type {
   Answer,
   AskOptions,
+  ChatWidget,
+  ChatWidgetSettings,
   Chunk,
   Conversation,
   ConversationDetail,
@@ -95,6 +97,15 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
 async function put<T>(path: string, body: unknown): Promise<T> {
   const response = await send(path, {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response.json() as Promise<T>;
+}
+
+async function patch<T>(path: string, body: unknown): Promise<T> {
+  const response = await send(path, {
+    method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
@@ -200,6 +211,13 @@ export const api = {
       offset: page.offset ?? 0,
       limit: page.limit ?? 10,
     }),
+  widgets: (name: string) => get<{ items: ChatWidget[] }>(`/projects/${project(name)}/widgets`),
+  createWidget: (name: string, settings: ChatWidgetSettings) =>
+    post<ChatWidget>(`/projects/${project(name)}/widgets`, settings),
+  updateWidget: (name: string, widgetId: string, settings: Partial<ChatWidgetSettings>) =>
+    patch<ChatWidget>(`/projects/${project(name)}/widgets/${encodeURIComponent(widgetId)}`, settings),
+  deleteWidget: (name: string, widgetId: string) =>
+    remove(`/projects/${project(name)}/widgets/${encodeURIComponent(widgetId)}`),
   index: (name: string, fileId?: string) =>
     post<IndexResult>(`/index/${project(name)}`, fileId ? { file_id: fileId } : undefined),
   search: (name: string, query: string, options: SearchOptions) =>

@@ -49,8 +49,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] Tenants with hashed, scoped, revocable API keys; strict data isolation between tenants.
 - [x] Usage accounting, quotas and rate limits per tenant.
 - [ ] TypeScript and Python SDKs generated from the OpenAPI schema.
-- [ ] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations.
-- [ ] **White-label:** per-project name, logo, colours and welcome text for the widget; an assistant persona and instructions per project; allowed website origins and custom domains.
+- [x] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations; a name, colour, welcome text and allowed website origins per widget.
+- [ ] **White-label:** a logo for the widget; an assistant persona and instructions per project; custom domains.
 - [ ] **Collections and categories:** group documents within a project and filter search and answers by collection or tag.
 - [ ] A versioning policy for `/api/v1`.
 

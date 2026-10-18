@@ -309,6 +309,8 @@ class ConversationResponse(BaseModel):
     title: str | None = Field(description="Null until the first question.")
     created_at: datetime
     updated_at: datetime = Field(description="When the last question was answered.")
+    widget_id: str | None = Field(
+        default=None, description="The chat widget a visitor started it in; null otherwise.")
 
 
 class ConversationListResponse(BaseModel):
@@ -507,3 +509,119 @@ class TenantUsageResponse(BaseModel):
     output_tokens: int
     cost_usd: float = Field(description="Known cost of this month's answers, in US dollars.")
 
+
+
+WidgetIdPath = Annotated[str, Path(pattern=r"^wgt_[A-Za-z0-9_-]{22}$",
+                                   description="The widget's id, from its script tag.")]
+ACCENT = Field(default=None, pattern=r"^#[0-9a-fA-F]{6}$",
+               description="The widget's colour, as #rrggbb; #2563eb when omitted.",
+               examples=["#0f766e"])
+WIDGET_NAME = Field(min_length=1, max_length=100,
+                    description="Shown in the widget's header, e.g. the assistant's name.",
+                    examples=["Handbook assistant"])
+WELCOME = Field(default=None, max_length=500,
+                description="The first message visitors see, before they ask.",
+                examples=["Hi! Ask me anything about our employee handbook."])
+ORIGINS = Field(min_length=1, max_length=20,
+                description="The websites that may embed the widget, as origins such as "
+                            "`https://example.com` (scheme, host and any port; no path), or "
+                            "`*` for any website.",
+                examples=[["https://example.com", "https://www.example.com"]])
+
+
+def _check_origin_lengths(origins: list[str] | None) -> list[str] | None:
+    if origins is not None and any(len(origin) > 255 for origin in origins):
+        raise ValueError("an origin is longer than 255 characters")
+    return origins
+
+
+class WidgetRequest(BaseModel):
+    name: str = WIDGET_NAME
+    welcome: str | None = WELCOME
+    accent: str | None = ACCENT
+    allowed_origins: list[str] = ORIGINS
+
+    _origins = field_validator("allowed_origins")(_check_origin_lengths)
+
+    @field_validator("name")
+    @classmethod
+    def name_must_contain_text(cls, name: str) -> str:
+        if not name.strip():
+            raise ValueError("name must not be blank")
+        return name
+
+
+class WidgetUpdateRequest(BaseModel):
+    """Only the fields sent are changed."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    welcome: str | None = WELCOME
+    accent: str | None = ACCENT
+    allowed_origins: list[str] | None = Field(default=None, min_length=1, max_length=20)
+
+    _origins = field_validator("allowed_origins")(_check_origin_lengths)
+
+    @model_validator(mode="after")
+    def required_fields_not_null(self) -> "WidgetUpdateRequest":
+        for name in ("name", "allowed_origins"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        if self.name is not None and not self.name.strip():
+            raise ValueError("name must not be blank")
+        return self
+
+
+class WidgetResponse(BaseModel):
+    id: str = Field(description="Public: it goes in the script tag.")
+    project: str
+    name: str
+    welcome: str | None
+    accent: str
+    allowed_origins: list[str]
+    created_at: datetime
+
+
+class WidgetListResponse(BaseModel):
+    items: list[WidgetResponse]
+
+
+class WidgetConfigResponse(BaseModel):
+    """What the widget shows; nothing about the tenant or its project."""
+
+    id: str
+    name: str
+    welcome: str | None
+    accent: str
+
+
+class WidgetAskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000, description="The visitor's question.",
+                          examples=[QUESTION_EXAMPLE])
+    conversation_id: UUID | None = Field(
+        default=None, description="The visitor's conversation, from an earlier answer; omit to "
+                                  "start one.")
+
+    @field_validator("question")
+    @classmethod
+    def question_must_contain_text(cls, question: str) -> str:
+        if not question.strip():
+            raise ValueError("question must not be blank")
+        return question
+
+
+class WidgetCitation(BaseModel):
+    number: int = Field(description="The [n] the answer cites it by.")
+    file_name: str | None = Field(description="The document's name, as it was uploaded.")
+    page: int | None
+    section: str | None
+    text: str = Field(description="The passage the answer drew on.")
+
+
+class WidgetAnswer(BaseModel):
+    """The `answer` event: no ids of files, scores or costs, which visitors have no use for."""
+
+    signal: ResponseSignal
+    answer: str | None
+    citations: list[WidgetCitation]
+    conversation_id: str = Field(description="Send it with the visitor's next question.")
+    message_id: int | None = Field(description="The answer's id, to rate it.")

@@ -220,6 +220,8 @@ export interface Conversation {
   title: string | null;
   created_at: string;
   updated_at: string;
+  /** The chat widget a website's visitor started it in. */
+  widget_id?: string | null;
 }
 
 export interface ConversationMessage {
@@ -267,3 +269,21 @@ export interface WebhookDelivery {
   payload: Record<string, unknown>;
 }
 
+
+export interface ChatWidget {
+  /** Public: it goes in the script tag. */
+  id: string;
+  project: string;
+  name: string;
+  welcome: string | null;
+  accent: string;
+  allowed_origins: string[];
+  created_at: string;
+}
+
+export interface ChatWidgetSettings {
+  name: string;
+  welcome: string | null;
+  accent: string;
+  allowed_origins: string[];
+}

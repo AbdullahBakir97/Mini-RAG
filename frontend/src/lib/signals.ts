@@ -25,6 +25,10 @@ const MESSAGES: Record<string, string> = {
   webhook_not_found: "That webhook no longer exists.",
   webhook_url_not_allowed:
     "Webhooks may not reach this server's network (localhost or private addresses). Set WEBHOOK_ALLOW_PRIVATE_URLS=true on the server to allow it.",
+  widget_not_found: "That chat widget no longer exists.",
+  widget_origin_invalid:
+    "An allowed origin is not a website's origin. Use the scheme, host and any port only, like https://example.com.",
+  origin_not_allowed: "This website may not use the widget. Add it to the widget's allowed origins.",
   api_key_required: "This server needs an API key.",
   api_key_invalid: "The API key is unknown or was revoked.",
   api_key_scope_missing: "Your API key may not do this. Ask for a key with the scope it needs.",

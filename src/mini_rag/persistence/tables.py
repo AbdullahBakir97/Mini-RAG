@@ -188,6 +188,22 @@ class AnswerRow(Base):
     created_at: Mapped[datetime] = _created_at()
 
 
+class WidgetRow(Base):
+    """A chat widget that websites embed to ask one project."""
+
+    __tablename__ = "widgets"
+
+    # Public: it is in the script tag of the pages that embed the widget.
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    welcome: Mapped[str | None] = mapped_column(Text)
+    accent: Mapped[str] = mapped_column(String(7))
+    allowed_origins: Mapped[list[str]] = mapped_column(ARRAY(String(255)))
+    created_at: Mapped[datetime] = _created_at()
+
+
 class ConversationRow(Base):
     __tablename__ = "conversations"
     __table_args__ = (
@@ -199,6 +215,9 @@ class ConversationRow(Base):
     title: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _created_at()
+    # The chat widget it was started in; deleting the widget keeps its conversations.
+    widget_id: Mapped[str | None] = mapped_column(
+        ForeignKey("widgets.id", ondelete="SET NULL"), index=True)
 
 
 class ConversationMessageRow(Base):

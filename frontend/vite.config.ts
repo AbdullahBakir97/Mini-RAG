@@ -16,7 +16,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: Object.fromEntries(forwarded.map((path) => [path, { target: api, changeOrigin: true }])),
+    // The Host header stays the app's, so the API knows the app's own pages (see the chat widget).
+    proxy: Object.fromEntries(forwarded.map((path) => [path, { target: api }])),
   },
   test: {
     environment: "jsdom",

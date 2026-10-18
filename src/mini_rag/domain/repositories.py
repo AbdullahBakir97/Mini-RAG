@@ -30,6 +30,7 @@ from .models import (
     UsageTotals,
     Webhook,
     WebhookDelivery,
+    Widget,
 )
 
 
@@ -176,7 +177,8 @@ class AnswerRepository(Protocol):
 
 class ConversationRepository(Protocol):
 
-    async def create(self, project_id: int, title: str | None) -> Conversation: ...
+    async def create(self, project_id: int, title: str | None,
+                     widget_id: str | None = None) -> Conversation: ...
 
     async def get(self, project_id: int, conversation_id: str) -> Conversation | None:
         """The project's conversation; None for another project's."""
@@ -329,6 +331,27 @@ class WebhookRepository(Protocol):
     async def count_deliveries(self, webhook_id: str) -> int: ...
 
 
+class WidgetRepository(Protocol):
+
+    async def create(self, *, widget_id: str, project_id: int, name: str, welcome: str | None,
+                     accent: str, allowed_origins: Sequence[str]) -> Widget: ...
+
+    async def get(self, widget_id: str) -> Widget | None:
+        """Any tenant's widget: widgets are found by their public id alone."""
+        ...
+
+    async def list_for_project(self, project_id: int) -> list[Widget]:
+        """Oldest first."""
+        ...
+
+    async def update(self, project_id: int, widget_id: str,
+                     changes: Mapping[str, Any]) -> Widget | None:
+        """Change the fields named in ``changes``; None when the project has no such widget."""
+        ...
+
+    async def delete(self, project_id: int, widget_id: str) -> bool: ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -342,6 +365,7 @@ class UnitOfWork(Protocol):
     conversations: ConversationRepository
     jobs: JobRepository
     webhooks: WebhookRepository
+    widgets: WidgetRepository
     tenants: TenantRepository
     api_keys: ApiKeyRepository
     usage: UsageRepository
