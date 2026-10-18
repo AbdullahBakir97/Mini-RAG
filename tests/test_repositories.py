@@ -471,3 +471,71 @@ async def test_hybrid_search_without_searchable_words_ranks_by_meaning(uow):
 
     assert [hit.chunk.index for hit in hits] == [0, 1]
     assert elsewhere == []
+
+
+async def filtered_project(uow):
+    project = await uow.projects.get_or_create("demo")
+    guide = await add_file(uow, project, key="g_guide.pdf")
+    notes = await add_file(uow, project, key="n_notes.txt")
+    await uow.chunks.replace_for_file(guide, [
+        Chunk(0, "Release notes, page one.", {"page": 1, "lang": "en"}),
+        Chunk(1, "Release steps, page two.", {"page": 2, "lang": "en"}),
+        Chunk(2, "Release checklist, page three.", {"page": 3, "lang": "de"})])
+    await uow.chunks.replace_for_file(notes, [Chunk(0, "Release notes without pages.")])
+    await embed_all(uow, project, {
+        "Release notes, page one.": vector(1.0, 0.1),
+        "Release steps, page two.": vector(1.0, 0.2),
+        "Release checklist, page three.": vector(1.0, 0.3),
+        "Release notes without pages.": vector(1.0, 0.0)})
+    return project
+
+
+@pytest.mark.parametrize("query", [None, "release"], ids=["vector", "hybrid"])
+async def test_search_filters_narrow_the_chunks_searched(uow, query):
+    from mini_rag.domain.models import SearchFilters
+
+    project = await filtered_project(uow)
+
+    async def search(**filters):
+        hits = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=10, min_score=None,
+                                       query=query, filters=SearchFilters(**filters))
+        return sorted((hit.file_key, hit.chunk.index) for hit in hits)
+
+    assert await search(file_keys=("n_notes.txt",)) == [("n_notes.txt", 0)]
+    assert await search(page_from=2) == [("g_guide.pdf", 1), ("g_guide.pdf", 2)]
+    assert await search(page_from=2, page_to=2) == [("g_guide.pdf", 1)]
+    assert await search(metadata={"lang": "de"}) == [("g_guide.pdf", 2)]
+    assert len(await search(max_per_file=1)) == 2
+    assert await search(file_keys=("g_guide.pdf",), metadata={"lang": "en"}, page_to=1) == [
+        ("g_guide.pdf", 0)]
+
+
+async def test_search_filters_by_upload_date(uow):
+    from datetime import UTC, datetime, timedelta
+
+    from mini_rag.domain.models import SearchFilters
+
+    project = await filtered_project(uow)
+    await uow.commit()
+    now = datetime.now(UTC)
+
+    later = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=10, min_score=None,
+                                    filters=SearchFilters(uploaded_after=now + timedelta(hours=1)))
+    earlier = await uow.chunks.search(
+        project.id, vector(1.0, 0.0), top_k=10, min_score=None,
+        filters=SearchFilters(uploaded_before=now + timedelta(hours=1)))
+
+    assert later == []
+    assert len(earlier) == 4
+
+
+async def test_max_per_file_keeps_the_best_of_each_file_up_to_top_k(uow):
+    from mini_rag.domain.models import SearchFilters
+
+    project = await filtered_project(uow)
+
+    hits = await uow.chunks.search(project.id, vector(1.0, 0.0), top_k=3, min_score=None,
+                                   filters=SearchFilters(max_per_file=2))
+
+    assert [(hit.file_key, hit.chunk.index) for hit in hits] == [
+        ("n_notes.txt", 0), ("g_guide.pdf", 0), ("g_guide.pdf", 1)]

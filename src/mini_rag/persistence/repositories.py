@@ -1,8 +1,11 @@
 """SQLAlchemy implementations of the domain repository interfaces."""
 
+import json
 import uuid
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
+from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, delete, func, insert, select, text, update
@@ -21,6 +24,7 @@ from mini_rag.domain.models import (
     Project,
     RatedAnswer,
     ScoredChunk,
+    SearchFilters,
     StoredCitation,
     UnembeddedChunk,
     UsageTotals,
@@ -52,9 +56,11 @@ def _chunk(row: ChunkRow) -> Chunk:
 
 
 # Hybrid search: how many results each list contributes, per result wanted
-# and at least, and the RRF constant (60 is the usual choice).
+# and at least, and the RRF constant (60 is the usual choice). Searches with
+# max_per_file fetch more results, up to MAX_FETCHED, and drop some.
 CANDIDATES_PER_RESULT = 4
 MIN_CANDIDATES = 20
+MAX_FETCHED = 200
 RRF_K = 60
 
 class SqlProjectRepository:
@@ -176,43 +182,56 @@ class SqlChunkRepository:
             .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None)))
 
     async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
-                     min_score: float | None, query: str | None = None) -> list[ScoredChunk]:
-        if query is not None:
-            return await self._hybrid_search(project_id, embedding, query, top_k=top_k,
-                                             min_score=min_score)
+                     min_score: float | None, query: str | None = None,
+                     filters: SearchFilters | None = None) -> list[ScoredChunk]:
         # The HNSW index finds neighbours across all projects; filtering by
         # project afterwards could leave fewer than top_k. An iterative scan
         # (pgvector 0.8+) keeps searching until enough rows pass the filter.
         # It may return them slightly out of order, so the outer query sorts
         # them again. SET LOCAL lasts until the end of this transaction.
         await self.session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
-
-        distance = ChunkRow.embedding.cosine_distance(list(embedding))
-        nearest = (
-            select(ChunkRow.id, ChunkRow.file_id, ChunkRow.chunk_index, ChunkRow.text,
-                   ChunkRow.meta, distance.label("distance"))
-            .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None))
-            .order_by(distance).limit(top_k)
-            .cte("nearest").prefix_with("MATERIALIZED")
-        )
-        query = (
-            select(nearest, FileRow.key)
-            .join(FileRow, FileRow.id == nearest.c.file_id)
-            .order_by(nearest.c.distance, nearest.c.id)
-        )
+        per_file = filters.max_per_file if filters else None
+        # Results crowding into one file are dropped below, so ask for more.
+        wanted = top_k if per_file is None else min(top_k * CANDIDATES_PER_RESULT, MAX_FETCHED)
+        params: dict[str, Any] = {"embedding": list(embedding), "project_id": project_id,
+                                  "wanted": wanted}
+        narrowed = _filter_sql(filters, params)
+        threshold = ""
         if min_score is not None:
-            # score = 1 - cosine distance
-            query = query.where(nearest.c.distance <= 1 - min_score)
+            threshold = "AND 1 - (c.embedding <=> :embedding) >= :min_score"
+            params["min_score"] = min_score
+        if query is None:
+            statement = self._vector_sql(narrowed, threshold)
+        else:
+            params.update(query=query, rrf_k=RRF_K,
+                          candidates=max(wanted * CANDIDATES_PER_RESULT, MIN_CANDIDATES))
+            statement = self._hybrid_sql(narrowed, threshold)
+        rows = await self.session.execute(
+            text(statement).bindparams(bindparam("embedding", type_=Vector())), params)
+        hits = [ScoredChunk(file_key=row.key, score=row.similarity,
+                            chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
+                for row in rows]
+        return _at_most_per_file(hits, per_file, top_k)
 
-        rows = await self.session.execute(query)
-        return [
-            ScoredChunk(file_key=row.key, score=1 - row.distance,
-                        chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
-            for row in rows
-        ]
+    @staticmethod
+    def _vector_sql(narrowed: str, threshold: str) -> str:
+        return f"""
+            WITH nearest AS MATERIALIZED (
+                SELECT c.id, c.file_id, c.chunk_index, c.text, c.metadata AS meta,
+                       c.embedding <=> :embedding AS distance
+                FROM chunks c
+                WHERE c.project_id = :project_id AND c.embedding IS NOT NULL {narrowed}
+                ORDER BY c.embedding <=> :embedding LIMIT :wanted
+            )
+            SELECT n.chunk_index, n.text, n.meta, f.key, 1 - n.distance AS similarity
+            FROM nearest n JOIN files f ON f.id = n.file_id
+            JOIN chunks c ON c.id = n.id
+            WHERE TRUE {threshold}
+            ORDER BY n.distance, n.id
+        """
 
-    async def _hybrid_search(self, project_id: int, embedding: Sequence[float], query: str, *,
-                             top_k: int, min_score: float | None) -> list[ScoredChunk]:
+    @staticmethod
+    def _hybrid_sql(narrowed: str, threshold: str) -> str:
         """Vector and full-text results, merged by reciprocal rank fusion.
 
         Each list contributes 1 / (RRF_K + rank) per chunk, so a chunk near
@@ -220,13 +239,11 @@ class SqlChunkRepository:
         comparable, never need to be. The full-text query matches any of
         the question's words, not all of them.
         """
-        await self.session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
-        threshold = "" if min_score is None else "AND 1 - (c.embedding <=> :embedding) >= :min_score"
-        statement = text(f"""
+        return f"""
             WITH nearest_rows AS MATERIALIZED (
-                SELECT id, embedding <=> :embedding AS distance FROM chunks
-                WHERE project_id = :project_id AND embedding IS NOT NULL
-                ORDER BY embedding <=> :embedding LIMIT :candidates
+                SELECT c.id, c.embedding <=> :embedding AS distance FROM chunks c
+                WHERE c.project_id = :project_id AND c.embedding IS NOT NULL {narrowed}
+                ORDER BY c.embedding <=> :embedding LIMIT :candidates
             ), nearest AS (
                 SELECT id, row_number() OVER (ORDER BY distance, id) AS rank FROM nearest_rows
             ), words AS (
@@ -237,7 +254,7 @@ class SqlChunkRepository:
                            ORDER BY ts_rank_cd(c.search_vector, words.q) DESC, c.id) AS rank
                 FROM chunks c, words
                 WHERE c.project_id = :project_id AND c.embedding IS NOT NULL
-                      AND c.search_vector @@ words.q
+                      AND c.search_vector @@ words.q {narrowed}
                 ORDER BY rank LIMIT :candidates
             ), fused AS (
                 SELECT id, sum(1.0 / (:rrf_k + rank)) AS score
@@ -249,19 +266,51 @@ class SqlChunkRepository:
             FROM fused JOIN chunks c ON c.id = fused.id JOIN files f ON f.id = c.file_id
             WHERE TRUE {threshold}
             ORDER BY fused.score DESC, similarity DESC, c.id
-            LIMIT :top_k
-        """).bindparams(bindparam("embedding", type_=Vector()))
-        params = {"embedding": list(embedding), "project_id": project_id, "query": query,
-                  "candidates": max(top_k * CANDIDATES_PER_RESULT, MIN_CANDIDATES),
-                  "rrf_k": RRF_K, "top_k": top_k}
-        if min_score is not None:
-            params["min_score"] = min_score
-        rows = await self.session.execute(statement, params)
-        return [
-            ScoredChunk(file_key=row.key, score=row.similarity,
-                        chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
-            for row in rows
-        ]
+            LIMIT :wanted
+        """
+
+
+def _filter_sql(filters: SearchFilters | None, params: dict[str, Any]) -> str:
+    """Conditions on chunks ``c`` for ``filters``, adding their values to ``params``."""
+    if filters is None:
+        return ""
+    conditions = []
+    files = []
+    if filters.file_keys:
+        files.append("files.key = ANY(:file_keys)")
+        params["file_keys"] = list(filters.file_keys)
+    if filters.uploaded_after is not None:
+        files.append("files.created_at >= :uploaded_after")
+        params["uploaded_after"] = filters.uploaded_after
+    if filters.uploaded_before is not None:
+        files.append("files.created_at < :uploaded_before")
+        params["uploaded_before"] = filters.uploaded_before
+    if files:
+        conditions.append("c.file_id IN (SELECT files.id FROM files WHERE "
+                          "files.project_id = :project_id AND " + " AND ".join(files) + ")")
+    # Chunks without a page (not from a PDF) have no page in range.
+    if filters.page_from is not None:
+        conditions.append("(c.metadata->>'page')::int >= :page_from")
+        params["page_from"] = filters.page_from
+    if filters.page_to is not None:
+        conditions.append("(c.metadata->>'page')::int <= :page_to")
+        params["page_to"] = filters.page_to
+    if filters.metadata:
+        conditions.append("c.metadata @> CAST(:metadata AS jsonb)")
+        params["metadata"] = json.dumps(dict(filters.metadata))
+    return "".join(f" AND {condition}" for condition in conditions)
+
+
+def _at_most_per_file(hits: list[ScoredChunk], per_file: int | None,
+                      top_k: int) -> list[ScoredChunk]:
+    if per_file is None:
+        return hits[:top_k]
+    kept, counts = [], Counter()
+    for hit in hits:
+        if counts[hit.file_key] < per_file:
+            kept.append(hit)
+            counts[hit.file_key] += 1
+    return kept[:top_k]
 
 
 class SqlAnswerRepository:

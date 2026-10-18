@@ -11,6 +11,7 @@ from mini_rag.api.schemas import (
 from mini_rag.core.errors import (
     EmbeddingFailed,
     EmbeddingNotConfigured,
+    FileNotFound,
     ProjectNotFound,
 )
 from mini_rag.domain.signals import ResponseSignal
@@ -25,12 +26,14 @@ router = APIRouter(prefix="/api/v1/search", tags=["search"])
                 "best match first: by meaning and by the query's words with SEARCH_MODE=hybrid "
                 "(the default), by meaning only with vector. Scores are the cosine similarity "
                 "either way. Chunks that are not indexed yet are not found.",
-    responses=error_responses(ProjectNotFound, EmbeddingFailed, EmbeddingNotConfigured),
+    responses=error_responses(ProjectNotFound, FileNotFound, EmbeddingFailed,
+                              EmbeddingNotConfigured),
 )
 async def search_project(project_id: ProjectId, request: SearchRequest,
                          service: SearchServiceDep) -> SearchResponse:
+    filters = request.filters.to_filters() if request.filters else None
     hits = await service.search(project_id, request.query, top_k=request.top_k,
-                                min_score=request.min_score)
+                                min_score=request.min_score, filters=filters)
     return SearchResponse(
         signal=ResponseSignal.SEARCH_SUCCESS,
         results=[SearchResult(file_id=hit.file_key, chunk_index=hit.chunk.index, score=hit.score,

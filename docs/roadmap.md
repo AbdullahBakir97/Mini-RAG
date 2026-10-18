@@ -71,9 +71,9 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 6: Retrieval quality
 
-- [ ] Hybrid search: PostgreSQL full-text search combined with vector search.
+- [x] Hybrid search: PostgreSQL full-text search combined with vector search, merged by reciprocal rank fusion (hit rate 95.7% → 97.8% on `handbook/v1`).
 - [ ] A reranking step behind a `Reranker` interface.
-- [ ] Filters by file, page, date and metadata; diversity in the top results.
+- [x] Filters by file, page, date and metadata; diversity in the top results (`max_per_file`).
 - [ ] Index and chunking parameters tuned from measured results.
 
 ### Phase 7: Study mode

@@ -18,6 +18,7 @@ from .models import (
     Project,
     RatedAnswer,
     ScoredChunk,
+    SearchFilters,
     UnembeddedChunk,
     UsageTotals,
 )
@@ -83,12 +84,14 @@ class ChunkRepository(Protocol):
     async def count_embedded_for_project(self, project_id: int) -> int: ...
 
     async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
-                     min_score: float | None, query: str | None = None) -> list[ScoredChunk]:
+                     min_score: float | None, query: str | None = None,
+                     filters: SearchFilters | None = None) -> list[ScoredChunk]:
         """The project's embedded chunks most similar to ``embedding``, best first.
 
         At most ``top_k`` results, and none scoring below ``min_score``. With
         ``query``, the search is hybrid: chunks sharing the query's words rank
         higher too. Scores stay the cosine similarity to ``embedding``.
+        ``filters`` narrows the chunks searched.
         """
         ...
 

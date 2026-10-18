@@ -9,6 +9,7 @@ from fastapi import Path, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from mini_rag.core.errors import AppError
+from mini_rag.domain.models import SearchFilters
 from mini_rag.domain.signals import ResponseSignal
 
 ProjectId = Annotated[str, Path(
@@ -111,12 +112,48 @@ class IndexResponse(BaseModel):
     chunks_count: int = Field(description="All chunks of the project, or of the file.")
 
 
+class SearchFiltersRequest(BaseModel):
+    """Narrows the chunks searched; leave a field out not to narrow by it."""
+
+    file_ids: list[FileId] = Field(default_factory=list, max_length=100,
+                                   description="Only these files of the project.")
+    page_from: int | None = Field(default=None, ge=1,
+                                  description="Only pages from this one on; leaves out chunks "
+                                              "without a page (not from a PDF).")
+    page_to: int | None = Field(default=None, ge=1, description="Only pages up to this one.")
+    uploaded_after: datetime | None = Field(default=None,
+                                            description="Only files uploaded at or after this.")
+    uploaded_before: datetime | None = Field(default=None,
+                                             description="Only files uploaded before this.")
+    metadata: dict[str, str | int | float | bool] | None = Field(
+        default=None, max_length=10,
+        description="Only chunks whose metadata has these values, e.g. {\"page\": 3}.")
+    max_per_file: int | None = Field(default=None, ge=1, le=50,
+                                     description="At most this many results from one file.")
+
+    @model_validator(mode="after")
+    def check_ranges(self) -> "SearchFiltersRequest":
+        if self.page_from and self.page_to and self.page_from > self.page_to:
+            raise ValueError("page_from must not be after page_to")
+        if (self.uploaded_after and self.uploaded_before
+                and self.uploaded_after >= self.uploaded_before):
+            raise ValueError("uploaded_after must be before uploaded_before")
+        return self
+
+    def to_filters(self) -> SearchFilters:
+        return SearchFilters(file_keys=tuple(self.file_ids), page_from=self.page_from,
+                             page_to=self.page_to, uploaded_after=self.uploaded_after,
+                             uploaded_before=self.uploaded_before, metadata=self.metadata,
+                             max_per_file=self.max_per_file)
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000, description="The question or search text.",
                        examples=[QUESTION_EXAMPLE])
     top_k: int = Field(default=5, ge=1, le=50, description="Maximum number of results.")
     min_score: float | None = Field(default=None, ge=-1, le=1,
                                     description="Leave out results scoring below this.")
+    filters: SearchFiltersRequest | None = None
 
     @field_validator("query")
     @classmethod
@@ -150,6 +187,8 @@ class AskRequest(BaseModel):
         default=None,
         description="Answer as a follow-up in this conversation, and add the question and the "
                     "answer to it. Omit for a question on its own.")
+    filters: SearchFiltersRequest | None = Field(
+        default=None, description="Answer only from the chunks these filters leave.")
 
     @field_validator("question")
     @classmethod

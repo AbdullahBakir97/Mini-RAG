@@ -172,3 +172,30 @@ def test_search_without_embedding_configuration(client):
     response = search(client, query="anything")
 
     assert (response.status_code, response.json()) == (503, {"signal": "embedding_not_configured"})
+
+
+def test_search_filters_by_file_and_reports_unknown_files(client, embedder):
+    first = upload_and_process(client, name="first.txt")
+    upload_and_process(client, name="second.txt")
+    client.post("/api/v1/index/demo")
+
+    only_first = client.post("/api/v1/search/demo", json={
+        "query": "retrieval", "top_k": 10, "filters": {"file_ids": [first]}}).json()
+    unknown = client.post("/api/v1/search/demo", json={
+        "query": "retrieval", "filters": {"file_ids": ["nope_missing.txt"]}})
+
+    assert {hit["file_id"] for hit in only_first["results"]} == {first}
+    assert (unknown.status_code, unknown.json()) == (404, {"signal": "file_not_found"})
+
+
+@pytest.mark.parametrize("filters", [
+    {"page_from": 3, "page_to": 2},
+    {"uploaded_after": "2026-10-02T00:00:00Z", "uploaded_before": "2026-10-01T00:00:00Z"},
+    {"max_per_file": 0},
+    {"file_ids": ["../etc/passwd"]},
+    {"metadata": {f"k{i}": i for i in range(11)}},
+])
+def test_search_filters_are_validated(client, embedder, filters):
+    response = client.post("/api/v1/search/demo", json={"query": "retrieval", "filters": filters})
+
+    assert response.status_code == 422
