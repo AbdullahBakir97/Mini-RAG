@@ -32,7 +32,8 @@ import { useProject } from "@/composables/useProject";
 import { useToasts } from "@/composables/useToasts";
 import { formatCost, formatNumber } from "@/lib/format";
 
-const { name, project, loading: projectLoading, fileName, files } = useProject();
+const { name, project, loading: projectLoading, fileName, files, tags } = useProject();
+const tagOptions = computed(() => tags.value.map((t) => ({ file_id: t.tag, original_name: `${t.tag} (${t.files})` })));
 const route = useRoute();
 const router = useRouter();
 const toasts = useToasts();
@@ -48,10 +49,22 @@ function show(id: string | null) {
   return router.push({ name: "ask", params });
 }
 
-const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true, files: [] });
+const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true, files: [], tags: [] });
 const chosenFiles = computed({
   get: () => settings.value.files ?? [],
   set: (value: string[]) => (settings.value.files = value),
+});
+const chosenTags = computed({
+  get: () => settings.value.tags ?? [],
+  set: (value: string[]) => (settings.value.tags = value),
+});
+const narrowedLabel = computed(() => {
+  const parts = [];
+  if (chosenFiles.value.length)
+    parts.push(chosenFiles.value.length === 1 ? "1 document" : `${chosenFiles.value.length} documents`);
+  if (chosenTags.value.length)
+    parts.push(chosenTags.value.length === 1 ? `#${chosenTags.value[0]}` : `${chosenTags.value.length} tags`);
+  return parts.join(" · ");
 });
 const { turns, busy, loading, ask, stop, retry, rate } = useAsk(name, conversationId, settings, {
   // The new conversation gets its own address, without a new history entry.
@@ -429,7 +442,10 @@ watch(
         </label>
         <div class="field documents">
           <span>Answer from</span>
-          <FilePicker v-model="chosenFiles" :files="files" />
+          <div class="pickers">
+            <FilePicker v-model="chosenFiles" :files="files" />
+            <FilePicker v-if="tags.length" v-model="chosenTags" :files="tagOptions" tags />
+          </div>
         </div>
       </div>
 
@@ -475,13 +491,13 @@ watch(
             <SquarePen :size="16" />
           </button>
           <button
-            v-if="chosenFiles.length && !showSettings"
+            v-if="narrowedLabel && !showSettings"
             type="button"
             class="badge narrowed"
             title="Answers use only the chosen documents"
             @click="showSettings = true"
           >
-            {{ chosenFiles.length === 1 ? "1 document" : `${chosenFiles.length} documents` }}
+            {{ narrowedLabel }}
           </button>
           <span class="grow" />
           <span class="hint subtle small">Enter to send · Shift+Enter for a new line</span>
@@ -902,6 +918,12 @@ watch(
 
 .documents {
   grid-column: 1 / -1;
+}
+
+.pickers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .narrowed {

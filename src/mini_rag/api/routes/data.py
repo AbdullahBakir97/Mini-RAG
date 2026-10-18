@@ -1,7 +1,10 @@
-from fastapi import APIRouter, UploadFile
+from typing import Annotated
+
+from fastapi import APIRouter, Form, UploadFile
 
 from mini_rag.api.dependencies import WRITE, ProcessingServiceDep, UploadServiceDep
 from mini_rag.api.schemas import (
+    TAGS_DESCRIPTION,
     ProcessRequest,
     ProcessResponse,
     ProjectId,
@@ -13,10 +16,12 @@ from mini_rag.core.errors import (
     FileTooLarge,
     NoTextExtracted,
     ProcessingFailed,
+    TagInvalid,
     UnsupportedFileType,
     UploadFailed,
 )
 from mini_rag.domain.signals import ResponseSignal
+from mini_rag.services.tag_service import split_tags
 
 router = APIRouter(prefix="/api/v1/data", tags=["data"], dependencies=[WRITE])
 
@@ -26,17 +31,21 @@ router = APIRouter(prefix="/api/v1/data", tags=["data"], dependencies=[WRITE])
     summary="Upload a file into a project",
     description="Content the project already has is not stored again: the response then has "
                 "signal `file_already_uploaded` and the existing file's id, so uploading "
-                "the same files again is safe.",
-    responses=error_responses(UnsupportedFileType, FileTooLarge, UploadFailed),
+                "the same files again is safe; a duplicate gains the tags it did not have.",
+    responses=error_responses(UnsupportedFileType, FileTooLarge, TagInvalid, UploadFailed),
 )
-async def upload_data(project_id: ProjectId, file: UploadFile,
-                      upload_service: UploadServiceDep) -> UploadResponse:
+async def upload_data(
+    project_id: ProjectId, file: UploadFile, upload_service: UploadServiceDep,
+    tags: Annotated[str | None, Form(max_length=1000,
+                                     description="Comma-separated. " + TAGS_DESCRIPTION)] = None,
+) -> UploadResponse:
     upload = await upload_service.save(
         project_name=project_id,
         filename=file.filename or "",
         content_type=file.content_type,
         stream=file,
         declared_size=file.size,
+        tags=split_tags(tags),
     )
     signal = (ResponseSignal.FILE_ALREADY_UPLOADED if upload.duplicate
               else ResponseSignal.FILE_UPLOAD_SUCCESS)

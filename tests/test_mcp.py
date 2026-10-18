@@ -77,6 +77,28 @@ def test_the_tools_use_the_projects_documents(client, embedder, llm, models):
     assert text.startswith("Each chunk gets an embedding vector [1].\n\nSources:\n[1] (file ")
 
 
+def test_search_and_ask_can_be_limited_to_tags(client, embedder, llm, models):
+    upload_process_and_index(client)
+    other = upload_process_and_index(client, name="other.txt",
+                                     text="Embedding vectors are stored elsewhere entirely.")
+    client.put(f"/api/v1/projects/demo/files/{other}/tags", json={"tags": ["archive"]})
+
+    files = call(client, "list_files", project="demo")["result"]["content"][0]["text"]
+    found = call(client, "search_knowledge", project="demo", query="embedding vector",
+                 tags=["Archive"])["result"]["content"][0]["text"]
+    call(client, "ask", project="demo", question="Where is the embedding vector stored?",
+         tags=["archive"])
+    bad = call(client, "search_knowledge", project="demo", query="x", tags="archive")
+    invalid = call(client, "search_knowledge", project="demo", query="x", tags=["a/b"])
+
+    assert f"{other} (other.txt, text/plain, 48 bytes; tags: archive)" in files
+    assert found.count("[") == found.count(f"(file {other},")
+    assert "other.txt" in models.calls[-1][-1].content
+    assert "guide.txt" not in models.calls[-1][-1].content
+    assert bad["error"]["message"] == "tags must be a list of at most 20 strings"
+    assert invalid["result"]["isError"] is True
+
+
 def test_a_failing_tool_reports_why(client, models):
     unknown = call(client, "list_files", project="nope")["result"]
 

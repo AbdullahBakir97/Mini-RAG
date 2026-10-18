@@ -4,13 +4,15 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 
 import { ApiError, api } from "@/api/client";
 import type { ChatWidget as Widget, ChatWidgetSettings } from "@/api/types";
+import TagInput from "@/components/TagInput.vue";
 import { useProject } from "@/composables/useProject";
 import { useToasts } from "@/composables/useToasts";
 import { formatRelative } from "@/lib/format";
 import { WidgetError } from "@/widget/client";
 import { ChatWidget } from "@/widget/widget";
 
-const { name } = useProject();
+const { name, tags: projectTags } = useProject();
+const tagSuggestions = computed(() => projectTags.value.map((t) => t.tag));
 const toasts = useToasts();
 
 const DEFAULT_ACCENT = "#2563eb";
@@ -38,12 +40,13 @@ async function load() {
 
 // The form: a new widget, or the one being edited.
 const editing = ref<Widget | null>(null);
-const form = ref({ name: "", welcome: "", accent: DEFAULT_ACCENT, origins: "" });
+const form = ref({ name: "", welcome: "", accent: DEFAULT_ACCENT, origins: "", tags: [] as string[] });
+const tagInput = ref<InstanceType<typeof TagInput> | null>(null);
 const saving = ref(false);
 
 function resetForm() {
   editing.value = null;
-  form.value = { name: "", welcome: "", accent: DEFAULT_ACCENT, origins: "" };
+  form.value = { name: "", welcome: "", accent: DEFAULT_ACCENT, origins: "", tags: [] };
 }
 
 function edit(widget: Widget) {
@@ -53,6 +56,7 @@ function edit(widget: Widget) {
     welcome: widget.welcome ?? "",
     accent: widget.accent,
     origins: widget.allowed_origins.join("\n"),
+    tags: [...widget.tags],
   };
 }
 
@@ -65,11 +69,13 @@ const origins = computed(() =>
 const validAccent = computed(() => /^#[0-9a-fA-F]{6}$/.test(form.value.accent));
 
 async function save() {
+  if (tagInput.value && !tagInput.value.commit()) return;
   const settings: ChatWidgetSettings = {
     name: form.value.name.trim(),
     welcome: form.value.welcome.trim() || null,
     accent: form.value.accent,
     allowed_origins: origins.value,
+    tags: form.value.tags,
   };
   saving.value = true;
   try {
@@ -220,6 +226,17 @@ onBeforeUnmount(() => {
               refused; <code>*</code> allows any website.
             </span>
           </label>
+          <div class="field">
+            <span>Answer only from documents tagged</span>
+            <TagInput
+              ref="tagInput"
+              v-model="form.tags"
+              :suggestions="tagSuggestions"
+              label="Answer only from documents tagged"
+              placeholder="Any document"
+            />
+            <span class="subtle small">With tags, visitors get answers only from documents with at least one of them.</span>
+          </div>
           <div class="actions">
             <button v-if="editing" type="button" class="btn btn-ghost" @click="resetForm">Cancel</button>
             <button
@@ -268,6 +285,9 @@ onBeforeUnmount(() => {
             <div class="badges">
               <span v-for="origin in widget.allowed_origins" :key="origin" class="badge mono">{{
                 origin === "*" ? "any website" : origin
+              }}</span>
+              <span v-for="tag in widget.tags" :key="tag" class="chip" :title="`Answers only from documents tagged ${tag}`">{{
+                tag
               }}</span>
             </div>
             <div class="embed">

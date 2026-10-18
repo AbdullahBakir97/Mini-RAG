@@ -1,7 +1,7 @@
 import { ref, watch, type Ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
-import type { Answer, ConversationMessage, Feedback, Rating, SearchOptions } from "@/api/types";
+import type { Answer, ConversationMessage, Feedback, Rating, SearchFilters, SearchOptions } from "@/api/types";
 
 export interface Turn {
   id: number;
@@ -22,6 +22,8 @@ export interface AskSettings extends SearchOptions {
   stream: boolean;
   /** Answer only from these files; none means all. */
   files?: string[];
+  /** Answer only from files with any of these tags; none means all. */
+  tags?: string[];
 }
 
 export interface AskEvents {
@@ -135,7 +137,7 @@ export function useAsk(
     if (busy.value || loading.value || !question.trim()) return;
     const id = nextId++;
     const started = performance.now();
-    const { stream, top_k, min_score, files } = settings.value;
+    const { stream, top_k, min_score, files, tags } = settings.value;
     turns.value = [
       ...turns.value,
       {
@@ -163,8 +165,15 @@ export function useAsk(
         events.onStarted?.(current);
       }
       const conversationId = current;
-      const filters = files?.length ? { file_ids: files } : null;
-      const options = { top_k, min_score, filters, conversation_id: conversationId };
+      const filters: SearchFilters = {};
+      if (files?.length) filters.file_ids = files;
+      if (tags?.length) filters.tags = tags;
+      const options = {
+        top_k,
+        min_score,
+        filters: Object.keys(filters).length ? filters : null,
+        conversation_id: conversationId,
+      };
       let text = "";
       const answer = stream
         ? await api.askStream(

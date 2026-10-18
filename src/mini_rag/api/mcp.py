@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from mini_rag.core.errors import AppError, ScopeMissing
-from mini_rag.domain.models import Principal, ScoredChunk
+from mini_rag.domain.models import Principal, ScoredChunk, SearchFilters
+from mini_rag.domain.tags import MAX_TAGS_PER_FILE
+from mini_rag.services.tag_service import clean_tags
 
 # The newest version first; a client asking for another gets the newest.
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
@@ -45,6 +47,9 @@ PROJECT = {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$",
            "description": "The project's name, from list_projects."}
 TOP_K = {"type": "integer", "minimum": 1, "maximum": 20, "default": 5,
          "description": "How many passages to use."}
+TAGS = {"type": "array", "items": {"type": "string", "maxLength": 64},
+        "maxItems": MAX_TAGS_PER_FILE,
+        "description": "Only use files with at least one of these tags (see list_files)."}
 
 
 class Toolbox:
@@ -82,18 +87,26 @@ async def _list_projects(box: Toolbox, args: dict[str, Any]) -> str:
     return "Projects:\n" + "\n".join(lines) + more
 
 
+def _filters(args: dict[str, Any]) -> SearchFilters | None:
+    """The tags argument as search filters: only files with any of them."""
+    tags = clean_tags(args.get("tags", ()))
+    return SearchFilters(tags=tags) if tags else None
+
+
 async def _list_files(box: Toolbox, args: dict[str, Any]) -> str:
     page = await (await box.services("projects")).list_files(args["project"], offset=0, limit=100)
     if not page.items:
         return f"The project {args['project']} has no files."
-    lines = [f"- {f.key} ({f.original_name}, {f.content_type}, {f.size_bytes} bytes)"
+    lines = [f"- {f.key} ({f.original_name}, {f.content_type}, {f.size_bytes} bytes"
+             + (f"; tags: {', '.join(f.tags)}" if f.tags else "") + ")"
              for f in page.items]
     return f"Files of {args['project']}:\n" + "\n".join(lines)
 
 
 async def _search(box: Toolbox, args: dict[str, Any]) -> str:
     search = await box.services("search")
-    hits = await search.search(args["project"], args["query"], top_k=args.get("top_k", 5))
+    hits = await search.search(args["project"], args["query"], top_k=args.get("top_k", 5),
+                               filters=_filters(args))
     if not hits:
         return "No passage matched."
     return "\n\n".join(_source(number, hit) for number, hit in enumerate(hits, start=1))
@@ -101,7 +114,8 @@ async def _search(box: Toolbox, args: dict[str, Any]) -> str:
 
 async def _ask(box: Toolbox, args: dict[str, Any]) -> str:
     answers = await box.services("answers")
-    answer = await answers.ask(args["project"], args["question"], top_k=args.get("top_k", 5))
+    answer = await answers.ask(args["project"], args["question"], top_k=args.get("top_k", 5),
+                               filters=_filters(args))
     if answer.text is None:
         return "The project's documents do not answer this question."
     sources = "\n\n".join(_source(c.number, c.source) for c in answer.citations)
@@ -113,7 +127,7 @@ TOOLS = [
          "Lists the document projects this key can use, with how many files and indexed "
          "chunks each has.", "read", {"type": "object", "properties": {}}, _list_projects),
     Tool("list_files", "List a project's files",
-         "Lists the files of a project: their ids, names, types and sizes.", "read",
+         "Lists the files of a project: their ids, names, types, sizes and tags.", "read",
          {"type": "object", "properties": {"project": PROJECT}, "required": ["project"]},
          _list_files),
     Tool("search_knowledge", "Search a project",
@@ -122,7 +136,7 @@ TOOLS = [
          {"type": "object", "properties": {
              "project": PROJECT,
              "query": {"type": "string", "minLength": 1, "maxLength": 2000},
-             "top_k": TOP_K}, "required": ["project", "query"]}, _search),
+             "top_k": TOP_K, "tags": TAGS}, "required": ["project", "query"]}, _search),
     Tool("ask", "Ask a project",
          "Answers a question from a project's documents only, citing its sources as [n]. "
          "Says so when the documents do not answer it. Each answer counts against the "
@@ -130,7 +144,7 @@ TOOLS = [
          {"type": "object", "properties": {
              "project": PROJECT,
              "question": {"type": "string", "minLength": 1, "maxLength": 2000},
-             "top_k": TOP_K}, "required": ["project", "question"]}, _ask),
+             "top_k": TOP_K, "tags": TAGS}, "required": ["project", "question"]}, _ask),
 ]
 TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
 
@@ -158,6 +172,11 @@ def _check_arguments(tool: Tool, args: Any) -> dict[str, Any]:
                 raise RpcError(INVALID_PARAMS,
                                f"{name} must be a whole number from {rule['minimum']} "
                                f"to {rule['maximum']}")
+        elif rule["type"] == "array":
+            if (not isinstance(value, list) or len(value) > rule["maxItems"]
+                    or not all(isinstance(item, str) for item in value)):
+                raise RpcError(INVALID_PARAMS,
+                               f"{name} must be a list of at most {rule['maxItems']} strings")
     return args
 
 

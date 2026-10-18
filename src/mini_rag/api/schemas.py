@@ -6,11 +6,19 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import Path, Query
-from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    AnyHttpUrl,
+    BaseModel,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from mini_rag.core.errors import AppError
 from mini_rag.domain.models import SearchFilters
 from mini_rag.domain.signals import ResponseSignal
+from mini_rag.domain.tags import MAX_TAGS_PER_FILE, normalize_tags
 
 ProjectId = Annotated[str, Path(
     pattern=r"^[A-Za-z0-9_-]{1,64}$",
@@ -27,6 +35,14 @@ FileId = Annotated[str, Field(pattern=FILE_ID_PATTERN, max_length=255,
                               description=FILE_ID_DESCRIPTION, examples=[FILE_ID_EXAMPLE])]
 FileIdPath = Annotated[str, Path(pattern=FILE_ID_PATTERN, max_length=255,
                                  description=FILE_ID_DESCRIPTION)]
+
+TAGS_DESCRIPTION = ("Tags: letters, digits and hyphens, up to 32 characters each; they are "
+                    "lowercased, with spaces and underscores turned into hyphens.")
+# Normalized like stored tags, so "Release Notes" finds files tagged release-notes.
+Tags = Annotated[list[str], AfterValidator(lambda tags: list(normalize_tags(tags))),
+                 Field(max_length=MAX_TAGS_PER_FILE, description=TAGS_DESCRIPTION,
+                       examples=[["guides", "v2"]])]
+TagQuery = Annotated[str | None, Query(max_length=64, description="Only files with this tag.")]
 
 
 @dataclass
@@ -117,6 +133,8 @@ class SearchFiltersRequest(BaseModel):
 
     file_ids: list[FileId] = Field(default_factory=list, max_length=100,
                                    description="Only these files of the project.")
+    tags: Tags = Field(default_factory=list,
+                       description="Only files with at least one of these tags.")
     page_from: int | None = Field(default=None, ge=1,
                                   description="Only pages from this one on; leaves out chunks "
                                               "without a page (not from a PDF).")
@@ -141,7 +159,8 @@ class SearchFiltersRequest(BaseModel):
         return self
 
     def to_filters(self) -> SearchFilters:
-        return SearchFilters(file_keys=tuple(self.file_ids), page_from=self.page_from,
+        return SearchFilters(file_keys=tuple(self.file_ids), tags=tuple(self.tags),
+                             page_from=self.page_from,
                              page_to=self.page_to, uploaded_after=self.uploaded_after,
                              uploaded_before=self.uploaded_before, metadata=self.metadata,
                              max_per_file=self.max_per_file)
@@ -273,6 +292,20 @@ class FileResponse(BaseModel):
     content_type: str
     size_bytes: int
     created_at: datetime
+    tags: list[str] = Field(description="The file's tags, in the order given.")
+
+
+class FileTagsRequest(BaseModel):
+    tags: Tags = Field(description="The file's tags from now on; [] removes them all.")
+
+
+class TagResponse(BaseModel):
+    tag: str
+    files: int = Field(description="How many of the project's files have it.")
+
+
+class TagListResponse(BaseModel):
+    items: list[TagResponse]
 
 
 class FileListResponse(BaseModel):
@@ -562,11 +595,15 @@ def _check_origin_lengths(origins: list[str] | None) -> list[str] | None:
     return origins
 
 
+WIDGET_TAGS: Any = Field(default_factory=list, description="Answer only from files with any of these tags; [] for all files.")
+
+
 class WidgetRequest(BaseModel):
     name: str = WIDGET_NAME
     welcome: str | None = WELCOME
     accent: str | None = ACCENT
     allowed_origins: list[str] = ORIGINS
+    tags: Tags = WIDGET_TAGS
 
     _origins = field_validator("allowed_origins")(_check_origin_lengths)
 
@@ -585,6 +622,8 @@ class WidgetUpdateRequest(BaseModel):
     welcome: str | None = WELCOME
     accent: str | None = ACCENT
     allowed_origins: list[str] | None = Field(default=None, min_length=1, max_length=20)
+    tags: Tags | None = Field(default=None, description="Answer only from files with any of "
+                                                        "these tags; [] or null for all files.")
 
     _origins = field_validator("allowed_origins")(_check_origin_lengths)
 
@@ -605,6 +644,8 @@ class WidgetResponse(BaseModel):
     welcome: str | None
     accent: str
     allowed_origins: list[str]
+    tags: list[str] = Field(description="Its answers come only from files with any of these; "
+                                        "[] for all files.")
     created_at: datetime
 
 
@@ -665,6 +706,7 @@ class SourceRequest(BaseModel):
     sync_interval_hours: int = Field(
         default=24, ge=0, le=24 * 30,
         description="Sync again after this many hours; 0 syncs only when asked.")
+    tags: Tags = Field(default_factory=list, description="Given to the pages it stores.")
 
     @field_validator("url")
     @classmethod
@@ -687,6 +729,7 @@ class SourceResponse(BaseModel):
                                                       "synced only when asked.")
     last_error: str | None = Field(description="Why the last sync could not crawl the site; "
                                                "the pages it had are kept meanwhile.")
+    tags: list[str] = Field(description="Given to the pages it stores.")
     created_at: datetime
 
 

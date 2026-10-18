@@ -48,12 +48,14 @@ export function useIngest(
   const jobs = ref<IngestJob[]>([]);
   const running = ref(false);
   const files = new Map<number, File>();
+  const tagsOf = new Map<number, string[]>();
 
   function update(id: number, changes: Partial<IngestJob>) {
     jobs.value = jobs.value.map((job) => (job.id === id ? { ...job, ...changes } : job));
   }
 
-  function add(selected: File[]) {
+  /** Queues the files; each gets `tags`. */
+  function add(selected: File[], tags: string[] = []) {
     for (const file of selected) {
       const id = nextId++;
       const supported = isSupported(file);
@@ -70,7 +72,10 @@ export function useIngest(
           error: supported ? null : `Only ${SUPPORTED_LABEL} can be uploaded.`,
         },
       ];
-      if (supported) files.set(id, file);
+      if (supported) {
+        files.set(id, file);
+        tagsOf.set(id, tags);
+      }
     }
     void run();
   }
@@ -78,7 +83,10 @@ export function useIngest(
   /** Uploads the file and queues its job; null when the project has its content already. */
   async function upload(job: IngestJob, file: File): Promise<Job | null> {
     update(job.id, { stage: "uploading" });
+    const tags = tagsOf.get(job.id) ?? [];
+    tagsOf.delete(job.id);
     const uploaded = await api.upload(project.value, file, {
+      tags,
       onProgress: (progress) => update(job.id, { progress }),
     });
     if (uploaded.signal === "file_already_uploaded") {

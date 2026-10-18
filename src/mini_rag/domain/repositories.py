@@ -27,6 +27,7 @@ from .models import (
     SearchFilters,
     Source,
     SourcePage,
+    TagCount,
     Tenant,
     TenantUsage,
     UnembeddedChunk,
@@ -111,7 +112,8 @@ class FileRepository(Protocol):
 
     async def add(self, *, project_id: int, key: str, original_name: str,
                   content_type: str, size_bytes: int,
-                  content_sha256: str | None = None) -> FileRecord | None:
+                  content_sha256: str | None = None,
+                  tags: Sequence[str] = ()) -> FileRecord | None:
         """Record a file; None when the project already has a file with this content."""
         ...
 
@@ -123,12 +125,21 @@ class FileRepository(Protocol):
         """Delete the file's record and its chunks; False if there was none."""
         ...
 
-    async def list_for_project(self, project_id: int, *, offset: int,
-                               limit: int) -> list[FileRecord]:
-        """Files in upload order."""
+    async def set_tags(self, project_id: int, key: str,
+                       tags: Sequence[str]) -> FileRecord | None:
+        """Replace the file's tags; None if there is no such file."""
         ...
 
-    async def count_for_project(self, project_id: int) -> int: ...
+    async def list_for_project(self, project_id: int, *, offset: int, limit: int,
+                               tag: str | None = None) -> list[FileRecord]:
+        """Files in upload order; ``tag`` keeps those that have it."""
+        ...
+
+    async def count_for_project(self, project_id: int, *, tag: str | None = None) -> int: ...
+
+    async def tag_counts(self, project_id: int) -> list[TagCount]:
+        """Each tag the project's files have, with how many have it, by name."""
+        ...
 
 
 class ChunkRepository(Protocol):
@@ -337,7 +348,8 @@ class WebhookRepository(Protocol):
 class WidgetRepository(Protocol):
 
     async def create(self, *, widget_id: str, project_id: int, name: str, welcome: str | None,
-                     accent: str, allowed_origins: Sequence[str]) -> Widget: ...
+                     accent: str, allowed_origins: Sequence[str],
+                     tags: Sequence[str] = ()) -> Widget: ...
 
     async def get(self, widget_id: str) -> Widget | None:
         """Any tenant's widget: widgets are found by their public id alone."""
@@ -372,7 +384,7 @@ class AuditRepository(Protocol):
 class SourceRepository(Protocol):
 
     async def create(self, *, project_id: int, kind: str, url: str, max_pages: int,
-                     sync_interval_hours: int) -> Source:
+                     sync_interval_hours: int, tags: Sequence[str] = ()) -> Source:
         """A new source, due for its first sync at once."""
         ...
 

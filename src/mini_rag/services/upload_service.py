@@ -1,5 +1,6 @@
 import hashlib
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -18,6 +19,7 @@ from mini_rag.core.metrics import UPLOADS
 from mini_rag.domain.file_types import HEAD_BYTES, content_mismatch, content_type_for
 from mini_rag.domain.malware_scanner import MalwareScanner
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.domain.tags import MAX_TAGS_PER_FILE
 from mini_rag.services.limit_service import check_storage
 from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
@@ -58,7 +60,7 @@ class UploadService:
 
     async def save(self, project_name: str, filename: str, content_type: str | None,
                    stream: AsyncReadable, declared_size: int | None = None,
-                   stored_as: str | None = None) -> Upload:
+                   stored_as: str | None = None, tags: Sequence[str] = ()) -> Upload:
         """Validate, store and record an upload.
 
         The project is created on its first upload. The size limit is
@@ -73,7 +75,8 @@ class UploadService:
         there is a scanner (FileInfected, or MalwareScanFailed when it
         cannot be scanned). ``stored_as`` names the stored file (and so its
         id, whose extension picks its reader) when ``filename``, the name
-        shown, cannot, e.g. a web page's URL.
+        shown, cannot, e.g. a web page's URL. ``tags`` (already normalized)
+        are given to the file; a duplicate gains those it did not have.
         """
         content_type = content_type_for(filename, content_type)
         if content_type not in self.allowed_types:
@@ -95,7 +98,8 @@ class UploadService:
                 await self._scan(path, project_name, filename)
             record = existing is None and await self.uow.files.add(
                 project_id=project.id, key=file_id, original_name=filename,
-                content_type=content_type, size_bytes=size, content_sha256=digest)
+                content_type=content_type, size_bytes=size, content_sha256=digest,
+                tags=tags)
             if record:
                 await emit(self.uow, project, "file.uploaded", {
                     "file_id": record.key, "original_name": record.original_name,
@@ -108,6 +112,9 @@ class UploadService:
             existing = existing or await self.uow.files.get_by_content(project.id, digest)
             if existing is None:
                 raise UploadFailed()  # That other upload was deleted again meanwhile.
+            if missing := [tag for tag in tags if tag not in existing.tags]:
+                await self.uow.files.set_tags(project.id, existing.key,
+                                              [*existing.tags, *missing][:MAX_TAGS_PER_FILE])
             await self.uow.commit()
             UPLOADS.labels(outcome="duplicate").inc()
             return Upload(file_id=existing.key, duplicate=True)

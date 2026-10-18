@@ -34,6 +34,7 @@ class ResponseSignal(Enum):
     SOURCE_URL_NOT_ALLOWED = "source_url_not_allowed"
     WIDGET_NOT_FOUND = "widget_not_found"
     WIDGET_ORIGIN_INVALID = "widget_origin_invalid"
+    TAG_INVALID = "tag_invalid"
     ORIGIN_NOT_ALLOWED = "origin_not_allowed"
     API_KEY_REQUIRED = "api_key_required"
     API_KEY_INVALID = "api_key_invalid"

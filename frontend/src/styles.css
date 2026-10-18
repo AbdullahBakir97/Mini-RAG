@@ -358,6 +358,42 @@ code,
   color: var(--danger);
 }
 
+/* A file's tag, e.g. in the documents table and tag inputs. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.chip:not(:has(button)) {
+  padding-right: 8px;
+}
+
+.chip .remove {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chip .remove:hover {
+  background: color-mix(in srgb, currentColor 15%, transparent);
+}
+
 .alert {
   display: flex;
   gap: 10px;

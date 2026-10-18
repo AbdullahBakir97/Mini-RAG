@@ -127,6 +127,7 @@ class SourceRow(Base):
     # A sync in progress holds the source until then.
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
 
 
 class SourcePageRow(Base):
@@ -182,6 +183,7 @@ class FileRow(Base):
         # The same content is kept once per project.
         Index("uq_files_project_id_content_sha256", "project_id", "content_sha256", unique=True,
               postgresql_where=text("content_sha256 IS NOT NULL")),
+        Index("ix_files_tags", "tags", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -193,6 +195,7 @@ class FileRow(Base):
     size_bytes: Mapped[int] = mapped_column(BigInteger)
     # Hex SHA-256 of the content; NULL for files uploaded before it was kept.
     content_sha256: Mapped[str | None] = mapped_column(String(64))
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     created_at: Mapped[datetime] = _created_at()
 
 
@@ -261,6 +264,7 @@ class WidgetRow(Base):
     welcome: Mapped[str | None] = mapped_column(Text)
     accent: Mapped[str] = mapped_column(String(7))
     allowed_origins: Mapped[list[str]] = mapped_column(ARRAY(String(255)))
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'"))
     created_at: Mapped[datetime] = _created_at()
 
 

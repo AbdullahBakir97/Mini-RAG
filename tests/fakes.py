@@ -9,6 +9,7 @@ import math
 import re
 import uuid
 import zlib
+from collections import Counter
 from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
@@ -33,6 +34,7 @@ from mini_rag.domain.models import (
     SearchFilters,
     Source,
     SourcePage,
+    TagCount,
     Tenant,
     TenantUsage,
     UnembeddedChunk,
@@ -77,7 +79,7 @@ class FakeFiles:
         self.fail_with: Exception | None = None
 
     async def add(self, *, project_id, key, original_name, content_type, size_bytes,
-                  content_sha256=None) -> FileRecord | None:
+                  content_sha256=None, tags=()) -> FileRecord | None:
         if self.fail_with:
             raise self.fail_with
         if content_sha256 and await self.get_by_content(project_id, content_sha256):
@@ -85,7 +87,7 @@ class FakeFiles:
         record = FileRecord(id=next(self._ids), project_id=project_id, key=key,
                             original_name=original_name, content_type=content_type,
                             size_bytes=size_bytes, created_at=datetime.now(UTC),
-                            content_sha256=content_sha256)
+                            content_sha256=content_sha256, tags=tuple(tags))
         self.records.append(record)
         return record
 
@@ -102,11 +104,28 @@ class FakeFiles:
     async def get_by_key(self, project_id: int, key: str) -> FileRecord | None:
         return next((r for r in self.records if r.project_id == project_id and r.key == key), None)
 
-    async def list_for_project(self, project_id: int, *, offset: int, limit: int) -> list[FileRecord]:
-        return [r for r in self.records if r.project_id == project_id][offset:offset + limit]
+    async def set_tags(self, project_id: int, key: str, tags) -> FileRecord | None:
+        record = await self.get_by_key(project_id, key)
+        if record is None:
+            return None
+        updated = replace(record, tags=tuple(tags))
+        self.records[self.records.index(record)] = updated
+        return updated
 
-    async def count_for_project(self, project_id: int) -> int:
-        return sum(r.project_id == project_id for r in self.records)
+    def _in(self, project_id: int, tag: str | None) -> list[FileRecord]:
+        return [r for r in self.records
+                if r.project_id == project_id and (tag is None or tag in r.tags)]
+
+    async def list_for_project(self, project_id: int, *, offset: int, limit: int,
+                               tag: str | None = None) -> list[FileRecord]:
+        return self._in(project_id, tag)[offset:offset + limit]
+
+    async def count_for_project(self, project_id: int, *, tag: str | None = None) -> int:
+        return len(self._in(project_id, tag))
+
+    async def tag_counts(self, project_id: int) -> list[TagCount]:
+        counts = Counter(tag for r in self._in(project_id, None) for tag in r.tags)
+        return [TagCount(tag=tag, files=files) for tag, files in sorted(counts.items())]
 
 
 @dataclass
@@ -169,7 +188,8 @@ class FakeChunks:
                             score=cosine_similarity(row.embedding, embedding))
                 for row in self.rows
                 if row.file.project_id == project_id and row.embedding is not None
-                and (not filters or not filters.file_keys or row.file.key in filters.file_keys)]
+                and (not filters or not filters.file_keys or row.file.key in filters.file_keys)
+                and (not filters or not filters.tags or set(row.file.tags) & set(filters.tags))]
         hits.sort(key=lambda hit: -hit.score)
         return [hit for hit in hits[:top_k] if min_score is None or hit.score >= min_score]
 
@@ -537,12 +557,12 @@ class FakeWidgets:
         self.by_id: dict[str, Widget] = {}
 
     async def create(self, *, widget_id, project_id, name, welcome, accent,
-                     allowed_origins) -> Widget:
+                     allowed_origins, tags=()) -> Widget:
         project = next(p for p in self.projects.by_name.values() if p.id == project_id)
         widget = Widget(id=widget_id, tenant_id=project.tenant_id, project_id=project_id,
                         project_name=project.name, name=name, welcome=welcome, accent=accent,
                         allowed_origins=tuple(allowed_origins), created_at=datetime.now(UTC),
-                        tenant_name="default")
+                        tenant_name="default", tags=tuple(tags))
         self.by_id[widget_id] = widget
         return widget
 
@@ -556,7 +576,8 @@ class FakeWidgets:
         widget = self.by_id.get(widget_id)
         if widget is None or widget.project_id != project_id:
             return None
-        values = {k: tuple(v) if k == "allowed_origins" else v for k, v in changes.items()}
+        values = {k: tuple(v) if k in ("allowed_origins", "tags") else v
+                  for k, v in changes.items()}
         self.by_id[widget_id] = replace(widget, **values)
         return self.by_id[widget_id]
 
@@ -609,12 +630,14 @@ class FakeSources:
         return replace(source, pages_count=len(self.page_rows.get(source.id, {})),
                        syncing=source.id in self.locked)
 
-    async def create(self, *, project_id, kind, url, max_pages, sync_interval_hours) -> Source:
+    async def create(self, *, project_id, kind, url, max_pages, sync_interval_hours,
+                     tags=()) -> Source:
         project = self._project(project_id)
         now = datetime.now(UTC)
         source = Source(id=str(uuid.uuid4()), tenant_id=project.tenant_id, project_id=project_id,
                         project_name=project.name, kind=kind, url=url, max_pages=max_pages,
-                        sync_interval_hours=sync_interval_hours, created_at=now, next_sync_at=now)
+                        sync_interval_hours=sync_interval_hours, created_at=now, next_sync_at=now,
+                        tags=tuple(tags))
         self.by_id[source.id] = source
         return self._view(source)
 

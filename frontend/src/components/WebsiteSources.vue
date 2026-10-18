@@ -4,10 +4,13 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { ApiError, api } from "@/api/client";
 import type { SourcePage, WebsiteSource } from "@/api/types";
+import TagInput from "@/components/TagInput.vue";
 import { useToasts } from "@/composables/useToasts";
 import { formatNumber, formatRelative } from "@/lib/format";
 
-const props = defineProps<{ project: string }>();
+const props = withDefaults(defineProps<{ project: string; tagSuggestions?: string[] }>(), {
+  tagSuggestions: () => [],
+});
 const emit = defineEmits<{ synced: [] }>();
 const toasts = useToasts();
 
@@ -54,19 +57,24 @@ async function load() {
 const url = ref("");
 const maxPages = ref(50);
 const interval = ref(24);
+const tags = ref<string[]>([]);
+const tagInput = ref<InstanceType<typeof TagInput> | null>(null);
 const adding = ref(false);
 const validUrl = computed(() => /^https?:\/\/[^\s/]+/i.test(url.value.trim()));
 
 async function add() {
+  if (tagInput.value && !tagInput.value.commit()) return;
   adding.value = true;
   try {
     await api.createSource(props.project, {
       url: url.value.trim(),
       max_pages: maxPages.value,
       sync_interval_hours: interval.value,
+      tags: tags.value,
     });
     toasts.success("Website added", "Its pages are being fetched; each one is indexed as it arrives.");
     url.value = "";
+    tags.value = [];
     await load();
     emit("synced");
   } catch (caught) {
@@ -182,6 +190,10 @@ defineExpose({ load });
           <option v-for="option in INTERVALS" :key="option.hours" :value="option.hours">{{ option.label }}</option>
         </select>
       </label>
+      <div class="field grow">
+        <span>Tags for its pages</span>
+        <TagInput ref="tagInput" v-model="tags" :suggestions="tagSuggestions" label="Tags for its pages" placeholder="Optional" />
+      </div>
       <button class="btn btn-primary" type="submit" :disabled="adding || !validUrl || maxPages < 1 || maxPages > 1000">
         <LoaderCircle v-if="adding" :size="16" class="spin" />
         <Plus v-else :size="16" />
@@ -207,6 +219,9 @@ defineExpose({ load });
               <LoaderCircle v-if="source.syncing" :size="12" class="spin" aria-hidden="true" />
               {{ formatNumber(source.pages_count) }} of at most {{ formatNumber(source.max_pages) }} pages ·
               {{ intervalLabel(source.sync_interval_hours) }} · {{ status(source) }}
+            </p>
+            <p v-if="source.tags.length" class="tags">
+              <span v-for="tag in source.tags" :key="tag" class="chip">{{ tag }}</span>
             </p>
             <p v-if="source.last_error" class="small error">
               <TriangleAlert :size="13" aria-hidden="true" />
@@ -332,6 +347,10 @@ defineExpose({ load });
   display: flex;
   align-items: center;
   gap: 5px;
+}
+
+.tags {
+  flex-wrap: wrap;
 }
 
 .url {

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from dataclasses import asdict
 from datetime import datetime, timedelta
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -60,6 +60,7 @@ from mini_rag.domain.models import (
     SourceKind,
     SourcePage,
     StoredCitation,
+    TagCount,
     Tenant,
     TenantUsage,
     UnembeddedChunk,
@@ -124,7 +125,7 @@ def _file(row: FileRow) -> FileRecord:
     return FileRecord(id=row.id, project_id=row.project_id, key=row.key,
                       original_name=row.original_name, content_type=row.content_type,
                       size_bytes=row.size_bytes, created_at=row.created_at,
-                      content_sha256=row.content_sha256)
+                      content_sha256=row.content_sha256, tags=tuple(row.tags))
 
 
 def _chunk(row: ChunkRow) -> Chunk:
@@ -333,13 +334,14 @@ class SqlFileRepository:
 
     async def add(self, *, project_id: int, key: str, original_name: str,
                   content_type: str, size_bytes: int,
-                  content_sha256: str | None = None) -> FileRecord | None:
+                  content_sha256: str | None = None,
+                  tags: Sequence[str] = ()) -> FileRecord | None:
         # Two uploads of the same content at once: one is recorded, the other gets None.
         row = await self.session.scalar(
             pg_insert(FileRow)
             .values(project_id=project_id, key=key, original_name=original_name,
                     content_type=content_type, size_bytes=size_bytes,
-                    content_sha256=content_sha256)
+                    content_sha256=content_sha256, tags=list(tags))
             .on_conflict_do_nothing(index_elements=["project_id", "content_sha256"],
                                     index_where=FileRow.content_sha256.is_not(None))
             .returning(FileRow))
@@ -362,16 +364,38 @@ class SqlFileRepository:
             select(FileRow).where(FileRow.project_id == project_id, FileRow.key == key))
         return _file(row) if row else None
 
-    async def list_for_project(self, project_id: int, *, offset: int,
-                               limit: int) -> list[FileRecord]:
+    async def set_tags(self, project_id: int, key: str,
+                       tags: Sequence[str]) -> FileRecord | None:
+        row = await self.session.scalar(
+            update(FileRow).where(FileRow.project_id == project_id, FileRow.key == key)
+            .values(tags=list(tags)).returning(FileRow))
+        return _file(row) if row else None
+
+    async def list_for_project(self, project_id: int, *, offset: int, limit: int,
+                               tag: str | None = None) -> list[FileRecord]:
         rows = await self.session.scalars(
-            select(FileRow).where(FileRow.project_id == project_id)
+            _with_tag(select(FileRow).where(FileRow.project_id == project_id), tag)
             .order_by(FileRow.created_at, FileRow.id).offset(offset).limit(limit))
         return [_file(row) for row in rows]
 
-    async def count_for_project(self, project_id: int) -> int:
-        return await _number(self.session,
-            select(func.count()).select_from(FileRow).where(FileRow.project_id == project_id))
+    async def count_for_project(self, project_id: int, *, tag: str | None = None) -> int:
+        return await _number(self.session, _with_tag(
+            select(func.count()).select_from(FileRow).where(FileRow.project_id == project_id),
+            tag))
+
+    async def tag_counts(self, project_id: int) -> list[TagCount]:
+        tag = func.unnest(FileRow.tags).label("tag")
+        tagged = select(tag).where(FileRow.project_id == project_id).subquery()
+        rows = await self.session.execute(
+            select(tagged.c.tag, func.count()).group_by(tagged.c.tag).order_by(tagged.c.tag))
+        return [TagCount(tag=name, files=files) for name, files in rows]
+
+
+_Query = TypeVar("_Query", bound=Select[Any])
+
+
+def _with_tag(query: _Query, tag: str | None) -> _Query:
+    return query if tag is None else query.where(FileRow.tags.any_() == tag)
 
 
 class SqlChunkRepository:
@@ -526,6 +550,9 @@ def _filter_sql(filters: SearchFilters | None, params: dict[str, Any]) -> str:
     if filters.file_keys:
         files.append("files.key = ANY(:file_keys)")
         params["file_keys"] = list(filters.file_keys)
+    if filters.tags:
+        files.append("files.tags && CAST(:tags AS text[])")
+        params["tags"] = list(filters.tags)
     if filters.uploaded_after is not None:
         files.append("files.created_at >= :uploaded_after")
         params["uploaded_after"] = filters.uploaded_after
@@ -981,7 +1008,7 @@ def _widget(row: WidgetRow, project: ProjectRow, tenant_name: str) -> Widget:
     return Widget(id=row.id, tenant_id=project.tenant_id, project_id=project.id,
                   project_name=project.name, name=row.name, welcome=row.welcome,
                   accent=row.accent, allowed_origins=tuple(row.allowed_origins),
-                  created_at=row.created_at, tenant_name=tenant_name)
+                  created_at=row.created_at, tenant_name=tenant_name, tags=tuple(row.tags))
 
 
 class SqlWidgetRepository:
@@ -995,11 +1022,12 @@ class SqlWidgetRepository:
                 .join(TenantRow, TenantRow.id == ProjectRow.tenant_id))
 
     async def create(self, *, widget_id: str, project_id: int, name: str, welcome: str | None,
-                     accent: str, allowed_origins: Sequence[str]) -> Widget:
+                     accent: str, allowed_origins: Sequence[str],
+                     tags: Sequence[str] = ()) -> Widget:
         await self.session.execute(
             insert(WidgetRow).values(id=widget_id, project_id=project_id, name=name,
                                      welcome=welcome, accent=accent,
-                                     allowed_origins=list(allowed_origins)))
+                                     allowed_origins=list(allowed_origins), tags=list(tags)))
         return _widget(*(await self.session.execute(
             self._select().where(WidgetRow.id == widget_id))).one())
 
@@ -1016,7 +1044,7 @@ class SqlWidgetRepository:
 
     async def update(self, project_id: int, widget_id: str,
                      changes: Mapping[str, Any]) -> Widget | None:
-        values = {name: list(value) if name == "allowed_origins" else value
+        values = {name: list(value) if name in ("allowed_origins", "tags") else value
                   for name, value in changes.items()}
         result = await self.session.execute(
             update(WidgetRow).where(WidgetRow.id == widget_id, WidgetRow.project_id == project_id)
@@ -1080,7 +1108,7 @@ def _source(row: SourceRow, project: ProjectRow, pages_count: int) -> Source:
                   syncing=row.locked_until is not None
                   and row.locked_until > datetime.now(row.locked_until.tzinfo),
                   last_synced_at=row.last_synced_at, next_sync_at=row.next_sync_at,
-                  last_error=row.last_error)
+                  last_error=row.last_error, tags=tuple(row.tags))
 
 
 class SqlSourceRepository:
@@ -1100,12 +1128,12 @@ class SqlSourceRepository:
             self._select().where(SourceRow.id == source_id))).one())
 
     async def create(self, *, project_id: int, kind: str, url: str, max_pages: int,
-                     sync_interval_hours: int) -> Source:
+                     sync_interval_hours: int, tags: Sequence[str] = ()) -> Source:
         source_id = str(uuid.uuid4())
         await self.session.execute(
             insert(SourceRow).values(id=source_id, project_id=project_id, kind=kind, url=url,
                                      max_pages=max_pages,
-                                     sync_interval_hours=sync_interval_hours,
+                                     sync_interval_hours=sync_interval_hours, tags=list(tags),
                                      next_sync_at=func.now()))
         return await self._by_id(source_id)
 

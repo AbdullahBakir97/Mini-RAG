@@ -136,7 +136,9 @@ A `limit` of `null` is unlimited.
 | `GET` | `/api/v1/projects` | List projects in name order (paged) |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
 | `GET` | `/api/v1/projects/{project_id}/usage` | Token usage and cost of the project's answers |
-| `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
+| `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged; `?tag=` filters) |
+| `PUT` | `/api/v1/projects/{project_id}/files/{file_id}/tags` | Replace a file's tags (`write`) |
+| `GET` | `/api/v1/projects/{project_id}/tags` | The project's tags, with how many files have each |
 | `DELETE` | `/api/v1/projects/{project_id}` | Delete a project with all its files, chunks, answers and conversations |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
 | `DELETE` | `/api/v1/projects/{project_id}/files/{file_id}` | Delete a file with its chunks |
@@ -156,7 +158,10 @@ The content must be of the file's type, whatever its name and declared type say:
 
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
+curl -F "file=@handbook.pdf" -F "tags=handbook, hr" http://localhost:8000/api/v1/data/upload/demo1
 ```
+
+The optional `tags` field gives the file [tags](#tags-and-collections), comma-separated. A file the project already has gains the tags it did not have.
 
 ```json
 {"signal": "file_uploaded_successfully", "file_id": "a16q20nzrtvj_notes.txt"}
@@ -171,6 +176,7 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | Content not of the file's type, e.g. a program named `notes.txt` | `415` | `{"signal": "file_content_mismatch"}` |
 | The malware scanner found malware | `422` | `{"signal": "file_infected"}` |
 | The malware scanner is unreachable or could not scan the file | `503` | `{"signal": "malware_scan_failed"}` |
+| A tag that is not one (see [tags](#tags-and-collections)), or more than 20 | `422` | `{"signal": "tag_invalid"}` |
 | Invalid `project_id` | `422` | Validation error details |
 | Storage failure on the server | `500` | `{"signal": "file_upload_failed"}` |
 
@@ -240,6 +246,23 @@ curl "http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/c
 ```
 
 Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `100`); `total` is the number of items overall. Projects are listed by name, with only `name` and `created_at`; a project exists once a file was uploaded into it. Files are listed in upload order, chunks by `chunk_index`. An unknown project returns `404` `{"signal": "project_not_found"}`, an unknown file `404` `{"signal": "file_not_found"}`.
+
+## Tags and collections
+
+Tags group a project's files into collections, such as `handbook`, `release-notes` or `v2`: searches, answers, chat widgets and the MCP tools can then use only the files with some tags. A file has up to 20 tags. A tag is 1–32 letters (of any script), digits and hyphens; tags are lowercased, with spaces and underscores turned into hyphens, so `Release Notes` and `release_notes` are both `release-notes`.
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/tags \
+  -H "Content-Type: application/json" -d '{"tags": ["handbook", "v2"]}'
+curl "http://localhost:8000/api/v1/projects/demo1/files?tag=handbook"
+curl http://localhost:8000/api/v1/projects/demo1/tags
+```
+
+```json
+{"items": [{"tag": "handbook", "files": 12}, {"tag": "v2", "files": 3}]}
+```
+
+`PUT .../tags` replaces the file's tags (`[]` removes them) and returns the file, with its `tags`; every file listed carries its `tags`. Tags are given at upload too, and a [website source](#website-sources) gives its own to the pages it stores. Limit a search or an answer to files with any of some tags with the `tags` [filter](#filters); a [chat widget](#chat-widget) with tags answers its visitors only from those files. An invalid tag in a body is a validation error (`422`); in `?tag=` or an upload's `tags`, it is `422` `{"signal": "tag_invalid"}`.
 
 ## Delete files and projects
 
@@ -313,19 +336,20 @@ A source keeps a website's pages in a project: they are crawled, stored as files
 ```bash
 curl -X POST http://localhost:8000/api/v1/projects/demo1/sources \
   -H "Content-Type: application/json" \
-  -d '{"url": "https://docs.example.com/guide/", "max_pages": 100, "sync_interval_hours": 24}'
+  -d '{"url": "https://docs.example.com/guide/", "max_pages": 100, "sync_interval_hours": 24, "tags": ["docs"]}'
 ```
 
 ```json
 {"id": "f77f0c0a-…", "kind": "website", "url": "https://docs.example.com/guide/", "max_pages": 100,
  "sync_interval_hours": 24, "pages_count": 0, "syncing": false, "last_synced_at": null,
- "next_sync_at": "2026-10-18T12:46:40Z", "last_error": null, "created_at": "2026-10-18T12:46:40Z"}
+ "next_sync_at": "2026-10-18T12:46:40Z", "last_error": null, "tags": ["docs"],
+ "created_at": "2026-10-18T12:46:40Z"}
 ```
 
 - **What is crawled.** The pages under the URL's folder (`https://docs.example.com/guide/intro` covers everything under `/guide/`), on the same host and port, found by following links from the URL, breadth first, up to `max_pages` (1–1000, default 50). Queries and fragments are dropped, so `page?x=1` and `page` are one page. HTML, PDF, text and Markdown pages are kept; images and other types are skipped, as are pages larger than `FILE_MAX_SIZE`.
 - **Politely.** `robots.txt` is obeyed, its `Crawl-delay` too, and so are pages' `<meta name="robots">` tags (`noindex`, `nofollow`) and `rel="nofollow"` links. Requests are spaced by `CRAWLER_DELAY_SECONDS` and sent as `mini-rag-crawler/1.0`.
 - **Safely.** As for webhooks, only public addresses are crawled (`422` `{"signal": "source_url_not_allowed"}` when adding one on this server's network, and every host and redirect is checked again during a crawl), unless `CRAWLER_ALLOW_PRIVATE_URLS=true`. Redirects are followed only within the crawled folder.
-- **Stored like uploads.** Each page goes through the upload checks (its type against its content, malware scanning, the storage quota, duplicates) and is stored as a file named by its URL (its `original_name` is the URL, so answers cite it), then processed and indexed by a background job.
+- **Stored like uploads.** Each page goes through the upload checks (its type against its content, malware scanning, the storage quota, duplicates) and is stored as a file named by its URL (its `original_name` is the URL, so answers cite it), then processed and indexed by a background job. The source's optional `tags` (see [tags](#tags-and-collections)) are given to its pages.
 - **Kept in sync.** The first sync starts at once, then every `sync_interval_hours` (0: only on `POST …/sync`). A new page is added, a changed page replaces its file, and an unchanged one is left alone. A page that is gone (no longer linked, or `404`) has its file deleted. A page that could not be fetched this time (a timeout, a `5xx`) keeps what it had, and when the site cannot be crawled at all, `last_error` says why and every page is kept. Files the project already had are never deleted by a sync.
 
 Syncs run in the API's workers when `JOB_WORKERS` is above 0, and in `mini-rag worker`; a source is held by one worker at a time. Deleting a source deletes the files its syncs created, unless `?keep_files=true`.
@@ -397,9 +421,11 @@ Webhooks reach only public addresses: an address on this server's network (`loca
 | Tool | Scope | Does |
 |---|---|---|
 | `list_projects` | `read` | Lists the tenant's projects, with files and indexed chunks |
-| `list_files` | `read` | Lists a project's files |
+| `list_files` | `read` | Lists a project's files, with their tags |
 | `search_knowledge` | `read` | The best matching passages, each with file, page or section, and score |
 | `ask` | `ask` | An answer from the documents with `[n]` citations and its sources; counts against the answer quota |
+
+`search_knowledge` and `ask` take an optional `tags` list, to use only the files with at least one of those [tags](#tags-and-collections).
 
 `tools/list` shows only the tools the key may use. A tool that fails (an unknown project, no embedding model, the quota reached) answers with `isError: true` and the signal, so the agent can change course; bad arguments are a JSON-RPC error (`-32602`). Requests count against the tenant's rate limit like any other. Requests from a web page on another site (an `Origin` header for another host) are refused.
 
@@ -453,6 +479,7 @@ The page can also call `window.MiniRagWidget.open()` and `.close()`. The widget 
 | `welcome` | The first message visitors see (optional, up to 500 characters) |
 | `accent` | The widget's colour as `#rrggbb` (default `#2563eb`); text on it is black or white, whichever reads better |
 | `allowed_origins` | The websites that may use the widget, as origins: scheme, host and any port, like `https://example.com` (1–20; `*` for any website). Anything else, such as a URL with a path, is refused with `422` `{"signal": "widget_origin_invalid"}` |
+| `tags` | Optional [tags](#tags-and-collections): visitors get answers only from the files with at least one of them (default `[]`, every file) |
 
 `PATCH` changes only the settings it sends; pages that embed the widget pick the changes up when they are next loaded.
 
@@ -502,6 +529,7 @@ curl -X POST http://localhost:8000/api/v1/search/demo1 \
 | Field | Rules | Keeps |
 |---|---|---|
 | `file_ids` | up to 100 of the project's file ids | Chunks of these files only |
+| `tags` | up to 20 [tags](#tags-and-collections) | Chunks of files with at least one of these tags |
 | `page_from`, `page_to` | 1 or more; `page_from` ≤ `page_to` | Chunks on these pages; chunks without a page (not from a PDF) are left out |
 | `uploaded_after`, `uploaded_before` | ISO 8601 timestamps, after before before | Chunks of files uploaded in that time |
 | `metadata` | up to 10 keys with string, number or boolean values | Chunks whose metadata has these values, e.g. `{"page": 3}` |
