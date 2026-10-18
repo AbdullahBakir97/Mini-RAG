@@ -81,3 +81,25 @@ def test_project_usage_endpoint_is_documented(schema):
         "ProjectUsageResponse")
     assert "project_not_found" in path["responses"]["404"]["description"]
     assert "usage" in schema["components"]["schemas"]["AskResponse"]["properties"]
+
+
+def test_success_examples_show_the_success_signal(schema):
+    upload = schema["components"]["schemas"]["UploadResponse"]["properties"]
+
+    assert upload["signal"]["examples"] == ["file_uploaded_successfully"]
+    assert upload["file_id"]["examples"] == ["a16q20nzrtvj_notes.txt"]
+
+
+def test_request_examples_look_like_real_values(schema):
+    process = schema["components"]["schemas"]["ProcessRequest"]["properties"]
+
+    assert process["file_id"]["examples"] == ["a16q20nzrtvj_notes.txt"]
+
+
+def test_error_examples_show_each_signal(schema):
+    process = schema["paths"]["/api/v1/data/process/{project_id}"]["post"]["responses"]
+    examples = process["422"]["content"]["application/json"]["examples"]
+
+    assert examples == {"file_has_no_text": {"value": {"signal": "file_has_no_text"}},
+                        "processing_failed": {"value": {"signal": "processing_failed"}}}
+    assert response_schema(schema, "/api/v1/data/process/{project_id}", "422") == "ErrorResponse"
