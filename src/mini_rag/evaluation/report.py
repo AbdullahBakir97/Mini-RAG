@@ -8,6 +8,7 @@ the parameters and the metrics that must not get worse.
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from .answers import AnswerResult, answer_metrics
 from .dataset import Dataset
 from .metrics import CaseResult, metrics_by_tag, retrieval_metrics, suggest_min_score
 
@@ -57,6 +58,31 @@ def _case(result: CaseResult) -> dict:
                      "page": hit.page, "score": round(hit.score, 4), "relevant": hit.relevant}
                     for hit in result.results],
     }
+
+
+def add_answers(report: dict, results: Sequence[AnswerResult], parameters: dict,
+                usage: dict) -> dict:
+    """Adds the answers, their grades and their metrics to a retrieval report.
+
+    Answer metrics are reported, not gated: they depend on the language
+    model and the judge, which CI does not run.
+    """
+    report["answer_parameters"] = parameters
+    report["answer_metrics"] = answer_metrics(results).as_dict()
+    report["answer_usage"] = usage
+    by_id = {result.case.id: result for result in results}
+    for case in report["cases"]:
+        result = by_id.get(case["id"])
+        if result is not None:
+            case["answer"] = {
+                "text": result.text,
+                "citations": [{"number": c.number, "file": c.file, "chunk_index": c.chunk_index,
+                               "relevant": c.relevant} for c in result.citations],
+                "grounded": result.grounded,
+                "correct": result.correct,
+                "reason": result.reason,
+            }
+    return report
 
 
 def baseline_from(report: dict) -> dict:

@@ -73,17 +73,20 @@ class CaseResult:
         return self.results[0].score if self.results else None
 
 
+def matches(case: Case, file: str, text: str) -> tuple[int, ...]:
+    """The indexes of the case's expected sources that a chunk of ``file`` contains."""
+    text = normalize(text)
+    return tuple(index for index, source in enumerate(case.expected_sources)
+                 if source.file == file and normalize(source.evidence) in text)
+
+
 def judge(case: Case, results: Sequence[tuple[str, ScoredChunk]]) -> CaseResult:
     """Mark which results are relevant; ``results`` pairs each hit with its document's name."""
-    evidence = [(source.file, normalize(source.evidence)) for source in case.expected_sources]
     retrieved = []
     for rank, (file, hit) in enumerate(results, start=1):
-        text = normalize(hit.chunk.text)
-        matches = tuple(index for index, (expected_file, phrase) in enumerate(evidence)
-                        if expected_file == file and phrase in text)
         retrieved.append(Retrieved(rank=rank, file=file, chunk_index=hit.chunk.index,
                                    page=hit.chunk.metadata.get("page"), score=hit.score,
-                                   matches=matches))
+                                   matches=matches(case, file, hit.chunk.text)))
     return CaseResult(case=case, results=tuple(retrieved))
 
 

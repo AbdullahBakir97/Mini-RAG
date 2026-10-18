@@ -18,11 +18,11 @@
 - **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept.
 - **Track** the tokens and cost of every answer, per answer and per project.
-- **Evaluate** retrieval with `mini-rag eval` on a versioned dataset: hit rate, recall and MRR, checked in CI with a real embedding model so a change that makes search worse fails.
+- **Evaluate** retrieval with `mini-rag eval` on a versioned dataset: hit rate, recall and MRR, checked in CI with a real embedding model so a change that makes search worse fails. With `--answers`, answers are graded too: citation precision, groundedness and correctness.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
 - **Use it in the browser** with the web app: projects, drag-and-drop uploads, conversations with streamed answers and clickable sources, search and usage, in light and dark.
 
-Answer metrics and feedback are next; see the [roadmap](docs/roadmap.md).
+Feedback on answers is next; see the [roadmap](docs/roadmap.md).
 
 ## Web app
 

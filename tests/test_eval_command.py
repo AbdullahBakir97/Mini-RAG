@@ -9,7 +9,7 @@ from mini_rag import cli
 from mini_rag.core.config import get_settings
 from mini_rag.persistence.database import create_engine
 
-from .fakes import FakeEmbedder
+from .fakes import FakeEmbedder, FakeLLM
 
 HANDBOOK = str(Path(__file__).resolve().parents[1] / "evals" / "handbook" / "v1")
 
@@ -116,3 +116,42 @@ def test_overlap_must_be_smaller_than_the_chunks(capsys):
     with pytest.raises(SystemExit):
         cli.main(["eval", HANDBOOK, "--chunk-size", "100", "--overlap-size", "100"])
     assert "--overlap-size must be smaller" in capsys.readouterr().err
+
+
+class ClosableLLM(FakeLLM):
+    async def aclose(self) -> None:
+        pass
+
+
+def test_answers_are_evaluated_with_the_judge(db, embedder, monkeypatch, tmp_path, capsys):
+    writer = ClosableLLM("Production deploys happen on weekdays between 9:00 and 16:00 [1].")
+    judge = ClosableLLM('{"grounded": "yes", "correct": "yes", "reason": "Fine."}')
+    models = iter([writer, judge])
+    monkeypatch.setattr(cli, "create_llm", lambda settings: next(models))
+    report_path = tmp_path / "report.json"
+
+    assert cli.main(["eval", HANDBOOK, "--answers", "--min-score", "-1",
+                     "--output", str(report_path)]) == cli.PASSED
+
+    out = capsys.readouterr().out
+    assert "Answers by gpt-4.1-mini (answer-v1), graded by fake-llm (judge-v1)" in out
+    report = json.loads(report_path.read_text())
+    metrics = report["answer_metrics"]
+    assert (metrics["answered"], metrics["abstained"], metrics["correct"]) == (1.0, 0.0, 1.0)
+    assert report["cases"][0]["answer"]["text"].startswith("Production deploys happen")
+    assert report["answer_usage"]["answers"]["input_tokens"] == 53 * 1200
+    assert len(judge.calls) == 53
+    assert projects(db) == 0
+
+
+def test_answers_need_a_language_model(db, embedder, monkeypatch, capsys):
+    monkeypatch.setattr(cli, "create_llm", lambda settings: None)
+
+    assert cli.main(["eval", HANDBOOK, "--answers"]) == cli.FAILED
+    assert "--answers needs a language model" in capsys.readouterr().err
+
+
+def test_a_judge_model_needs_answers(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["eval", HANDBOOK, "--judge-model", "other"])
+    assert "--judge-model needs --answers" in capsys.readouterr().err

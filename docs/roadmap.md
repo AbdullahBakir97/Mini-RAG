@@ -39,7 +39,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 - [x] A versioned test set of questions, expected sources and reference answers.
 - [x] Retrieval metrics (hit rate, recall@k, MRR, and how the minimum score keeps answerable questions and rejects the others).
-- [ ] Answer metrics (groundedness, relevance, citation accuracy).
+- [x] Answer metrics: answered and abstained, citation precision, and groundedness and correctness graded by a judge model (`mini-rag eval --answers`).
 - [x] A `mini-rag eval` command with JSON reports.
 - [x] Retrieval metrics checked on every pull request; changes that lower them fail CI.
 - [ ] Thumbs up/down feedback stored to grow the test set.
