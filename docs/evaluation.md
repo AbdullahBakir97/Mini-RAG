@@ -145,7 +145,7 @@ Check the cases, then `mini-rag eval evals/my-project/v1` measures the project o
 mini-rag eval evals/handbook/v1 --baseline evals/baselines/handbook-v1.json --output eval-report.json
 ```
 
-A change that lowers a metric by more than the tolerance fails CI; the report is kept as the job's `eval-report` artifact. A change that raises one passes and says so: update the baseline in the same pull request, so the improvement is kept:
+A change that lowers a metric by more than the tolerance fails CI; the report is kept as the job's `eval-report` artifact. A change that raises one passes and says so: update the baseline in the same pull request, so the improvement is kept. The job prints the run's baseline at the end, ready to copy, or run:
 
 ```bash
 mini-rag eval evals/handbook/v1 --save-baseline evals/baselines/handbook-v1.json

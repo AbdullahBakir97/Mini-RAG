@@ -14,7 +14,7 @@
 - **Upload** TXT and PDF files into separate projects, with type checks and a size limit enforced while streaming.
 - **Process** them into chunks that respect paragraphs, with exact overlap between chunks and page numbers for PDFs.
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
-- **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
+- **Search** by meaning and by words at once (hybrid search: pgvector and PostgreSQL full-text search, merged by rank fusion), best match first, with a similarity score.
 - **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept, with thumbs up or down on each answer.
 - **Track** the tokens and cost of every answer, per answer and per project.
