@@ -32,6 +32,10 @@ services:
     # Bring the schema up to date, then serve. Migrations are safe to run on
     # every start: Alembic applies only the missing ones.
     command: ["sh", "-c", "alembic upgrade head && exec uvicorn mini_rag.main:app --host 0.0.0.0 --port 8000"]
+    # host.docker.internal is this computer, e.g. for Ollama on it; Docker
+    # Desktop knows the name, Docker Engine on Linux needs this line.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

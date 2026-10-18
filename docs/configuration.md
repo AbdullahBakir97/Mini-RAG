@@ -10,7 +10,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `DATABASE_URL` | `"postgresql+asyncpg://mini_rag:mini_rag@localhost:5432/mini_rag"` | PostgreSQL connection (must use the `postgresql+asyncpg://` driver); the default matches `compose.yaml` |
 | `EMBEDDING_BASE_URL` | `""` | OpenAI-compatible server for embeddings, e.g. `"http://localhost:11434/v1"` for Ollama; empty means OpenAI |
 | `EMBEDDING_MODEL` | `"text-embedding-3-small"` | Embedding model name |
-| `EMBEDDING_DIMENSIONS` | `1536` | Length of each vector. Must match the database column (1536); the app refuses to start otherwise |
+| `EMBEDDING_DIMENSIONS` | `1536` | Length of each vector, up to 2000; must match the embedding model. See [Changing the embedding model](#changing-the-embedding-model) |
 | `EMBEDDING_BATCH_SIZE` | `64` | Chunks sent per embedding request while indexing |
 | `LLM_BASE_URL` | `""` | OpenAI-compatible server for answers, e.g. `"http://localhost:11434/v1"` for Ollama; empty means OpenAI. Independent of `EMBEDDING_BASE_URL` |
 | `LLM_MODEL` | `"gpt-4.1-mini"` | Chat model that writes answers |
@@ -28,31 +28,47 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 
 ## Model providers
 
-Embeddings and answers each talk to an OpenAI-compatible API, so the same settings work with several providers. Leave `EMBEDDING_DIMENSIONS` at `1536` unless you also change the database column (see [Development](development.md#database-migrations)).
+Embeddings and answers each talk to an OpenAI-compatible API, so the same settings work with several providers.
 
-**OpenAI** (the default): set `OPENAI_API_KEY` and leave both base URLs empty.
+**OpenAI** (the default): set `OPENAI_API_KEY` and leave both base URLs empty. For answer costs, copy the model's prices from OpenAI's pricing page into `LLM_INPUT_PRICE_PER_MILLION` and `LLM_OUTPUT_PRICE_PER_MILLION`; prices change, so they are not built in.
 
-**GitHub Models**: free within GitHub's rate limits. Create a fine-grained personal access token with the **Models** account permission (read-only), then:
-
-```env
-OPENAI_API_KEY="<your GitHub token>"
-EMBEDDING_BASE_URL="https://models.github.ai/inference"
-EMBEDDING_MODEL="openai/text-embedding-3-small"
-LLM_BASE_URL="https://models.github.ai/inference"
-LLM_MODEL="openai/gpt-4.1-mini"
-```
-
-Check the token before starting the app; a working one returns JSON with a `choices` list:
+**Ollama** (local, free, no key): install [Ollama](https://ollama.com), pull an embedding model and a chat model, and point both base URLs at it:
 
 ```bash
-curl -s https://models.github.ai/inference/chat/completions \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"model":"openai/gpt-4.1-mini","messages":[{"role":"user","content":"Reply with: pong"}],"max_tokens":5}'
+ollama pull nomic-embed-text      # embeddings: 768 numbers per vector
+ollama pull llama3.1              # answers
 ```
 
-Prices change, so they are not built in: copy them from your provider's pricing page. Within GitHub Models' free limits, set both to `0`.
+```env
+OPENAI_API_KEY=""
+EMBEDDING_BASE_URL="http://host.docker.internal:11434/v1"
+EMBEDDING_MODEL="nomic-embed-text"
+EMBEDDING_DIMENSIONS=768
+LLM_BASE_URL="http://host.docker.internal:11434/v1"
+LLM_MODEL="llama3.1"
+LLM_INPUT_PRICE_PER_MILLION=0
+LLM_OUTPUT_PRICE_PER_MILLION=0
+```
 
-**Ollama** (local, no key): set `EMBEDDING_BASE_URL` and `LLM_BASE_URL` to `"http://localhost:11434/v1"` and the model settings to models you pulled. Ollama's embedding models usually produce other vector sizes, such as 768, so change the column and `EMBEDDING_DIMENSIONS` to match first (see [Development](development.md#database-migrations)).
+`host.docker.internal` is your computer as seen from the Docker stack. When the API runs outside Docker (with `uvicorn`), use `http://localhost:11434/v1` instead.
+
+`EMBEDDING_DIMENSIONS` must match the model's vectors (768 for `nomic-embed-text`, 1024 for `mxbai-embed-large`, at most 2000). See [Changing the embedding model](#changing-the-embedding-model).
+
+GitHub Models, which earlier versions of this guide described, was retired by GitHub on July 30, 2026; `models.github.ai` no longer serves models.
+
+## Changing the embedding model
+
+Vectors from different models cannot be compared, so after changing `EMBEDDING_MODEL` every project has to be indexed again; its chunks stay. When the new model's vectors have another length, the database's vector column changes too:
+
+- **No vectors stored yet:** the app changes the column to `EMBEDDING_DIMENSIONS` when it starts. Nothing is lost.
+- **Vectors stored:** the app refuses to start and names the command that switches. It clears the stored vectors:
+
+  ```bash
+  mini-rag resize-embeddings                              # API outside Docker
+  docker compose run --rm app mini-rag resize-embeddings  # with Docker
+  ```
+
+Then start the app and index each project again; the web app offers this with **Index now**.
 
 ## Docker ports
 

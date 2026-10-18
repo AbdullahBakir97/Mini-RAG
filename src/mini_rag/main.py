@@ -1,3 +1,4 @@
+import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
@@ -12,24 +13,39 @@ from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
 from mini_rag.llm.factory import create_llm
 from mini_rag.persistence.database import (
+    count_embeddings,
     create_engine,
     create_session_factory,
+    resize_embeddings,
     stored_embedding_dimensions,
 )
 
+logger = logging.getLogger(__name__)
+
 
 async def _check_embedding_dimensions(engine: AsyncEngine, settings: Settings) -> None:
-    """Refuse to start when vectors would not fit the database column.
+    """Make sure vectors of EMBEDDING_DIMENSIONS fit the database column.
 
-    Otherwise the mismatch would only show up at the first indexing. When
-    the database cannot be asked, the app starts anyway (see /health).
+    With no vectors stored yet, a column of another length is resized, since
+    nothing is lost. Otherwise the app refuses to start rather than fail at
+    the first indexing, and names the command that resizes it. When the
+    database cannot be asked, the app starts anyway (see /health).
     """
+    wanted = settings.EMBEDDING_DIMENSIONS
     stored = await stored_embedding_dimensions(engine)
-    if stored is not None and stored != settings.EMBEDDING_DIMENSIONS:
+    if stored is None or stored == wanted:
+        return
+    embedded = await count_embeddings(engine)
+    if embedded:
         raise RuntimeError(
-            f"EMBEDDING_DIMENSIONS is {settings.EMBEDDING_DIMENSIONS}, but the database stores "
-            f"vectors of {stored} dimensions. Use a matching setting (and model), or change "
-            f"the column with a migration.")
+            f"EMBEDDING_DIMENSIONS is {wanted}, but the database stores {embedded} vectors of "
+            f"{stored} dimensions. Set it back to {stored}, or switch to {wanted} with "
+            f"`mini-rag resize-embeddings` (with Docker: `docker compose run --rm app "
+            f"mini-rag resize-embeddings`), which clears the stored vectors so the projects "
+            f"can be indexed again with the new model.")
+    await resize_embeddings(engine, wanted)
+    logger.warning("No vectors were stored yet, so the vector size changed from %d to %d "
+                   "dimensions to match EMBEDDING_DIMENSIONS.", stored, wanted)
 
 
 def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:

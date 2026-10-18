@@ -60,7 +60,7 @@ alembic revision --autogenerate -m "describe change"  # after changing persisten
 
 Review every generated migration before committing it. `tests/test_migrations.py` fails if the models and the migrations ever disagree.
 
-The database needs the pgvector extension, version 0.8 or newer; the `pgvector/pgvector:pg16` image in `compose.yaml` has it, and migration `0002` enables it. To use a model with another vector length, change `EMBEDDING_DIMENSIONS` in `persistence/tables.py`, add a migration that changes the column and its index, and set `EMBEDDING_DIMENSIONS` in `.env` to match.
+The database needs the pgvector extension, version 0.8 or newer; the `pgvector/pgvector:pg16` image in `compose.yaml` has it, and migration `0002` enables it. The migrations create vectors of 1536 numbers; a database switches to another length for another embedding model with `mini-rag resize-embeddings` (see [Changing the embedding model](configuration.md#changing-the-embedding-model)). Autogenerate compares against the migrations' 1536, so generate new migrations on a database that has not been resized.
 
 **Upgrading a local database from before vector search:** `compose.yaml` used `postgres:16-alpine` before and now uses the Debian-based `pgvector/pgvector:pg16`. Text sorting rules differ between the two, so don't reuse the old data volume; recreate it, migrate, and upload your files again:
 
