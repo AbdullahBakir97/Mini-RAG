@@ -19,6 +19,7 @@ from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.domain.models import (
     AnswerRecord,
     ApiKey,
+    AuditEvent,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -296,7 +297,8 @@ class FakeJobs:
         job = Job(id=str(uuid.uuid4()), project_id=project_id, project_name=project.name,
                   file_id=file_id, file_key=file.key, chunk_size=chunk_size,
                   overlap_size=overlap_size, status="queued", attempts=0,
-                  max_attempts=max_attempts, created_at=datetime.now(UTC))
+                  max_attempts=max_attempts, created_at=datetime.now(UTC),
+                  tenant_id=project.tenant_id)
         self.by_id[job.id] = job
         self.run_after[job.id] = job.created_at
         return job
@@ -564,6 +566,30 @@ class FakeWidgets:
         return True
 
 
+class FakeAudit:
+
+    def __init__(self):
+        self.events: list[AuditEvent] = []
+
+    async def add(self, *, tenant_id, action, target, details, actor_key_id,
+                  request_id) -> None:
+        self.events.append(AuditEvent(
+            id=len(self.events) + 1, tenant_id=tenant_id, action=action, target=target,
+            details=dict(details), actor_key_id=actor_key_id, actor_key_name=None,
+            request_id=request_id, created_at=datetime.now(UTC)))
+
+    def _mine(self, tenant_id, action):
+        return [e for e in reversed(self.events)
+                if e.tenant_id == tenant_id and (not action or e.action.startswith(action))]
+
+    async def list_for_tenant(self, tenant_id: int, *, action: str | None, offset: int,
+                              limit: int) -> list[AuditEvent]:
+        return self._mine(tenant_id, action)[offset:offset + limit]
+
+    async def count_for_tenant(self, tenant_id: int, *, action: str | None) -> int:
+        return len(self._mine(tenant_id, action))
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -575,6 +601,7 @@ class FakeUnitOfWork:
         self.jobs = FakeJobs(self.projects, self.files)
         self.webhooks = FakeWebhooks()
         self.widgets = FakeWidgets(self.projects)
+        self.audit = FakeAudit()
         self.tenants = FakeTenants()
         self.api_keys = FakeApiKeys()
         self.usage = FakeUsage()

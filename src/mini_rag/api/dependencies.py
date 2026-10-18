@@ -77,6 +77,7 @@ async def get_principal(
             credentials.credentials if credentials else header_key)
     # The request's log lines name its tenant (RequestContext ends this with the request).
     log_context.tenant.set(principal.tenant_name)
+    log_context.actor.set(principal.key_id)
     return principal
 
 

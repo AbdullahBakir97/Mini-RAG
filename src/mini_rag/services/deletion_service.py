@@ -2,6 +2,7 @@ import logging
 
 from mini_rag.core.errors import FileNotFound, ProjectNotFound
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.audit import record
 from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
 
@@ -24,6 +25,7 @@ class DeletionService:
         project = await self.uow.projects.get_by_name(project_name)
         if project is None or not await self.uow.projects.delete(project_name):
             raise ProjectNotFound()
+        await record(self.uow, project.tenant_id, "project.deleted", project.name)
         await self.uow.commit()
         try:
             self.storage.delete_project(project.folder)
@@ -38,6 +40,7 @@ class DeletionService:
         if not await self.uow.files.delete(project.id, file_key):
             raise FileNotFound()
         await emit(self.uow, project, "file.deleted", {"file_id": file_key})
+        await record(self.uow, project.tenant_id, "file.deleted", file_key, project=project.name)
         await self.uow.commit()
         try:
             self.storage.delete_file(project.folder, file_key)

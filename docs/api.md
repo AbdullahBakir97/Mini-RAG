@@ -46,6 +46,26 @@ curl -X DELETE http://localhost:8000/api/v1/keys/<key id> -H "Authorization: Bea
 
 The first key of a tenant comes from the command line (`mini-rag keys create`), run where the database is reachable, e.g. `docker compose exec app mini-rag keys create --tenant acme --name admin`. `mini-rag keys list` and `mini-rag keys revoke` work there too, and `mini-rag tenants list` lists tenants. Projects that existed before tenants belong to `default`.
 
+## Audit log
+
+Administrative actions are recorded in their tenant's audit log, in the same transaction as the action itself, so a recorded action happened and every action that happened is recorded. `GET /api/v1/audit` (`admin` scope) lists them, most recent first; `?action=api_key` or `?action=widget.deleted` keeps the actions that start with it. Operators can read the same log with `mini-rag audit --tenant <name>`.
+
+```json
+{"id": 12, "action": "api_key.created", "target": "0b5c3e8e-…",
+ "details": {"name": "ci", "prefix": "mrag_Xq2v…", "scopes": ["read"]},
+ "actor": {"key_id": "8d1f…", "name": "ops laptop"}, "request_id": "3f2a…", "created_at": "2026-10-18T12:30:02Z"}
+```
+
+| Action | Target | Details |
+|---|---|---|
+| `tenant.created`, `tenant.limits_changed` | The tenant's name | The new limits (`changes`) |
+| `api_key.created`, `api_key.revoked` | The key's id | Name, prefix and scopes, never the key |
+| `webhook.created`, `webhook.deleted` | The webhook's id | Project, URL and events, never the secret |
+| `widget.created`, `widget.updated`, `widget.deleted` | The widget's id | Project, and the settings set or changed |
+| `file.deleted`, `project.deleted` | The file's id, or the project's name | The project |
+
+`actor` is the API key that did it, with its name; it is `null` for the server's operators: the command line, or requests while authentication is off. `request_id` matches the request's `X-Request-ID` and its log lines. Events are kept as long as the tenant; a revoked key still shows by name.
+
 ## Rate limits and quotas
 
 Each tenant can have three limits. The server's settings give the defaults (`RATE_LIMIT_PER_MINUTE`, `ANSWERS_PER_MONTH`, `STORAGE_MB_PER_TENANT`; `0`, the default, is unlimited), and `mini-rag tenants limits <tenant> --requests-per-minute N --answers-per-month N --storage-mb N` gives a tenant its own (a number, `0` for unlimited, or `default`).
@@ -77,6 +97,7 @@ A `limit` of `null` is unlimited.
 | `GET` | `/api/v1/health` | `200` `{"status": "ok", "database": "ok"}`, or `503` when the database is unreachable |
 | `GET` | `/api/v1/me` | The tenant and scopes of the API key used |
 | `GET` | `/api/v1/usage` | The tenant's usage this month, against its limits |
+| `GET` | `/api/v1/audit` | The tenant's audit log, most recent first (paged; `?action=` filters; `admin`) |
 | `POST` | `/api/v1/mcp` | Model Context Protocol server: the tools below, for agents |
 | `GET` | `/api/v1/tools` | The same tools as function-calling schemas |
 | `GET` | `/api/v1/keys` | The tenant's API keys (`admin`) |

@@ -12,6 +12,7 @@ from mini_rag.api.error_handlers import register_error_handlers
 from mini_rag.api.request_context import RequestContext
 from mini_rag.api.routes import (
     ask,
+    audit,
     base,
     conversations,
     data,
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(widgets.router)
     app.include_router(widgets.public_router)
     app.include_router(keys.router)
+    app.include_router(audit.router)
     app.include_router(mcp.router)
     app.include_router(search.router)
     app.include_router(ask.router)

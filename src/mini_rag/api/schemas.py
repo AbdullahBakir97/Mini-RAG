@@ -465,6 +465,32 @@ class DeliveryListResponse(BaseModel):
 KeyIdPath = Annotated[UUID, Path(description="The API key's id.")]
 
 
+class AuditActor(BaseModel):
+    key_id: str
+    name: str | None = Field(description="The key's name; null once the key is gone.")
+
+
+class AuditEventResponse(BaseModel):
+    id: int
+    action: str = Field(examples=["api_key.created"],
+                        description="What was done, as `<thing>.<what happened>`.")
+    target: str | None = Field(description="What it was done to: an id or a name.")
+    details: dict[str, Any] = Field(description="The action's particulars, e.g. a new key's "
+                                                "name and scopes. Never a secret.")
+    actor: AuditActor | None = Field(description="The API key that did it; null for the "
+                                                 "server's operators (the command line, or "
+                                                 "requests while authentication is off).")
+    request_id: str | None = Field(description="The request it came from, as in the logs.")
+    created_at: datetime
+
+
+class AuditListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[AuditEventResponse]
+
+
 class ApiKeyRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100, description="What the key is for.")
     scopes: list[Literal["read", "write", "ask", "admin"]] = Field(

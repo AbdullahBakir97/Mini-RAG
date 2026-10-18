@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from .models import (
     AnswerRecord,
     ApiKey,
+    AuditEvent,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -352,6 +353,20 @@ class WidgetRepository(Protocol):
     async def delete(self, project_id: int, widget_id: str) -> bool: ...
 
 
+class AuditRepository(Protocol):
+
+    async def add(self, *, tenant_id: int, action: str, target: str | None,
+                  details: Mapping[str, Any], actor_key_id: str | None,
+                  request_id: str | None) -> None: ...
+
+    async def list_for_tenant(self, tenant_id: int, *, action: str | None, offset: int,
+                              limit: int) -> list[AuditEvent]:
+        """Most recent first; with ``action``, only actions that start with it."""
+        ...
+
+    async def count_for_tenant(self, tenant_id: int, *, action: str | None) -> int: ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -366,6 +381,7 @@ class UnitOfWork(Protocol):
     jobs: JobRepository
     webhooks: WebhookRepository
     widgets: WidgetRepository
+    audit: AuditRepository
     tenants: TenantRepository
     api_keys: ApiKeyRepository
     usage: UsageRepository

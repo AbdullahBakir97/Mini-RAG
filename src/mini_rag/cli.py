@@ -41,6 +41,7 @@ from mini_rag.persistence.repositories import (
 )
 from mini_rag.rerankers.factory import create_reranker
 from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.audit import AuditService, record
 from mini_rag.services.auth_service import AuthService
 from mini_rag.services.evaluation_service import (
     AnswerSettings,
@@ -396,7 +397,7 @@ async def _export_feedback(args: argparse.Namespace) -> int:
 
 
 async def _tenants_and_keys(args: argparse.Namespace) -> int:
-    """`mini-rag tenants …` and `mini-rag keys …`."""
+    """`mini-rag tenants …`, `mini-rag keys …` and `mini-rag audit`."""
     engine = create_engine(get_settings().DATABASE_URL)
     try:
         async with create_session_factory(engine)() as session:
@@ -415,6 +416,8 @@ async def _tenants_and_keys(args: argparse.Namespace) -> int:
                            for name in ("requests_per_minute", "answers_per_month", "storage_mb")
                            if (value := getattr(args, name)) is not None}
                 await uow.tenants.set_limits(limited.id, changes)
+                await record(uow, limited.id, "tenant.limits_changed", limited.name,
+                             changes=changes)
                 await uow.commit()
                 print(_limits_line(await uow.tenants.get_by_id(limited.id)))
                 return 0
@@ -428,10 +431,19 @@ async def _tenants_and_keys(args: argparse.Namespace) -> int:
                 print(f"There is no tenant {args.tenant!r}; create it with "
                       f"`mini-rag tenants create {args.tenant}`.", file=sys.stderr)
                 return 1
+            if args.command == "audit":
+                page = await AuditService(uow).list(owner.id, action=args.action, offset=0,
+                                                    limit=args.limit)
+                for event in page.items:
+                    who = event.actor_key_name or event.actor_key_id or "operator"
+                    details = json.dumps(event.details, ensure_ascii=False, sort_keys=True)
+                    print(f"{event.created_at:%Y-%m-%d %H:%M:%S}\t{event.action}\t"
+                          f"{event.target or '-'}\t{who}\t{details}")
+                return 0
             if args.action == "create":
-                record, key = await service.create_key(owner.id, args.name,
-                                                       args.scope or list(SCOPES))
-                print(f"Key {record.id} for {owner.name}, with {', '.join(record.scopes)}:")
+                created, key = await service.create_key(owner.id, args.name,
+                                                        args.scope or list(SCOPES))
+                print(f"Key {created.id} for {owner.name}, with {', '.join(created.scopes)}:")
                 print(key)
                 print("Keep it now: it is not stored and cannot be shown again.", file=sys.stderr)
                 return 0
@@ -563,8 +575,12 @@ def main(argv: list[str] | None = None) -> int:
     revoke_key = key_actions.add_parser("revoke", help="revoke a key at once")
     revoke_key.add_argument("--tenant", required=True)
     revoke_key.add_argument("key_id", type=_key_id, help="the id `keys list` shows")
+    audit = commands.add_parser("audit", help="show a tenant's audit log, most recent first")
+    audit.add_argument("--tenant", required=True)
+    audit.add_argument("--action", help="only actions that start with this, e.g. api_key")
+    audit.add_argument("--limit", type=_positive, default=50, help="events to show (default 50)")
     args = parser.parse_args(argv)
-    if args.command in ("tenants", "keys"):
+    if args.command in ("tenants", "keys", "audit"):
         return asyncio.run(_tenants_and_keys(args))
     if args.command == "worker":
         workers = args.workers or get_settings().JOB_WORKERS or 1
