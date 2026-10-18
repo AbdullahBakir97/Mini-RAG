@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import Any
 
 import httpx2
 from openai import AsyncOpenAI, OpenAIError
@@ -39,7 +40,12 @@ class OpenAIEmbedder:
         except OpenAIError as exc:
             raise EmbeddingFailed(f"Embedding request to {self.model} failed") from exc
 
-        vectors = [item.embedding for item in sorted(response.data, key=lambda item: item.index)]
+        # A server that answers with something else (an HTML page, a proxy's
+        # "OK") reaches us as text, or as a response without data.
+        data = getattr(response, "data", None)
+        if not isinstance(data, list):
+            raise EmbeddingFailed(f"{self.model} sent an unexpected reply: {_preview(response)}")
+        vectors = [item.embedding for item in sorted(data, key=lambda item: item.index)]
         if len(vectors) != len(texts):
             raise EmbeddingFailed(f"{self.model} returned {len(vectors)} vectors for {len(texts)} texts")
         if any(len(vector) != self.dimensions for vector in vectors):
@@ -48,3 +54,9 @@ class OpenAIEmbedder:
 
     async def aclose(self) -> None:
         await self._client.close()
+
+
+def _preview(response: Any) -> str:
+    """The start of a reply, for error messages."""
+    text = response if isinstance(response, str) else repr(response)
+    return " ".join(text.split())[:200]

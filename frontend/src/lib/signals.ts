@@ -10,10 +10,12 @@ const MESSAGES: Record<string, string> = {
   processing_failed: "The file could not be split into chunks.",
   embedding_not_configured:
     "No embedding model is configured. Set OPENAI_API_KEY or EMBEDDING_BASE_URL on the server.",
-  embedding_failed: "The embedding model did not respond. Try again in a moment.",
+  embedding_failed:
+    "The embedding model failed: it was unreachable, rejected the request or sent an unexpected reply. The API's log says which.",
   llm_not_configured:
     "No language model is configured. Set OPENAI_API_KEY or LLM_BASE_URL on the server.",
-  llm_failed: "The language model did not respond. Try again in a moment.",
+  llm_failed:
+    "The language model failed: it was unreachable, rejected the request or sent an unexpected reply. The API's log says which.",
   validation_error: "The request was not valid.",
   network_error: "The server could not be reached. Is the API running?",
 };
