@@ -26,6 +26,12 @@ class ProjectRepository(Protocol):
         """Return the project, creating it if needed (safe under concurrency)."""
         ...
 
+    async def list_all(self, *, offset: int, limit: int) -> list[Project]:
+        """Projects in name order."""
+        ...
+
+    async def count(self) -> int: ...
+
 
 class FileRepository(Protocol):
 

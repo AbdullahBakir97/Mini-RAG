@@ -1,0 +1,589 @@
+<script setup lang="ts">
+import {
+  ArrowUp,
+  Check,
+  CircleHelp,
+  Copy,
+  Files,
+  MessageSquareText,
+  RotateCcw,
+  SlidersHorizontal,
+  Square,
+  Trash2,
+  TriangleAlert,
+} from "@lucide/vue";
+import { computed, nextTick, ref, watch } from "vue";
+
+import type { Citation } from "@/api/types";
+import AnswerText from "@/components/AnswerText.vue";
+import ChunkDrawer from "@/components/ChunkDrawer.vue";
+import SourceCard from "@/components/SourceCard.vue";
+import { type AskSettings, type Turn, useAsk } from "@/composables/useAsk";
+import { useProject } from "@/composables/useProject";
+import { formatCost, formatNumber } from "@/lib/format";
+
+const { name, project, loading, fileName } = useProject();
+
+const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true });
+const { turns, busy, ask, stop, retry, clear } = useAsk(name, settings);
+
+const question = ref("");
+const showSettings = ref(false);
+const input = ref<HTMLTextAreaElement | null>(null);
+const active = ref<{ turn: number; number: number } | null>(null);
+const opened = ref<{ file: { file_id: string; original_name: string }; chunk: number } | null>(null);
+const copied = ref<number | null>(null);
+
+const ready = computed(() => !!project.value && project.value.embedded_chunks_count > 0);
+const minScoreText = computed({
+  get: () => (settings.value.min_score === null ? "" : String(settings.value.min_score)),
+  set: (value: string) => {
+    const number = Number(value);
+    settings.value.min_score = value.trim() === "" || Number.isNaN(number) ? null : Math.max(-1, Math.min(1, number));
+  },
+});
+
+const examples = [
+  "Summarize the main points of these documents.",
+  "What are the key definitions?",
+  "Which steps or recommendations are given?",
+];
+
+function submit() {
+  const text = question.value.trim();
+  if (!text || busy.value) return;
+  question.value = "";
+  resize();
+  void ask(text);
+}
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    submit();
+  }
+}
+
+function resize() {
+  void nextTick(() => {
+    const el = input.value;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  });
+}
+
+function useExample(text: string) {
+  question.value = text;
+  resize();
+  input.value?.focus();
+}
+
+function scrollToSource(turn: Turn, number: number) {
+  active.value = { turn: turn.id, number };
+  document.getElementById(`source-${turn.id}-${number}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function open(citation: Citation) {
+  opened.value = {
+    file: { file_id: citation.file_id, original_name: fileName(citation.file_id) },
+    chunk: citation.chunk_index,
+  };
+}
+
+async function copy(turn: Turn) {
+  try {
+    await navigator.clipboard.writeText(turn.text);
+    copied.value = turn.id;
+    setTimeout(() => (copied.value = null), 1500);
+  } catch {
+    // Clipboard access can be denied; the text stays selectable.
+  }
+}
+
+function tokens(turn: Turn) {
+  const usage = turn.answer?.usage;
+  if (!usage || usage.input_tokens === null) return null;
+  if (usage.input_tokens === 0 && usage.output_tokens === 0) return "Model not called";
+  return `${formatNumber(usage.input_tokens)} in · ${formatNumber(usage.output_tokens ?? 0)} out`;
+}
+
+// Follow the newest answer while it is written, unless the reader scrolled up.
+watch(
+  () => turns.value.at(-1)?.text.length,
+  () => {
+    const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 160;
+    if (atBottom) void nextTick(() => window.scrollTo({ top: document.body.scrollHeight }));
+  },
+);
+watch(
+  () => turns.value.length,
+  () => void nextTick(() => window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" })),
+);
+</script>
+
+<template>
+  <section class="ask">
+    <div v-if="!loading && !ready && !turns.length" class="empty card">
+      <span class="empty-icon"><Files :size="24" /></span>
+      <h2>{{ project ? "Nothing is indexed yet" : "Add documents first" }}</h2>
+      <p class="muted">
+        {{
+          project
+            ? "Answers come from indexed chunks. Index the project from the banner above."
+            : "Questions are answered from this project's documents. Upload a PDF or text file to begin."
+        }}
+      </p>
+      <RouterLink v-if="!project" :to="{ name: 'documents', params: { project: name } }" class="btn btn-primary">
+        Upload documents
+      </RouterLink>
+    </div>
+
+    <div v-else-if="!turns.length" class="intro">
+      <span class="empty-icon"><MessageSquareText :size="24" /></span>
+      <h2>Ask about {{ name }}</h2>
+      <p class="muted">Answers come only from this project's documents, with numbered sources you can open.</p>
+      <div class="examples">
+        <button v-for="example in examples" :key="example" class="example" @click="useExample(example)">
+          {{ example }}
+        </button>
+      </div>
+    </div>
+
+    <ol v-else class="thread">
+      <li v-for="turn in turns" :key="turn.id" class="turn">
+        <div class="question">
+          <p>{{ turn.question }}</p>
+        </div>
+
+        <div class="answer card">
+          <div v-if="turn.status === 'failed'" class="alert alert-danger">
+            <TriangleAlert :size="18" />
+            <span class="grow">{{ turn.error }}</span>
+            <button class="btn btn-sm" @click="retry(turn)"><RotateCcw :size="14" /> Retry</button>
+          </div>
+
+          <div v-else-if="turn.status === 'done' && turn.answer?.signal === 'no_answer'" class="no-answer">
+            <CircleHelp :size="20" />
+            <div>
+              <h3>The documents don't answer this</h3>
+              <p class="muted small">
+                No indexed passage was close enough to the question. Try rephrasing it, or lower the minimum score.
+              </p>
+            </div>
+          </div>
+
+          <template v-else>
+            <div v-if="turn.status === 'streaming' && !turn.text" class="thinking" aria-label="Writing the answer">
+              <span /><span /><span />
+              <span class="muted small label">Reading the sources…</span>
+            </div>
+            <AnswerText
+              v-else
+              :text="turn.text"
+              :streaming="turn.status === 'streaming'"
+              :cited="turn.answer?.citations.map((c) => c.number)"
+              :active="active?.turn === turn.id ? active.number : null"
+              @cite="(n) => scrollToSource(turn, n)"
+              @hover="(n) => (active = n === null ? null : { turn: turn.id, number: n })"
+            />
+            <p v-if="turn.status === 'stopped'" class="subtle small stopped">Stopped.</p>
+          </template>
+
+          <div v-if="turn.answer?.citations.length" class="sources">
+            <h4 class="sources-title">Sources</h4>
+            <SourceCard
+              v-for="citation in turn.answer.citations"
+              :id="`source-${turn.id}-${citation.number}`"
+              :key="citation.number"
+              :number="citation.number"
+              :file-id="citation.file_id"
+              :file-name="fileName(citation.file_id)"
+              :chunk-index="citation.chunk_index"
+              :page="citation.page"
+              :score="citation.score"
+              :text="citation.text"
+              :active="active?.turn === turn.id && active.number === citation.number"
+              @open="open(citation)"
+            />
+          </div>
+
+          <footer v-if="turn.status === 'done' && turn.answer" class="meta">
+            <span v-if="tokens(turn)" class="meta-item" title="Tokens">{{ tokens(turn) }}</span>
+            <span class="meta-item" title="Cost">{{ formatCost(turn.answer.usage.cost_usd) }}</span>
+            <span v-if="turn.seconds !== null" class="meta-item">{{ turn.seconds.toFixed(1) }} s</span>
+            <span class="meta-item mono" title="Prompt version">{{ turn.answer.prompt_version }}</span>
+            <span class="grow" />
+            <button
+              v-if="turn.text"
+              class="btn btn-ghost btn-sm"
+              :aria-label="copied === turn.id ? 'Copied' : 'Copy answer'"
+              @click="copy(turn)"
+            >
+              <Check v-if="copied === turn.id" :size="14" />
+              <Copy v-else :size="14" />
+              {{ copied === turn.id ? "Copied" : "Copy" }}
+            </button>
+          </footer>
+        </div>
+      </li>
+    </ol>
+
+    <div class="composer-wrap">
+      <div v-if="showSettings" class="settings card">
+        <label class="field">
+          <span>Sources (top k)</span>
+          <input v-model.number="settings.top_k" class="input" type="number" min="1" max="20" />
+        </label>
+        <label class="field">
+          <span>Minimum score</span>
+          <input v-model.lazy="minScoreText" class="input" type="number" min="-1" max="1" step="0.05" placeholder="Server default" />
+        </label>
+        <label class="toggle">
+          <input v-model="settings.stream" type="checkbox" />
+          <span>Stream the answer as it is written</span>
+        </label>
+      </div>
+
+      <form class="composer card" @submit.prevent="submit">
+        <textarea
+          ref="input"
+          v-model="question"
+          class="composer-input"
+          rows="1"
+          maxlength="2000"
+          :placeholder="ready || turns.length ? `Ask a question about ${name}…` : 'Upload and index documents to ask questions'"
+          :disabled="!ready && !turns.length"
+          aria-label="Question"
+          @input="resize"
+          @keydown="onKeydown"
+        />
+        <div class="composer-actions">
+          <button
+            type="button"
+            class="btn btn-ghost btn-icon btn-sm"
+            :class="{ on: showSettings }"
+            title="Answer settings"
+            aria-label="Answer settings"
+            :aria-expanded="showSettings"
+            @click="showSettings = !showSettings"
+          >
+            <SlidersHorizontal :size="16" />
+          </button>
+          <button
+            v-if="turns.length && !busy"
+            type="button"
+            class="btn btn-ghost btn-icon btn-sm"
+            title="Clear the conversation"
+            aria-label="Clear the conversation"
+            @click="clear"
+          >
+            <Trash2 :size="16" />
+          </button>
+          <span class="grow" />
+          <span class="hint subtle small">Enter to send · Shift+Enter for a new line</span>
+          <button v-if="busy" type="button" class="btn btn-sm send" aria-label="Stop" @click="stop">
+            <Square :size="12" fill="currentColor" /> Stop
+          </button>
+          <button v-else type="submit" class="btn btn-primary btn-icon btn-sm send" aria-label="Ask" :disabled="!question.trim()">
+            <ArrowUp :size="16" />
+          </button>
+        </div>
+      </form>
+    </div>
+
+    <ChunkDrawer
+      :project="name"
+      :file="opened?.file ?? null"
+      :focus-chunk="opened?.chunk ?? null"
+      @close="opened = null"
+    />
+  </section>
+</template>
+
+<style scoped>
+.ask {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 18px;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.empty,
+.intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: auto 0;
+  padding: 36px 24px;
+  text-align: center;
+}
+
+.intro {
+  padding-bottom: 12px;
+}
+
+.empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 6px;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.empty .btn {
+  margin-top: 10px;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.example {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s;
+}
+
+.example:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.turn {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question {
+  align-self: flex-end;
+  max-width: 85%;
+  padding: 10px 14px;
+  border-radius: 14px 14px 4px 14px;
+  background: var(--bubble);
+  color: var(--on-bubble);
+  font-size: 14.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px 18px;
+}
+
+.no-answer {
+  display: flex;
+  gap: 12px;
+  color: var(--warning);
+}
+
+.no-answer h3 {
+  color: var(--text);
+}
+
+.thinking {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+}
+
+.thinking span:not(.label) {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.thinking span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.thinking .label {
+  margin-left: 8px;
+}
+
+@keyframes pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.stopped {
+  margin-top: -6px;
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sources-title {
+  color: var(--text-3);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-3);
+  font-size: 12.5px;
+}
+
+.grow {
+  flex: 1;
+}
+
+.composer-wrap {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: auto;
+  padding: 12px 0 16px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 22%);
+}
+
+.composer {
+  padding: 10px 12px 8px;
+  box-shadow: var(--shadow);
+}
+
+.composer:focus-within {
+  border-color: var(--accent);
+  box-shadow: var(--focus), var(--shadow);
+}
+
+.composer-input {
+  display: block;
+  width: 100%;
+  min-height: 24px;
+  max-height: 200px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  resize: none;
+  outline: none;
+  box-shadow: none;
+}
+
+.composer-input:disabled {
+  cursor: not-allowed;
+}
+
+.composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.hint {
+  margin-right: 8px;
+}
+
+@media (max-width: 640px) {
+  .hint {
+    display: none;
+  }
+}
+
+.send {
+  border-radius: 8px;
+}
+
+.settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 160px)) 1fr;
+  align-items: end;
+  gap: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+@media (max-width: 640px) {
+  .settings {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .toggle {
+    grid-column: 1 / -1;
+  }
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+</style>

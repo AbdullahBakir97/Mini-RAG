@@ -11,6 +11,8 @@ from mini_rag.api.schemas import (
     FileResponse,
     Pagination,
     ProjectId,
+    ProjectListItem,
+    ProjectListResponse,
     ProjectResponse,
     ProjectUsageResponse,
     error_responses,
@@ -27,6 +29,15 @@ def _file_response(record: FileRecord) -> FileResponse:
     return FileResponse(file_id=record.key, original_name=record.original_name,
                         content_type=record.content_type, size_bytes=record.size_bytes,
                         created_at=record.created_at)
+
+
+@router.get("", summary="List projects in name order")
+async def list_projects(page: PaginationDep, service: ProjectServiceDep) -> ProjectListResponse:
+    result = await service.list_projects(offset=page.offset, limit=page.limit)
+    return ProjectListResponse(
+        total=result.total, offset=result.offset, limit=result.limit,
+        items=[ProjectListItem(name=project.name, created_at=project.created_at)
+               for project in result.items])
 
 
 @router.get("/{project_id}", summary="Project details with file, chunk and index counts",

@@ -48,6 +48,15 @@ async def test_get_or_create_project_is_idempotent(uow):
     assert await uow.projects.get_by_name("other") is None
 
 
+async def test_projects_are_listed_by_name(uow):
+    for name in ("notes", "demo", "papers"):
+        await uow.projects.get_or_create(name)
+
+    assert [p.name for p in await uow.projects.list_all(offset=0, limit=10)] == ["demo", "notes", "papers"]
+    assert [p.name for p in await uow.projects.list_all(offset=1, limit=1)] == ["notes"]
+    assert await uow.projects.count() == 3
+
+
 async def test_add_and_get_file(uow):
     project = await uow.projects.get_or_create("demo")
 

@@ -71,11 +71,14 @@ Mini-RAG/
 │   ├── text/                 # Recursive text splitter
 │   └── domain/               # Domain models, repository, Embedder and LLM interfaces, signals
 ├── tests/                    # pytest suite
+├── frontend/                 # Web app: Vue 3, TypeScript, Vite; nginx image (see web.md)
 ├── .env.example              # Settings template (copy to .env)
 ├── Dockerfile                # API image: multi-stage, runs as an unprivileged user
-├── compose.yaml              # The stack: PostgreSQL with pgvector, and the API
+├── compose.yaml              # The stack: PostgreSQL with pgvector, the API and the web app
 └── pyproject.toml            # Package, dependencies; Alembic, pytest and ruff settings
 ```
+
+The web app in `frontend/` is a client of the public API only: it uses the same endpoints as any other app, so everything it does can also be done with `curl`. See [Web app](web.md).
 
 Uploaded files are stored in `assets/files/` (`FILES_DIR`), which is git-ignored.
 

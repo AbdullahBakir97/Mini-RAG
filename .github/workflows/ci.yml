@@ -50,8 +50,30 @@ jobs:
       - name: Test
         run: pytest
 
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npx vite build
+
   docker:
-    # Builds the image and runs the full compose stack: database, migrations, API.
+    # Builds the images and runs the full compose stack: database, migrations, API, web app.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -60,10 +82,10 @@ jobs:
         run: |
           cp .env.example .env
           docker compose up --build --detach
-      - name: Wait for the API to be healthy
+      - name: Wait for the stack to be healthy
         run: |
           for attempt in $(seq 1 30); do
-            if curl --fail --silent http://localhost:8000/api/v1/health; then exit 0; fi
+            if curl --fail --silent http://localhost:3000/api/v1/health; then exit 0; fi
             sleep 2
           done
           docker compose ps
@@ -73,8 +95,16 @@ jobs:
         run: |
           echo "Mini RAG in Docker." > notes.txt
           curl --fail --silent -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo
-      - name: The API runs as an unprivileged user
-        run: test "$(docker compose exec -T app id -u)" = "10001"
+      - name: The web app serves its pages and forwards the API
+        run: |
+          curl --fail --silent http://localhost:3000/ | grep -q '<div id="app">'
+          curl --fail --silent http://localhost:3000/projects/demo/documents | grep -q '<div id="app">'
+          curl --fail --silent http://localhost:3000/api/v1/projects | grep -q '"name":"demo"'
+          curl --fail --silent --output /dev/null http://localhost:3000/docs
+      - name: The API and the web app run as unprivileged users
+        run: |
+          test "$(docker compose exec -T app id -u)" = "10001"
+          test "$(docker compose exec -T web id -u)" != "0"
       - name: Stop the stack
         if: always()
         run: docker compose down --volumes
