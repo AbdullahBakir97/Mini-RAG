@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from fastapi import Path, Query
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -145,6 +146,10 @@ class AskRequest(BaseModel):
     min_score: float | None = Field(
         default=None, ge=-1, le=1,
         description="Leave out chunks scoring below this; omit for the server's ANSWER_MIN_SCORE.")
+    conversation_id: UUID | None = Field(
+        default=None,
+        description="Answer as a follow-up in this conversation, and add the question and the "
+                    "answer to it. Omit for a question on its own.")
 
     @field_validator("question")
     @classmethod
@@ -177,7 +182,13 @@ class AskResponse(BaseModel):
     answer: str | None = Field(description="The answer with [n] citation markers; null for `no_answer`.")
     citations: list[CitationResponse] = Field(description="The sources the answer cites, in order of first citation.")
     prompt_version: str = Field(description="The prompt that produced the answer, e.g. `answer-v1`.")
-    usage: UsageResponse = Field(description="Tokens and cost of this answer.")
+    usage: UsageResponse = Field(description="Tokens and cost of this answer, including the "
+                                             "rewriting of a follow-up question.")
+    conversation_id: str | None = Field(
+        default=None, description="The conversation the question was asked in, if any.")
+    search_question: str | None = Field(
+        default=None, description="In a conversation: the standalone question the sources were "
+                                  "searched with, when the follow-up had to be rewritten.")
 
 
 class ProjectResponse(BaseModel):
@@ -237,3 +248,39 @@ class ChunkListResponse(BaseModel):
     offset: int
     limit: int
     items: list[ChunkResponse]
+
+
+ConversationIdPath = Annotated[UUID, Path(description="The conversation's id.")]
+
+
+class ConversationCreateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=200,
+                              description="Omit to title it after the first question.")
+
+
+class ConversationResponse(BaseModel):
+    id: str
+    title: str | None = Field(description="Null until the first question.")
+    created_at: datetime
+    updated_at: datetime = Field(description="When the last question was answered.")
+
+
+class ConversationListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[ConversationResponse]
+
+
+class MessageResponse(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str | None = Field(description="Null for an answer when the documents did not answer.")
+    citations: list[CitationResponse] = Field(description="The sources an answer cited.")
+    prompt_version: str | None
+    search_question: str | None = Field(
+        description="The standalone question an answer was searched with, when rewritten.")
+    created_at: datetime
+
+
+class ConversationDetailResponse(ConversationResponse):
+    messages: list[MessageResponse] = Field(description="Questions and answers, oldest first.")

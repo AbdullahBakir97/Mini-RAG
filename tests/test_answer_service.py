@@ -118,9 +118,9 @@ async def test_provider_failures_propagate(uow, llm, embedder, error):
         await service(uow, llm, embedder=embedder).ask("p1", "cats?", top_k=5)
 
 
-async def stream(answers, question, top_k=5):
-    sources = await answers.retrieve("p1", question, top_k=top_k)
-    return [event async for event in answers.stream("p1", question, sources)]
+async def stream(answers, question, top_k=5, conversation_id=None):
+    prepared = await answers.prepare("p1", question, top_k=top_k, conversation_id=conversation_id)
+    return [event async for event in answers.stream(prepared)]
 
 
 async def test_stream_sends_the_text_as_written_then_the_answer(uow):
@@ -163,11 +163,11 @@ async def test_stream_without_sources_has_no_answer_and_skips_the_model(uow):
 
 async def test_stream_failure_after_some_text_propagates(uow):
     answers = service(uow, FakeLLM("Cats purr all day [1].", piece_size=4, fail_after=2))
-    sources = await answers.retrieve("p1", "cats?", top_k=5)
+    prepared = await answers.prepare("p1", "cats?", top_k=5)
     received = []
 
     with pytest.raises(LLMFailed):
-        async for event in answers.stream("p1", "cats?", sources):
+        async for event in answers.stream(prepared):
             received.append(event)
     assert received == [AnswerDelta("Cats"), AnswerDelta(" pur")]
 

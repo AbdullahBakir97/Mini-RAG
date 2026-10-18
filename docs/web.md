@@ -2,21 +2,21 @@
 
 The web app in `frontend/` is the interface for people: create projects, upload documents, ask questions and check usage, without writing a request by hand. It uses only the public API, so it shows what any other client can do.
 
-![The Ask page: a question, its streamed answer with numbered citations, the cited sources with their scores, and the answer's tokens and cost](media/web-ask.png)
+![The Ask page: the project's conversations beside a question and a follow-up, each answered with numbered citations and its cited sources; the follow-up shows the standalone question it was searched with](media/web-ask.png)
 
 ## Pages
 
 | Page | What it does |
 |---|---|
 | **Projects** | All projects with their file, chunk and index counts. A new project is kept in the browser until its first file is uploaded, because the API creates a project with its first upload. |
-| **Ask** | Questions answered from the project's documents. Answers stream as they are written and can be stopped, formatted as the model writes them: paragraphs, headings, nested lists, bold, italics and code. Each `[n]` marker is a link to its source, and every source opens at its chunk in the document. A question the documents don't answer says so plainly. Each answer shows its tokens, cost, time and prompt version. The settings set the number of sources, the minimum score and streaming. |
+| **Ask** | Conversations with the project's documents: follow-up questions build on the ones before, and a rewritten follow-up shows what was searched for. Past conversations are listed beside the page (in a drawer on narrow screens), each with its own address, and can be reopened or deleted. Questions are answered from the project's documents. Answers stream as they are written and can be stopped, formatted as the model writes them: paragraphs, headings, nested lists, bold, italics and code. Each `[n]` marker is a link to its source, and every source opens at its chunk in the document. A question the documents don't answer says so plainly. Each new answer shows its tokens, cost, time and prompt version (a reopened conversation keeps the prompt version; its usage is on the Usage page). The settings set the number of sources, the minimum score and streaming. |
 | **Documents** | Drop PDF or text files: each one is uploaded with a progress bar, split into chunks and indexed, with its state shown at each step. Files list their size and chunk count; a file's chunks open in a side panel, and a file can be re-processed with other chunking options. |
 | **Search** | Passages that match a query by meaning, best first, with their scores and the query's words highlighted. |
 | **Usage** | Questions asked, how many were answered, tokens and cost for the project. |
 
 When chunks are not indexed yet, for example because no embedding model was configured during the upload, a banner offers to index them. The sidebar shows whether the API and the database are reachable.
 
-The questions and answers on the Ask page are kept in the browser tab (session storage) so they survive moving between pages; the server stores only their token usage and cost. Each question is answered on its own until conversations are added (see the [roadmap](roadmap.md)).
+The first question on the Ask page starts a conversation, which the server keeps: its address (`/projects/<name>/ask/<conversation id>`) can be reloaded or shared with anyone using the same server, and the Ask tab returns to the conversation last open.
 
 ![Documents page: a drop zone, uploads with their state, and the list of files with sizes and chunk counts](media/web-documents.png)
 

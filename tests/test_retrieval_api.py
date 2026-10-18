@@ -7,13 +7,6 @@ from .fakes import FakeEmbedder
 TEXT = "\n\n".join(f"Paragraph {i} about retrieval and generation." for i in range(5))
 
 
-@pytest.fixture
-def embedder(client):
-    fake = FakeEmbedder()
-    client.app.dependency_overrides[get_embedder] = lambda: fake
-    return fake
-
-
 def upload_and_process(client, project="demo", name="notes.txt", text=TEXT):
     response = client.post(f"/api/v1/data/upload/{project}",
                            files={"file": (name, text.encode(), "text/plain")})

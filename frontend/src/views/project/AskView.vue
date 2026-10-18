@@ -5,27 +5,86 @@ import {
   CircleHelp,
   Copy,
   Files,
+  History,
   MessageSquareText,
   RotateCcw,
+  Search,
   SlidersHorizontal,
   Square,
-  Trash2,
+  SquarePen,
   TriangleAlert,
 } from "@lucide/vue";
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 
+import { ApiError } from "@/api/client";
 import type { Citation } from "@/api/types";
 import AnswerText from "@/components/AnswerText.vue";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
+import ConversationList from "@/components/ConversationList.vue";
 import SourceCard from "@/components/SourceCard.vue";
 import { type AskSettings, type Turn, useAsk } from "@/composables/useAsk";
+import { rememberConversation, useConversations } from "@/composables/useConversations";
 import { useProject } from "@/composables/useProject";
+import { useToasts } from "@/composables/useToasts";
 import { formatCost, formatNumber } from "@/lib/format";
 
-const { name, project, loading, fileName } = useProject();
+const { name, project, loading: projectLoading, fileName } = useProject();
+const route = useRoute();
+const router = useRouter();
+const toasts = useToasts();
+
+const conversationId = computed(() =>
+  typeof route.params.conversation === "string" && route.params.conversation ? route.params.conversation : null,
+);
+const conversations = useConversations(name);
+
+function show(id: string | null) {
+  showHistory.value = false;
+  const params = id ? { project: name.value, conversation: id } : { project: name.value };
+  return router.push({ name: "ask", params });
+}
 
 const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true });
-const { turns, busy, ask, stop, retry, clear } = useAsk(name, settings);
+const { turns, busy, loading, ask, stop, retry } = useAsk(name, conversationId, settings, {
+  // The new conversation gets its own address, without a new history entry.
+  onStarted: (id) => {
+    void router.replace({ name: "ask", params: { project: name.value, conversation: id } });
+    void conversations.refresh();
+  },
+  onAnswered: () => void conversations.refresh(),
+  onLoadFailed: (error, missing) => {
+    toasts.error("The conversation could not be opened", error.message);
+    if (missing) void router.replace({ name: "ask", params: { project: name.value } });
+  },
+});
+
+watch(conversationId, (id) => rememberConversation(name.value, id), { immediate: true });
+
+const showHistory = ref(false);
+
+// Escape closes the conversations drawer of narrow screens.
+function onKey(event: KeyboardEvent) {
+  if (event.key === "Escape") showHistory.value = false;
+}
+watch(showHistory, (open) =>
+  open ? window.addEventListener("keydown", onKey) : window.removeEventListener("keydown", onKey),
+);
+onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
+const conversationTitle = computed(
+  () => conversations.items.value.find((item) => item.id === conversationId.value)?.title ?? null,
+);
+
+async function removeConversation(id: string) {
+  try {
+    await conversations.remove(id);
+    toasts.success("Conversation deleted");
+    if (id === conversationId.value) await router.replace({ name: "ask", params: { project: name.value } });
+  } catch (caught) {
+    toasts.error("The conversation could not be deleted", caught instanceof ApiError ? caught.message : undefined);
+    void conversations.refresh();
+  }
+}
 
 const question = ref("");
 const showSettings = ref(false);
@@ -35,6 +94,7 @@ const opened = ref<{ file: { file_id: string; original_name: string }; chunk: nu
 const copied = ref<number | null>(null);
 
 const ready = computed(() => !!project.value && project.value.embedded_chunks_count > 0);
+const canAsk = computed(() => ready.value || turns.value.length > 0);
 const minScoreText = computed({
   get: () => (settings.value.min_score === null ? "" : String(settings.value.min_score)),
   set: (value: string) => {
@@ -79,6 +139,10 @@ function useExample(text: string) {
   input.value?.focus();
 }
 
+function newConversation() {
+  void show(null).then(() => input.value?.focus());
+}
+
 function scrollToSource(turn: Turn, number: number) {
   active.value = { turn: turn.id, number };
   document.getElementById(`source-${turn.id}-${number}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -103,6 +167,7 @@ async function copy(turn: Turn) {
 
 function tokens(turn: Turn) {
   const usage = turn.answer?.usage;
+  if (turn.stored) return null;
   if (!usage || usage.input_tokens === null) return null;
   if (usage.input_tokens === 0 && usage.output_tokens === 0) return "Model not called";
   return `${formatNumber(usage.input_tokens)} in · ${formatNumber(usage.output_tokens ?? 0)} out`;
@@ -123,8 +188,40 @@ watch(
 </script>
 
 <template>
+  <div class="ask-layout">
+    <div v-if="showHistory" class="history-overlay" @click="showHistory = false" />
+    <aside class="history" :class="{ open: showHistory }">
+      <ConversationList
+        :items="conversations.items.value"
+        :total="conversations.total.value"
+        :loading="conversations.loading.value"
+        :error="conversations.error.value?.message ?? null"
+        :active="conversationId"
+        @select="show"
+        @create="newConversation"
+        @remove="removeConversation"
+        @more="conversations.more"
+        @retry="conversations.refresh"
+        @close="showHistory = false"
+      />
+    </aside>
+
   <section class="ask">
-    <div v-if="!loading && !ready && !turns.length" class="empty card">
+    <div class="toolbar">
+      <button class="btn btn-ghost btn-sm" :aria-expanded="showHistory" @click="showHistory = true">
+        <History :size="15" /> Conversations
+      </button>
+      <span class="toolbar-title subtle small">{{ conversationTitle ?? "" }}</span>
+      <button v-if="conversationId" class="btn btn-ghost btn-sm" @click="newConversation">
+        <SquarePen :size="14" /> New
+      </button>
+    </div>
+
+    <div v-if="loading" class="thread-loading" aria-label="Loading the conversation">
+      <div v-for="i in 2" :key="i" class="skeleton turn-skeleton" />
+    </div>
+
+    <div v-else-if="!projectLoading && !ready && !turns.length" class="empty card">
       <span class="empty-icon"><Files :size="24" /></span>
       <h2>{{ project ? "Nothing is indexed yet" : "Add documents first" }}</h2>
       <p class="muted">
@@ -142,7 +239,10 @@ watch(
     <div v-else-if="!turns.length" class="intro">
       <span class="empty-icon"><MessageSquareText :size="24" /></span>
       <h2>Ask about {{ name }}</h2>
-      <p class="muted">Answers come only from this project's documents, with numbered sources you can open.</p>
+      <p class="muted">
+        Answers come only from this project's documents, with numbered sources you can open. Ask follow-up
+        questions: each conversation is kept.
+      </p>
       <div class="examples">
         <button v-for="example in examples" :key="example" class="example" @click="useExample(example)">
           {{ example }}
@@ -157,6 +257,11 @@ watch(
         </div>
 
         <div class="answer card">
+          <p v-if="turn.answer?.search_question" class="searched subtle small">
+            <Search :size="13" />
+            <span>Searched for <q>{{ turn.answer.search_question }}</q></span>
+          </p>
+
           <div v-if="turn.status === 'failed'" class="alert alert-danger">
             <TriangleAlert :size="18" />
             <span class="grow">{{ turn.error }}</span>
@@ -210,7 +315,7 @@ watch(
 
           <footer v-if="turn.status === 'done' && turn.answer" class="meta">
             <span v-if="tokens(turn)" class="meta-item" title="Tokens">{{ tokens(turn) }}</span>
-            <span class="meta-item" title="Cost">{{ formatCost(turn.answer.usage.cost_usd) }}</span>
+            <span v-if="!turn.stored" class="meta-item" title="Cost">{{ formatCost(turn.answer.usage.cost_usd) }}</span>
             <span v-if="turn.seconds !== null" class="meta-item">{{ turn.seconds.toFixed(1) }} s</span>
             <span class="meta-item mono" title="Prompt version">{{ turn.answer.prompt_version }}</span>
             <span class="grow" />
@@ -252,8 +357,14 @@ watch(
           class="composer-input"
           rows="1"
           maxlength="2000"
-          :placeholder="ready || turns.length ? `Ask a question about ${name}…` : 'Upload and index documents to ask questions'"
-          :disabled="!ready && !turns.length"
+          :placeholder="
+            !canAsk
+              ? 'Upload and index documents to ask questions'
+              : turns.length
+                ? 'Ask a follow-up question…'
+                : `Ask a question about ${name}…`
+          "
+          :disabled="!canAsk || loading"
           aria-label="Question"
           @input="resize"
           @keydown="onKeydown"
@@ -274,11 +385,11 @@ watch(
             v-if="turns.length && !busy"
             type="button"
             class="btn btn-ghost btn-icon btn-sm"
-            title="Clear the conversation"
-            aria-label="Clear the conversation"
-            @click="clear"
+            title="New conversation"
+            aria-label="New conversation"
+            @click="newConversation"
           >
-            <Trash2 :size="16" />
+            <SquarePen :size="16" />
           </button>
           <span class="grow" />
           <span class="hint subtle small">Enter to send · Shift+Enter for a new line</span>
@@ -299,17 +410,120 @@ watch(
       @close="opened = null"
     />
   </section>
+  </div>
 </template>
 
 <style scoped>
+.ask-layout {
+  display: flex;
+  flex: 1;
+  gap: 28px;
+  width: 100%;
+}
+
+.history {
+  position: sticky;
+  top: 132px;
+  flex: none;
+  align-self: flex-start;
+  width: 240px;
+  max-height: calc(100vh - 152px);
+  overflow-y: auto;
+}
+
+.history-overlay {
+  display: none;
+}
+
 .ask {
   display: flex;
   flex: 1;
   flex-direction: column;
   gap: 18px;
-  width: 100%;
+  min-width: 0;
   max-width: 820px;
   margin: 0 auto;
+}
+
+.toolbar {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 -4px;
+}
+
+.toolbar-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Narrower screens keep the conversations in a drawer. */
+@media (max-width: 1179px) {
+  .toolbar {
+    display: flex;
+  }
+
+  .history {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 60;
+    /* Stretched between top and bottom, which flex-start would undo. */
+    align-self: auto;
+    width: min(300px, 86vw);
+    max-height: none;
+    padding: 16px;
+    background: var(--surface);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(-105%);
+    visibility: hidden;
+    transition:
+      transform 0.2s ease,
+      visibility 0.2s;
+  }
+
+  .history.open {
+    transform: none;
+    visibility: visible;
+  }
+
+  .history-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    display: block;
+    background: rgb(0 0 0 / 35%);
+  }
+}
+
+.thread-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.turn-skeleton {
+  height: 150px;
+}
+
+.searched {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: -4px;
+}
+
+.searched svg {
+  flex: none;
+  margin-top: 3px;
+}
+
+.searched q {
+  color: var(--text-2);
 }
 
 .empty,

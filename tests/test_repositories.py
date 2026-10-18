@@ -287,3 +287,78 @@ async def test_deleting_a_project_deletes_its_answer_records(uow):
     await uow.session.execute(delete(ProjectRow).where(ProjectRow.id == project.id))
 
     assert (await uow.answers.totals_for_project(project.id)).answers == 0
+
+
+async def test_conversations_keep_their_messages_in_order(uow):
+    from mini_rag.domain.models import ConversationMessage, StoredCitation
+
+    project = await uow.projects.get_or_create("demo")
+    conversation = await uow.conversations.create(project.id, None)
+    citation = StoredCitation(number=1, file_key="a_notes.txt", chunk_index=2, page=3, score=0.75,
+                              text="Cats purr.")
+    await uow.conversations.add_messages(conversation.id, [
+        ConversationMessage(role="user", content="Do cats purr?"),
+        ConversationMessage(role="assistant", content="Yes [1].", citations=[citation],
+                            prompt_version="answer-v1"),
+    ], title="Do cats purr?")
+    await uow.conversations.add_messages(conversation.id, [
+        ConversationMessage(role="user", content="And dogs?"),
+        ConversationMessage(role="assistant", content=None, prompt_version="answer-v1",
+                            search_question="Do dogs purr?"),
+    ])
+    await uow.commit()
+
+    stored = await uow.conversations.get(project.id, conversation.id)
+    messages = await uow.conversations.messages(conversation.id)
+    last_two = await uow.conversations.messages(conversation.id, last=2)
+
+    assert stored.title == "Do cats purr?"  # kept: the second call gave no title
+    assert stored.updated_at >= conversation.updated_at
+    assert [(m.role, m.content) for m in messages] == [
+        ("user", "Do cats purr?"), ("assistant", "Yes [1]."), ("user", "And dogs?"),
+        ("assistant", None)]
+    assert messages[1].citations == [citation]
+    assert messages[3].search_question == "Do dogs purr?"
+    assert all(m.created_at is not None for m in messages)
+    assert [m.content for m in last_two] == ["And dogs?", None]
+
+
+async def test_conversations_belong_to_their_project(uow):
+    first = await uow.projects.get_or_create("first")
+    second = await uow.projects.get_or_create("second")
+    mine = await uow.conversations.create(first.id, "Mine")
+    await uow.conversations.create(second.id, None)
+
+    assert await uow.conversations.get(second.id, mine.id) is None
+    assert await uow.conversations.delete(second.id, mine.id) is False
+    assert [c.title for c in await uow.conversations.list_for_project(first.id, offset=0, limit=10)] == ["Mine"]
+    assert await uow.conversations.count_for_project(second.id) == 1
+
+
+async def test_conversations_are_listed_by_last_update(uow, session_factory):
+    project = await uow.projects.get_or_create("demo")
+    older = await uow.conversations.create(project.id, "Older")
+    newer = await uow.conversations.create(project.id, "Newer")
+    await uow.commit()
+    # now() is the time of the transaction, so the update happens in a later one.
+    async with session_factory() as session:
+        later = SqlUnitOfWork(session)
+        await later.conversations.add_messages(older.id, [])
+        await later.commit()
+
+    listed = await uow.conversations.list_for_project(project.id, offset=0, limit=10)
+
+    assert [c.id for c in listed] == [older.id, newer.id]
+
+
+async def test_deleting_a_conversation_deletes_its_messages(uow):
+    from mini_rag.domain.models import ConversationMessage
+
+    project = await uow.projects.get_or_create("demo")
+    conversation = await uow.conversations.create(project.id, None)
+    await uow.conversations.add_messages(conversation.id,
+                                         [ConversationMessage(role="user", content="Hi")])
+
+    assert await uow.conversations.delete(project.id, conversation.id) is True
+    await uow.commit()
+    assert await uow.session.scalar(text("SELECT count(*) FROM conversation_messages")) == 0

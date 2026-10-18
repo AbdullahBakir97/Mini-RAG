@@ -3,6 +3,7 @@ import { BarChart3, Files, LoaderCircle, MessageSquareText, Search, Sparkles, Tr
 import { computed, ref, toRef } from "vue";
 
 import { ApiError, api } from "@/api/client";
+import { lastConversation } from "@/composables/useConversations";
 import { provideProject } from "@/composables/useProject";
 import { useToasts } from "@/composables/useToasts";
 import { formatNumber } from "@/lib/format";
@@ -19,6 +20,12 @@ const tabs = [
   { name: "search", label: "Search", icon: Search },
   { name: "usage", label: "Usage", icon: BarChart3 },
 ];
+
+// The Ask tab returns to the conversation last open in this project.
+function tabLink(name: string) {
+  const conversation = name === "ask" ? lastConversation(props.project) : null;
+  return { name, params: conversation ? { project: props.project, conversation } : { project: props.project } };
+}
 
 const unindexed = computed(() =>
   project.value ? project.value.chunks_count - project.value.embedded_chunks_count : 0,
@@ -57,7 +64,7 @@ async function indexNow() {
         <RouterLink
           v-for="tab in tabs"
           :key="tab.name"
-          :to="{ name: tab.name, params: { project: props.project } }"
+          :to="tabLink(tab.name)"
           class="tab"
           active-class="active"
         >

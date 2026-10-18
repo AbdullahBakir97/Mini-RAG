@@ -16,6 +16,7 @@ from mini_rag.api.schemas import (
 )
 from mini_rag.core.errors import (
     AppError,
+    ConversationNotFound,
     EmbeddingFailed,
     EmbeddingNotConfigured,
     LLMFailed,
@@ -29,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/ask", tags=["ask"])
 
-ASK_ERRORS = error_responses(ProjectNotFound, EmbeddingFailed, LLMFailed,
+ASK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, EmbeddingFailed, LLMFailed,
                              EmbeddingNotConfigured, LLMNotConfigured)
 
 
@@ -46,7 +47,9 @@ def ask_response(answer: Answer) -> AskResponse:
         usage=UsageResponse(
             input_tokens=answer.usage.input_tokens if answer.usage else None,
             output_tokens=answer.usage.output_tokens if answer.usage else None,
-            cost_usd=answer.cost_usd))
+            cost_usd=answer.cost_usd),
+        conversation_id=answer.conversation_id,
+        search_question=answer.search_question)
 
 
 @router.post(
@@ -54,14 +57,22 @@ def ask_response(answer: Answer) -> AskResponse:
     summary="Answer a question from the project's documents",
     description="Finds the indexed chunks that best match the question and has a language model "
                 "answer from them, citing each source as [n]. Signal `no_answer`, with `answer` "
-                "null, means the documents do not answer the question.",
+                "null, means the documents do not answer the question. With `conversation_id`, "
+                "the question is a follow-up: it is first rewritten into a standalone question "
+                "from the conversation so far, and the question and the answer are added to the "
+                "conversation.",
     responses=ASK_ERRORS,
 )
 async def ask_project(project_id: ProjectId, request: AskRequest,
                       service: AnswerServiceDep) -> AskResponse:
     answer = await service.ask(project_id, request.question, top_k=request.top_k,
-                               min_score=request.min_score)
+                               min_score=request.min_score,
+                               conversation_id=_conversation_id(request))
     return ask_response(answer)
+
+
+def _conversation_id(request: AskRequest) -> str | None:
+    return str(request.conversation_id) if request.conversation_id else None
 
 
 def sse(event: str, data: dict) -> str:
@@ -84,14 +95,15 @@ def sse(event: str, data: dict) -> str:
 )
 async def ask_project_stream(project_id: ProjectId, request: AskRequest,
                              service: AnswerServiceDep) -> StreamingResponse:
-    # Retrieve first, so a missing project or a failing embedder is still an
-    # ordinary error response rather than an event.
-    sources = await service.retrieve(project_id, request.question, top_k=request.top_k,
-                                     min_score=request.min_score)
+    # Prepare first, so a missing project or conversation, or a failing
+    # embedder, is still an ordinary error response rather than an event.
+    prepared = await service.prepare(project_id, request.question, top_k=request.top_k,
+                                     min_score=request.min_score,
+                                     conversation_id=_conversation_id(request))
 
     async def events() -> AsyncIterator[str]:
         try:
-            async for event in service.stream(project_id, request.question, sources):
+            async for event in service.stream(prepared):
                 if isinstance(event, AnswerDelta):
                     yield sse("delta", {"text": event.text})
                 else:

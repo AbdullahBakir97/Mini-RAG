@@ -22,6 +22,10 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `GET` | `/api/v1/projects/{project_id}/usage` | Token usage and cost of the project's answers |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
+| `POST` | `/api/v1/projects/{project_id}/conversations` | Start a conversation |
+| `GET` | `/api/v1/projects/{project_id}/conversations` | List conversations, most recent first (paged) |
+| `GET` | `/api/v1/projects/{project_id}/conversations/{conversation_id}` | A conversation with its questions and answers |
+| `DELETE` | `/api/v1/projects/{project_id}/conversations/{conversation_id}` | Delete a conversation and its messages |
 
 ## Upload a file
 
@@ -190,12 +194,14 @@ That happens when no indexed chunk scores at least `min_score` (the model is the
 | `question` | required | 1–2000 characters, not blank |
 | `top_k` | `5` | 1–20; most chunks the answer may use |
 | `min_score` | `ANSWER_MIN_SCORE` (`0.3`) | -1 to 1; chunks scoring below it are not used |
+| `conversation_id` | none | A conversation of this project (see [Conversations](#conversations)); omit to ask on its own |
 
 | Case | Status | Response |
 |---|---|---|
 | Answered | `200` | `{"signal": "answer_success", ...}` |
 | The documents do not answer the question | `200` | `{"signal": "no_answer", "answer": null, ...}` |
 | No such project | `404` | `{"signal": "project_not_found"}` |
+| No such conversation in this project | `404` | `{"signal": "conversation_not_found"}` |
 | Invalid request | `422` | Validation error details |
 | The embedding provider or the language model failed | `502` | `{"signal": "embedding_failed"}` / `{"signal": "llm_failed"}` |
 | Embeddings or the language model are not configured | `503` | `{"signal": "embedding_not_configured"}` / `{"signal": "llm_not_configured"}` |
@@ -233,7 +239,7 @@ A `no_answer` reply sends no `delta` events, only the final `answer` event: text
 
 Every answer reports what it used in `usage`: the prompt tokens the model read (`input_tokens`), the tokens it wrote (`output_tokens`) and the cost in US dollars (`cost_usd`). When no source matches, the model is not called and all three are `0`. Token counts are `null` when the provider does not report them, and `cost_usd` is `null` unless both `LLM_INPUT_PRICE_PER_MILLION` and `LLM_OUTPUT_PRICE_PER_MILLION` are set (see [Configuration](configuration.md)).
 
-Each answer, streamed or not, is also recorded in the database: its project, model, prompt version, whether it found an answer, its tokens and its cost. The question and the answer text are not stored. Answers that fail, or streams that end early, are not recorded.
+Each answer, streamed or not, is also recorded in the database: its project, model, prompt version, whether it found an answer, its tokens and its cost. This record never holds the question or the answer text; only a [conversation](#conversations) keeps those, when the question is asked in one. Answers that fail, or streams that end early, are not recorded.
 
 ```bash
 curl http://localhost:8000/api/v1/projects/demo1/usage
@@ -244,3 +250,45 @@ curl http://localhost:8000/api/v1/projects/demo1/usage
 ```
 
 `answered` counts the answers that were not `no_answer`. `cost_usd` adds up the answers with a known cost; `unpriced_answers` counts the model calls whose cost is unknown, which are left out of it. An unknown project returns `404` `{"signal": "project_not_found"}`.
+
+### Conversations
+
+A conversation lets a question follow on from the ones before it: "And on Fridays?" after "When do production deploys happen?". Start one, then pass its `id` as `conversation_id` when asking, streamed or not:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/demo1/conversations
+```
+
+```json
+{"id": "6a69d3de-2e61-455f-a678-428c8c520d70", "title": null,
+ "created_at": "2026-10-18T10:00:00Z", "updated_at": "2026-10-18T10:00:00Z"}
+```
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ask/demo1 \
+  -H "Content-Type: application/json" \
+  -d '{"question": "And on Fridays?", "conversation_id": "6a69d3de-2e61-455f-a678-428c8c520d70"}'
+```
+
+A follow-up cannot be searched for on its own, so the model first rewrites it into a standalone question from the last three questions and answers (prompt `condense-v1`). The sources are searched with that question, and the answer is written with the earlier questions and answers in view. The response then carries `conversation_id`, and `search_question` when the question was rewritten:
+
+```json
+{"signal": "answer_success", "answer": "Never on Fridays after noon [1].", "citations": [...],
+ "prompt_version": "answer-v1", "usage": {...},
+ "conversation_id": "6a69d3de-2e61-455f-a678-428c8c520d70",
+ "search_question": "Do production deploys happen on Fridays?"}
+```
+
+`usage` includes the rewriting. The first question of a conversation is asked as it is, and becomes its `title` (up to 80 characters); the body of `POST .../conversations` may set one instead: `{"title": "Deploys"}`.
+
+Each answered question is added to the conversation with its answer, citations and `search_question`; failed answers and streams that end early are not. `GET .../conversations/{conversation_id}` returns them oldest first, and `GET .../conversations` lists conversations by when they were last answered in (`offset`, `limit`). An answer that found nothing is stored with `content` `null`:
+
+```json
+{"id": "6a69d3de-...", "title": "When do production deploys happen?", "created_at": "...", "updated_at": "...",
+ "messages": [
+   {"role": "user", "content": "When do production deploys happen?", "citations": [], "prompt_version": null, "search_question": null, "created_at": "..."},
+   {"role": "assistant", "content": "On weekdays between 9:00 and 16:00 [1].", "citations": [{"number": 1, "file_id": "...", ...}], "prompt_version": "answer-v1", "search_question": null, "created_at": "..."}
+ ]}
+```
+
+`DELETE .../conversations/{conversation_id}` removes a conversation and its messages (`204`). A conversation belongs to one project: using its id with another project, or an id that does not exist, returns `404` `{"signal": "conversation_not_found"}`; an id that is not a UUID returns `422`.

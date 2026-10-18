@@ -1,6 +1,8 @@
 """SQLAlchemy implementations of the domain repository interfaces."""
 
+import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import asdict
 
 from sqlalchemy import bindparam, delete, func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -9,14 +11,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mini_rag.domain.models import (
     AnswerRecord,
     Chunk,
+    Conversation,
+    ConversationMessage,
     FileRecord,
     Project,
     ScoredChunk,
+    StoredCitation,
     UnembeddedChunk,
     UsageTotals,
 )
 
-from .tables import AnswerRow, ChunkRow, FileRow, ProjectRow
+from .tables import (
+    AnswerRow,
+    ChunkRow,
+    ConversationMessageRow,
+    ConversationRow,
+    FileRow,
+    ProjectRow,
+)
 
 
 def _project(row: ProjectRow) -> Project:
@@ -208,6 +220,83 @@ class SqlAnswerRepository:
                            cost_usd=float(row.cost_usd), unpriced_answers=row.unpriced_answers)
 
 
+def _conversation(row: ConversationRow) -> Conversation:
+    return Conversation(id=row.id, project_id=row.project_id, title=row.title,
+                        created_at=row.created_at, updated_at=row.updated_at)
+
+
+def _message(row: ConversationMessageRow) -> ConversationMessage:
+    return ConversationMessage(
+        role=row.role, content=row.content,
+        citations=[StoredCitation(**citation) for citation in row.citations],
+        prompt_version=row.prompt_version, search_question=row.search_question,
+        created_at=row.created_at)
+
+
+class SqlConversationRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, project_id: int, title: str | None) -> Conversation:
+        row = await self.session.scalar(
+            insert(ConversationRow)
+            .values(id=str(uuid.uuid4()), project_id=project_id, title=title)
+            .returning(ConversationRow))
+        return _conversation(row)
+
+    async def get(self, project_id: int, conversation_id: str) -> Conversation | None:
+        row = await self.session.scalar(
+            select(ConversationRow).where(ConversationRow.id == conversation_id,
+                                          ConversationRow.project_id == project_id))
+        return _conversation(row) if row else None
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Conversation]:
+        rows = await self.session.scalars(
+            select(ConversationRow).where(ConversationRow.project_id == project_id)
+            .order_by(ConversationRow.updated_at.desc(), ConversationRow.id)
+            .offset(offset).limit(limit))
+        return [_conversation(row) for row in rows]
+
+    async def count_for_project(self, project_id: int) -> int:
+        return await self.session.scalar(
+            select(func.count()).select_from(ConversationRow)
+            .where(ConversationRow.project_id == project_id))
+
+    async def delete(self, project_id: int, conversation_id: str) -> bool:
+        result = await self.session.execute(
+            delete(ConversationRow).where(ConversationRow.id == conversation_id,
+                                          ConversationRow.project_id == project_id))
+        return result.rowcount > 0
+
+    async def messages(self, conversation_id: str, *,
+                       last: int | None = None) -> list[ConversationMessage]:
+        query = (select(ConversationMessageRow)
+                 .where(ConversationMessageRow.conversation_id == conversation_id)
+                 .order_by(ConversationMessageRow.id.desc()))
+        if last is not None:
+            query = query.limit(last)
+        rows = list(await self.session.scalars(query))
+        return [_message(row) for row in reversed(rows)]
+
+    async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
+                           *, title: str | None = None) -> None:
+        if messages:
+            await self.session.execute(insert(ConversationMessageRow), [
+                {"conversation_id": conversation_id, "role": message.role,
+                 "content": message.content,
+                 "citations": [asdict(citation) for citation in message.citations],
+                 "prompt_version": message.prompt_version,
+                 "search_question": message.search_question}
+                for message in messages])
+        values: dict = {"updated_at": func.now()}
+        if title is not None:
+            values["title"] = title
+        await self.session.execute(
+            update(ConversationRow).where(ConversationRow.id == conversation_id).values(**values))
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession):
@@ -216,6 +305,7 @@ class SqlUnitOfWork:
         self.files = SqlFileRepository(session)
         self.chunks = SqlChunkRepository(session)
         self.answers = SqlAnswerRepository(session)
+        self.conversations = SqlConversationRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

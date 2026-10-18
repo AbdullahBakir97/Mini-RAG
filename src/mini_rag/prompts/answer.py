@@ -27,17 +27,21 @@ class AnswerPrompt:
     version: str
     system: str
 
-    def messages(self, question: str, sources: Sequence[ScoredChunk]) -> list[Message]:
+    def messages(self, question: str, sources: Sequence[ScoredChunk],
+                 history: Sequence[Message] = ()) -> list[Message]:
         """The conversation that asks the model to answer from ``sources``.
 
         Sources are numbered from 1 in the given order; citations in the
-        reply refer to these numbers.
+        reply refer to these numbers. ``history`` holds the earlier turns of
+        a conversation, without their citation markers: those numbered
+        other sources.
         """
         rendered = "\n".join(_render_source(number, source)
                              for number, source in enumerate(sources, start=1))
         user = (f"<sources>\n{rendered}\n</sources>\n\n"
                 f"<question>\n{_neutralize(question)}\n</question>")
-        return [Message("system", self.system), Message("user", user)]
+        earlier = [Message(turn.role, strip_citations(turn.content)) for turn in history]
+        return [Message("system", self.system), *earlier, Message("user", user)]
 
     def is_no_answer(self, reply: str) -> bool:
         """Whether the model said that the sources do not answer the question."""
@@ -59,6 +63,11 @@ class AnswerPrompt:
         numbers = (int(number) for marker in _CITATION.findall(reply)
                    for number in marker.split(","))
         return list(dict.fromkeys(numbers))
+
+
+def strip_citations(text: str) -> str:
+    """Text without its [n] markers."""
+    return re.sub(r" ?" + _CITATION.pattern, "", text)
 
 
 def _neutralize(text: str) -> str:

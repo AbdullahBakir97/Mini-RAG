@@ -10,6 +10,8 @@ from typing import Protocol
 from .models import (
     AnswerRecord,
     Chunk,
+    Conversation,
+    ConversationMessage,
     FileRecord,
     Project,
     ScoredChunk,
@@ -91,6 +93,36 @@ class AnswerRepository(Protocol):
         ...
 
 
+class ConversationRepository(Protocol):
+
+    async def create(self, project_id: int, title: str | None) -> Conversation: ...
+
+    async def get(self, project_id: int, conversation_id: str) -> Conversation | None:
+        """The project's conversation; None for another project's."""
+        ...
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Conversation]:
+        """Most recently updated first."""
+        ...
+
+    async def count_for_project(self, project_id: int) -> int: ...
+
+    async def delete(self, project_id: int, conversation_id: str) -> bool:
+        """Delete the conversation and its messages; False when there is none."""
+        ...
+
+    async def messages(self, conversation_id: str, *,
+                       last: int | None = None) -> list[ConversationMessage]:
+        """Messages in the order they were added; only the ``last`` ones when given."""
+        ...
+
+    async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
+                           *, title: str | None = None) -> None:
+        """Append messages and mark the conversation updated; ``title`` replaces its title."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -101,6 +133,7 @@ class UnitOfWork(Protocol):
     files: FileRepository
     chunks: ChunkRepository
     answers: AnswerRepository
+    conversations: ConversationRepository
 
     async def commit(self) -> None: ...
 

@@ -3,7 +3,10 @@ import { signalMessage } from "@/lib/signals";
 import { readEvents } from "./sse";
 import type {
   Answer,
+  AskOptions,
   Chunk,
+  Conversation,
+  ConversationDetail,
   FileInfo,
   Health,
   IndexResult,
@@ -76,7 +79,12 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   return (await send(path, init)).json() as Promise<T>;
 }
 
+async function remove(path: string): Promise<void> {
+  await send(path, { method: "DELETE" });
+}
+
 const project = (name: string) => encodeURIComponent(name);
+const conversations = (name: string) => `/projects/${project(name)}/conversations`;
 
 export interface PageParams {
   offset?: number;
@@ -145,14 +153,22 @@ export const api = {
     post<IndexResult>(`/index/${project(name)}`, fileId ? { file_id: fileId } : undefined),
   search: (name: string, query: string, options: SearchOptions) =>
     post<SearchResult>(`/search/${project(name)}`, { query, ...options }),
-  ask: (name: string, question: string, options: SearchOptions, signal?: AbortSignal) =>
+  conversations: (name: string, page: PageParams = {}) =>
+    get<Page<Conversation>>(conversations(name), { offset: page.offset ?? 0, limit: page.limit ?? 50 }),
+  createConversation: (name: string) => post<Conversation>(conversations(name)),
+  conversation: (name: string, id: string) =>
+    get<ConversationDetail>(`${conversations(name)}/${encodeURIComponent(id)}`),
+  deleteConversation: (name: string, id: string) => remove(`${conversations(name)}/${encodeURIComponent(id)}`),
+
+  /** With `conversation_id`, the question follows on from that conversation and is added to it. */
+  ask: (name: string, question: string, options: AskOptions, signal?: AbortSignal) =>
     post<Answer>(`/ask/${project(name)}`, { question, ...options }, signal),
 
   /** Streams an answer: text pieces go to `onDelta`, the finished Answer is returned. */
   async askStream(
     name: string,
     question: string,
-    options: SearchOptions,
+    options: AskOptions,
     handlers: StreamHandlers,
     signal?: AbortSignal,
   ): Promise<Answer> {

@@ -15,6 +15,7 @@ from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.conversation_service import ConversationService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
@@ -96,6 +97,13 @@ def get_project_service(uow: UnitOfWorkDep) -> ProjectService:
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_conversation_service(uow: UnitOfWorkDep) -> ConversationService:
+    return ConversationService(uow=uow)
+
+
+ConversationServiceDep = Annotated[ConversationService, Depends(get_conversation_service)]
 
 
 def get_embedder(request: Request) -> Embedder:

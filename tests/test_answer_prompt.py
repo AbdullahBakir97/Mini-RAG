@@ -103,3 +103,14 @@ def test_finds_cited_numbers_in_order(reply, numbers):
 ])
 def test_tells_whether_a_partial_reply_may_still_be_no_answer(partial, possible):
     assert ANSWER_PROMPT_V1.could_be_no_answer(partial) is possible
+
+
+def test_history_comes_between_the_rules_and_the_sources_without_its_citations():
+    from mini_rag.domain.llm import Message
+
+    messages = ANSWER_PROMPT_V1.messages("And dogs?", [source("Dogs bark.")], history=[
+        Message("user", "Do cats purr?"), Message("assistant", "Yes, cats purr [1][2].")])
+
+    assert [m.role for m in messages] == ["system", "user", "assistant", "user"]
+    assert messages[2].content == "Yes, cats purr."
+    assert messages[3].content.endswith("<question>\nAnd dogs?\n</question>")

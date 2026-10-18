@@ -10,8 +10,11 @@ from sqlalchemy import make_url
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from mini_rag.api.dependencies import get_embedder, get_llm
 from mini_rag.core.config import get_settings
 from mini_rag.persistence.database import create_engine
+
+from .fakes import FakeEmbedder, FakeLLM
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -104,7 +107,7 @@ async def _empty_tables(url: str) -> None:
     try:
         async with engine.begin() as connection:
             await connection.execute(sql_text(
-                "TRUNCATE projects, files, chunks, answers RESTART IDENTITY CASCADE"))
+                "TRUNCATE projects, files, chunks, answers, conversations, conversation_messages RESTART IDENTITY CASCADE"))
     finally:
         await engine.dispose()
 
@@ -175,3 +178,19 @@ def client(db):
 
     with TestClient(create_app()) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def embedder(client):
+    """A stand-in embedding model for the app."""
+    fake = FakeEmbedder()
+    client.app.dependency_overrides[get_embedder] = lambda: fake
+    return fake
+
+
+@pytest.fixture
+def llm(client):
+    """A stand-in answer model for the app, answering from the first source."""
+    fake = FakeLLM("Each chunk gets an embedding vector [1].")
+    client.app.dependency_overrides[get_llm] = lambda: fake
+    return fake
