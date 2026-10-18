@@ -36,8 +36,10 @@ NAMING_CONVENTION = {
     "pk": "pk_%(table_name)s",
 }
 
-# Length of chunks.embedding. Changing it needs a migration, and
-# EMBEDDING_DIMENSIONS must match it (checked when the app starts).
+# Length of chunks.embedding as the migrations create it. A database can be
+# switched to another length with `mini-rag resize-embeddings`, for a model
+# with other vectors; EMBEDDING_DIMENSIONS must match the database (checked
+# when the app starts).
 EMBEDDING_DIMENSIONS = 1536
 
 

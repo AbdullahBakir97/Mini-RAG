@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from mini_rag.core.config import MAX_INDEXED_DIMENSIONS
+
 
 def create_engine(url: str) -> AsyncEngine:
     # pool_pre_ping replaces connections the database has closed (e.g. after
@@ -48,3 +50,32 @@ async def stored_embedding_dimensions(engine: AsyncEngine,
                 return await connection.scalar(query)
     except Exception:
         return None
+
+
+async def count_embeddings(engine: AsyncEngine) -> int:
+    """Chunks that have an embedding."""
+    async with engine.connect() as connection:
+        return await connection.scalar(
+            text("SELECT count(*) FROM chunks WHERE embedding IS NOT NULL"))
+
+
+async def resize_embeddings(engine: AsyncEngine, dimensions: int) -> int:
+    """Make chunks.embedding hold vectors of ``dimensions``; returns how many were cleared.
+
+    Vectors of another length come from another model and cannot be compared
+    with new ones, so all are cleared. The chunks stay; indexing embeds them
+    again. Runs in one transaction, index included.
+    """
+    if not 0 < dimensions <= MAX_INDEXED_DIMENSIONS:
+        raise ValueError(f"dimensions must be 1-{MAX_INDEXED_DIMENSIONS}, not {dimensions}")
+    async with engine.begin() as connection:
+        cleared = await connection.scalar(
+            text("SELECT count(*) FROM chunks WHERE embedding IS NOT NULL"))
+        await connection.execute(text("DROP INDEX IF EXISTS ix_chunks_embedding"))
+        # The length is a validated int; DDL cannot take it as a parameter.
+        await connection.execute(text(
+            f"ALTER TABLE chunks ALTER COLUMN embedding TYPE vector({dimensions}) USING NULL"))
+        await connection.execute(text(
+            "CREATE INDEX ix_chunks_embedding ON chunks "
+            "USING hnsw (embedding vector_cosine_ops)"))
+    return cleared

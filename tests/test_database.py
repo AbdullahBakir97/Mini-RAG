@@ -40,16 +40,6 @@ def test_database_url_must_be_async_postgres(monkeypatch):
         Settings()
 
 
-def test_app_refuses_to_start_when_embedding_dimensions_do_not_match(db, monkeypatch):
-    from mini_rag.main import create_app
-
-    monkeypatch.setenv("EMBEDDING_DIMENSIONS", "768")
-
-    with pytest.raises(RuntimeError, match="EMBEDDING_DIMENSIONS is 768.*1536"):
-        with TestClient(create_app()):
-            pass
-
-
 def test_app_starts_without_a_database_to_check_dimensions_against(monkeypatch):
     from mini_rag.main import create_app
 

@@ -43,6 +43,9 @@ dev = [
     "ruff==0.17.1",
 ]
 
+[project.scripts]
+mini-rag = "mini_rag.cli:main"
+
 [project.urls]
 Repository = "https://github.com/AbdullahBakir97/Mini-RAG"
 Documentation = "https://github.com/AbdullahBakir97/Mini-RAG/tree/start-001/docs"

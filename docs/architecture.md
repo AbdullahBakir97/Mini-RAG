@@ -31,7 +31,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Transactions | One database session per request; services call `uow.commit()`, and anything uncommitted is rolled back |
 | Database schema | `persistence/tables.py`, changed only through Alembic migrations |
 | Usage and cost | `AnswerService` records every answer's tokens and cost in the `answers` table, never the question or answer text; `GET /api/v1/projects/{project_id}/usage` adds them up |
-| Vector search | `chunks.embedding vector(1536)` with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
+| Vector search | `chunks.embedding vector(1536)` (another length after `mini-rag resize-embeddings`, for another embedding model) with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
 
 ## Prompts
 
@@ -58,6 +58,7 @@ Mini-RAG/
 ├── docs/                     # This documentation
 ├── src/mini_rag/
 │   ├── main.py               # create_app(): routers, error handler, lifespan
+│   ├── cli.py                # The mini-rag command: resize-embeddings
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
 │   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers
