@@ -7,6 +7,8 @@ import type {
   Chunk,
   Conversation,
   ConversationDetail,
+  ConversationMessage,
+  FeedbackList,
   FileInfo,
   Health,
   IndexResult,
@@ -16,6 +18,7 @@ import type {
   Project,
   ProjectListItem,
   ProjectUsage,
+  Rating,
   SearchOptions,
   SearchResult,
   UploadResult,
@@ -65,7 +68,7 @@ async function send(path: string, init: RequestInit = {}): Promise<Response> {
   return response;
 }
 
-async function get<T>(path: string, params?: Record<string, number>): Promise<T> {
+async function get<T>(path: string, params?: Record<string, number | string>): Promise<T> {
   const query = params ? "?" + new URLSearchParams(Object.entries(params).map(([k, v]) => [k, String(v)])) : "";
   return (await send(path + query)).json() as Promise<T>;
 }
@@ -79,12 +82,23 @@ async function post<T>(path: string, body?: unknown, signal?: AbortSignal): Prom
   return (await send(path, init)).json() as Promise<T>;
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const response = await send(path, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response.json() as Promise<T>;
+}
+
 async function remove(path: string): Promise<void> {
   await send(path, { method: "DELETE" });
 }
 
 const project = (name: string) => encodeURIComponent(name);
 const conversations = (name: string) => `/projects/${project(name)}/conversations`;
+const feedbackPath = (name: string, conversationId: string, messageId: number) =>
+  `${conversations(name)}/${encodeURIComponent(conversationId)}/messages/${messageId}/feedback`;
 
 export interface PageParams {
   offset?: number;
@@ -159,6 +173,18 @@ export const api = {
   conversation: (name: string, id: string) =>
     get<ConversationDetail>(`${conversations(name)}/${encodeURIComponent(id)}`),
   deleteConversation: (name: string, id: string) => remove(`${conversations(name)}/${encodeURIComponent(id)}`),
+
+  /** Rates an answer in a conversation, replacing any rating it had. */
+  rate: (name: string, conversationId: string, messageId: number, rating: Rating, comment?: string) =>
+    put<ConversationMessage>(feedbackPath(name, conversationId, messageId), { rating, comment: comment || null }),
+  unrate: (name: string, conversationId: string, messageId: number) =>
+    remove(feedbackPath(name, conversationId, messageId)),
+  feedback: (name: string, options: PageParams & { rating?: Rating } = {}) =>
+    get<FeedbackList>(`/projects/${project(name)}/feedback`, {
+      offset: options.offset ?? 0,
+      limit: options.limit ?? 20,
+      ...(options.rating ? { rating: options.rating } : {}),
+    }),
 
   /** With `conversation_id`, the question follows on from that conversation and is added to it. */
   ask: (name: string, question: string, options: AskOptions, signal?: AbortSignal) =>

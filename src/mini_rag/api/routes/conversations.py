@@ -1,6 +1,6 @@
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Query, Response, status
 
 from mini_rag.api.dependencies import ConversationServiceDep
 from mini_rag.api.schemas import (
@@ -10,13 +10,23 @@ from mini_rag.api.schemas import (
     ConversationIdPath,
     ConversationListResponse,
     ConversationResponse,
+    FeedbackListResponse,
+    FeedbackRequest,
+    FeedbackResponse,
+    MessageIdPath,
     MessageResponse,
     Pagination,
     ProjectId,
+    RatedAnswerResponse,
     error_responses,
 )
-from mini_rag.core.errors import ConversationNotFound, ProjectNotFound
-from mini_rag.domain.models import Conversation, ConversationMessage
+from mini_rag.core.errors import ConversationNotFound, MessageNotFound, ProjectNotFound
+from mini_rag.domain.models import (
+    Conversation,
+    ConversationMessage,
+    Feedback,
+    StoredCitation,
+)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["conversations"])
 
@@ -28,14 +38,24 @@ def _conversation(conversation: Conversation) -> dict:
             "created_at": conversation.created_at, "updated_at": conversation.updated_at}
 
 
+def _citations(citations: list[StoredCitation]) -> list[CitationResponse]:
+    return [CitationResponse(number=c.number, file_id=c.file_key, chunk_index=c.chunk_index,
+                             page=c.page, score=c.score, text=c.text) for c in citations]
+
+
+def _feedback(feedback: Feedback | None) -> FeedbackResponse | None:
+    if feedback is None:
+        return None
+    return FeedbackResponse(rating=feedback.rating, comment=feedback.comment,
+                            created_at=feedback.created_at)
+
+
 def _message(message: ConversationMessage) -> MessageResponse:
     return MessageResponse(
-        role=message.role, content=message.content,
-        citations=[CitationResponse(number=c.number, file_id=c.file_key, chunk_index=c.chunk_index,
-                                    page=c.page, score=c.score, text=c.text)
-                   for c in message.citations],
+        id=message.id, role=message.role, content=message.content,
+        citations=_citations(message.citations),
         prompt_version=message.prompt_version, search_question=message.search_question,
-        created_at=message.created_at)
+        created_at=message.created_at, feedback=_feedback(message.feedback))
 
 
 @router.post("/{project_id}/conversations", status_code=status.HTTP_201_CREATED,
@@ -77,3 +97,45 @@ async def delete_conversation(project_id: ProjectId, conversation_id: Conversati
                               service: ConversationServiceDep) -> Response:
     await service.delete(project_id, str(conversation_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+FEEDBACK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, MessageNotFound)
+FEEDBACK_PATH = "/{project_id}/conversations/{conversation_id}/messages/{message_id}/feedback"
+
+
+@router.put(FEEDBACK_PATH, summary="Rate an answer thumbs up or down",
+            description="Replaces any rating the answer had. Rated answers can be reviewed with "
+                        "GET /api/v1/projects/{project_id}/feedback and exported as evaluation "
+                        "cases with `mini-rag feedback-export`.",
+            responses=FEEDBACK_ERRORS)
+async def rate_answer(project_id: ProjectId, conversation_id: ConversationIdPath,
+                      message_id: MessageIdPath, request: FeedbackRequest,
+                      service: ConversationServiceDep) -> MessageResponse:
+    message = await service.rate(project_id, str(conversation_id), message_id,
+                                 request.rating, request.comment)
+    return _message(message)
+
+
+@router.delete(FEEDBACK_PATH, status_code=status.HTTP_204_NO_CONTENT,
+               summary="Remove an answer's rating", responses=FEEDBACK_ERRORS)
+async def unrate_answer(project_id: ProjectId, conversation_id: ConversationIdPath,
+                        message_id: MessageIdPath, service: ConversationServiceDep) -> Response:
+    await service.unrate(project_id, str(conversation_id), message_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/{project_id}/feedback", summary="Rated answers, most recently rated first",
+            responses=error_responses(ProjectNotFound))
+async def list_feedback(project_id: ProjectId, page: PaginationDep, service: ConversationServiceDep,
+                        rating: Annotated[Literal["up", "down"] | None,
+                                          Query(description="Only this rating.")] = None,
+                        ) -> FeedbackListResponse:
+    result = await service.feedback(project_id, rating, page.offset, page.limit)
+    return FeedbackListResponse(
+        up=result.counts.up, down=result.counts.down, total=result.page.total,
+        offset=result.page.offset, limit=result.page.limit,
+        items=[RatedAnswerResponse(conversation_id=item.conversation_id,
+                                   message_id=item.message_id, question=item.question,
+                                   answer=item.answer, citations=_citations(item.citations),
+                                   feedback=_feedback(item.feedback))
+               for item in result.page.items])

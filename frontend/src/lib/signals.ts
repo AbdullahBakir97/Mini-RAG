@@ -7,6 +7,7 @@ const MESSAGES: Record<string, string> = {
   file_not_found: "That file does not exist in this project.",
   project_not_found: "This project has no documents yet.",
   conversation_not_found: "This conversation no longer exists.",
+  message_not_found: "This answer no longer exists, so it cannot be rated.",
   file_has_no_text: "No text could be read from the file. Scanned PDFs need OCR first.",
   processing_failed: "The file could not be split into chunks.",
   embedding_not_configured:

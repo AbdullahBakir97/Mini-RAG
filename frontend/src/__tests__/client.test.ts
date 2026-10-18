@@ -127,4 +127,25 @@ describe("api", () => {
       message: "This conversation no longer exists.",
     });
   });
+
+  it("rates and unrates answers, and lists rated ones", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ id: 7, feedback: { rating: "down" } }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(Response.json({ up: 1, down: 0, total: 1, offset: 0, limit: 20, items: [] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.rate("demo", "c-1", 7, "down", "Wrong window.");
+    await api.unrate("demo", "c-1", 7);
+    expect((await api.feedback("demo", { rating: "up" })).up).toBe(1);
+
+    const [putUrl, put] = fetch.mock.calls[0]!;
+    const [deleteUrl, del] = fetch.mock.calls[1]!;
+    const [listUrl] = fetch.mock.calls[2]!;
+    expect([put.method, putUrl]).toEqual(["PUT", "/api/v1/projects/demo/conversations/c-1/messages/7/feedback"]);
+    expect(JSON.parse(put.body)).toEqual({ rating: "down", comment: "Wrong window." });
+    expect([del.method, deleteUrl]).toEqual(["DELETE", "/api/v1/projects/demo/conversations/c-1/messages/7/feedback"]);
+    expect(listUrl).toBe("/api/v1/projects/demo/feedback?offset=0&limit=20&rating=up");
+  });
 });

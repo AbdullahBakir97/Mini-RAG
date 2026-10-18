@@ -50,6 +50,13 @@ class ConversationNotFound(AppError):
     status_code = HTTPStatus.NOT_FOUND
 
 
+class MessageNotFound(AppError):
+    """No answer with that id in the conversation; questions take no feedback."""
+
+    signal = ResponseSignal.MESSAGE_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
 class NoTextExtracted(AppError):
     signal = ResponseSignal.FILE_HAS_NO_TEXT
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

@@ -203,3 +203,47 @@ async def test_long_first_questions_make_short_titles(uow):
 
     title = (await ConversationService(uow).get("p1", conversation.id)).conversation.title
     assert len(title) == 80 and title.endswith("…")
+
+
+async def rated_conversation(uow):
+    from mini_rag.domain.models import ConversationMessage
+
+    project = await uow.projects.get_by_name("p1")
+    conversation = await uow.conversations.create(project.id, None)
+    question, answer = await uow.conversations.add_messages(conversation.id, [
+        ConversationMessage(role="user", content="Do cats purr?"),
+        ConversationMessage(role="assistant", content="Yes [1]."),
+    ])
+    return conversation, question, answer
+
+
+async def test_answers_are_rated_and_listed(uow):
+    conversation, _, answer = await rated_conversation(uow)
+    service = ConversationService(uow)
+
+    rated = await service.rate("p1", conversation.id, answer, "down", "  ")
+    feedback = await service.feedback("p1", None, offset=0, limit=10)
+
+    assert (rated.feedback.rating, rated.feedback.comment) == ("down", None)
+    assert (feedback.counts.up, feedback.counts.down, feedback.page.total) == (0, 1, 1)
+    assert feedback.page.items[0].question == "Do cats purr?"
+    assert (await service.feedback("p1", "up", offset=0, limit=10)).page.total == 0
+
+    await service.unrate("p1", conversation.id, answer)
+    assert (await service.feedback("p1", None, offset=0, limit=10)).page.total == 0
+
+
+async def test_only_answers_of_the_projects_conversations_can_be_rated(uow):
+    from mini_rag.core.errors import MessageNotFound
+
+    conversation, question, answer = await rated_conversation(uow)
+    service = ConversationService(uow)
+
+    with pytest.raises(MessageNotFound):
+        await service.rate("p1", conversation.id, question, "up", None)
+    with pytest.raises(MessageNotFound):
+        await service.rate("p1", conversation.id, 999, "up", None)
+    with pytest.raises(ConversationNotFound):
+        await service.rate("other", conversation.id, answer, "up", None)
+    with pytest.raises(ProjectNotFound):
+        await service.unrate("nope", conversation.id, answer)

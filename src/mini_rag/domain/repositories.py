@@ -12,8 +12,11 @@ from .models import (
     Chunk,
     Conversation,
     ConversationMessage,
+    Feedback,
+    FeedbackCounts,
     FileRecord,
     Project,
+    RatedAnswer,
     ScoredChunk,
     UnembeddedChunk,
     UsageTotals,
@@ -122,9 +125,28 @@ class ConversationRepository(Protocol):
         ...
 
     async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
-                           *, title: str | None = None) -> None:
-        """Append messages and mark the conversation updated; ``title`` replaces its title."""
+                           *, title: str | None = None) -> list[int]:
+        """Append messages and mark the conversation updated; ``title`` replaces its title.
+
+        Returns the new messages' ids, in order.
+        """
         ...
+
+    async def get_message(self, conversation_id: str,
+                          message_id: int) -> ConversationMessage | None:
+        """The conversation's message; None for another conversation's."""
+        ...
+
+    async def set_feedback(self, message_id: int, feedback: Feedback | None) -> None:
+        """Replace a message's feedback; None removes it."""
+        ...
+
+    async def rated_answers(self, project_id: int, *, rating: str | None, offset: int,
+                            limit: int) -> list[RatedAnswer]:
+        """The project's rated answers, most recently rated first; only ``rating`` when given."""
+        ...
+
+    async def count_feedback(self, project_id: int) -> FeedbackCounts: ...
 
 
 class UnitOfWork(Protocol):

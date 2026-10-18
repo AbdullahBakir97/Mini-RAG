@@ -49,7 +49,8 @@ def ask_response(answer: Answer) -> AskResponse:
             output_tokens=answer.usage.output_tokens if answer.usage else None,
             cost_usd=answer.cost_usd),
         conversation_id=answer.conversation_id,
-        search_question=answer.search_question)
+        search_question=answer.search_question,
+        message_id=answer.message_id)
 
 
 @router.post(

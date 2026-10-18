@@ -4,6 +4,7 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { ApiError, api } from "@/api/client";
 import type { ProjectUsage } from "@/api/types";
+import FeedbackList from "@/components/FeedbackList.vue";
 import { useProject } from "@/composables/useProject";
 import { formatCost, formatNumber, formatPercent } from "@/lib/format";
 
@@ -56,7 +57,7 @@ onMounted(load);
   <section class="usage">
     <div>
       <h2>Usage</h2>
-      <p class="muted small">Tokens and cost of every answer in this project. Questions and answers are not stored.</p>
+      <p class="muted small">Tokens and cost of every answer in this project, and what people thought of them.</p>
     </div>
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
@@ -82,6 +83,8 @@ onMounted(load);
         price answers.
       </span>
     </div>
+
+    <FeedbackList :project="name" class="feedback-section" />
   </section>
 </template>
 
@@ -116,6 +119,10 @@ onMounted(load);
   font-weight: 650;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.feedback-section {
+  margin-top: 14px;
 }
 
 .stat-skeleton {

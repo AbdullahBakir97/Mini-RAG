@@ -7,8 +7,24 @@ import { type AskSettings, turnsFrom, useAsk } from "@/composables/useAsk";
 
 const CITATION = { number: 1, file_id: "a_guide.txt", chunk_index: 2, page: null, score: 0.9, text: "Cats purr." };
 
-function message(role: ConversationMessage["role"], content: string | null, extra: Partial<ConversationMessage> = {}) {
-  return { role, content, citations: [], prompt_version: null, search_question: null, created_at: "2026-10-18T10:00:00Z", ...extra };
+let nextMessageId = 1;
+
+function message(
+  role: ConversationMessage["role"],
+  content: string | null,
+  extra: Partial<ConversationMessage> = {},
+): ConversationMessage {
+  return {
+    id: nextMessageId++,
+    role,
+    content,
+    citations: [],
+    prompt_version: null,
+    search_question: null,
+    created_at: "2026-10-18T10:00:00Z",
+    feedback: null,
+    ...extra,
+  };
 }
 
 function answer(text: string, extra: Record<string, unknown> = {}) {
@@ -139,3 +155,44 @@ describe("useAsk while a conversation is being started", () => {
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("rating answers", () => {
+  const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: false });
+  const detail = {
+    id: "c-2",
+    title: "Cats",
+    messages: [message("user", "Do cats purr?"), message("assistant", "Yes.", { id: 42 })],
+  };
+
+  it("shows a rating at once and saves it", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json(detail))
+      .mockResolvedValueOnce(Response.json({ id: 42 }));
+    vi.stubGlobal("fetch", fetch);
+    const { turns, rate } = useAsk(ref("demo"), ref("c-2"), settings);
+    await flushPromises();
+
+    const saving = rate(turns.value[0]!, "up");
+    expect(turns.value[0]!.feedback?.rating).toBe("up");
+    await saving;
+
+    expect(fetch.mock.calls[1]![0]).toBe("/api/v1/projects/demo/conversations/c-2/messages/42/feedback");
+  });
+
+  it("puts the rating back when it cannot be saved", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(Response.json(detail))
+        .mockResolvedValueOnce(Response.json({ signal: "message_not_found" }, { status: 404 })),
+    );
+    const { turns, rate } = useAsk(ref("demo"), ref("c-2"), settings);
+    await flushPromises();
+
+    await expect(rate(turns.value[0]!, "down", "Wrong.")).rejects.toMatchObject({ signal: "message_not_found" });
+    expect(turns.value[0]!.feedback).toBeNull();
+  });
+});
+

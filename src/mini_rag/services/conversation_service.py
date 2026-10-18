@@ -1,7 +1,15 @@
 from dataclasses import dataclass
+from typing import Literal
 
-from mini_rag.core.errors import ConversationNotFound, ProjectNotFound
-from mini_rag.domain.models import Conversation, ConversationMessage, Project
+from mini_rag.core.errors import ConversationNotFound, MessageNotFound, ProjectNotFound
+from mini_rag.domain.models import (
+    Conversation,
+    ConversationMessage,
+    Feedback,
+    FeedbackCounts,
+    Project,
+    RatedAnswer,
+)
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.services.project_service import Page
 
@@ -12,8 +20,16 @@ class ConversationWithMessages:
     messages: list[ConversationMessage]
 
 
+@dataclass(frozen=True)
+class FeedbackPage:
+    """A page of rated answers, and how many of each rating the project has."""
+
+    page: Page[RatedAnswer]
+    counts: FeedbackCounts
+
+
 class ConversationService:
-    """Starts, lists, reads and deletes a project's conversations.
+    """Starts, lists, reads and deletes a project's conversations, and rates answers.
 
     Questions are asked in a conversation through the AnswerService.
     """
@@ -50,6 +66,40 @@ class ConversationService:
         if not await self.uow.conversations.delete(project.id, conversation_id):
             raise ConversationNotFound()
         await self.uow.commit()
+
+    async def rate(self, project_name: str, conversation_id: str, message_id: int,
+                   rating: Literal["up", "down"], comment: str | None) -> ConversationMessage:
+        """Give an answer thumbs up or down, replacing any rating it had."""
+        await self._answer(project_name, conversation_id, message_id)
+        await self.uow.conversations.set_feedback(
+            message_id, Feedback(rating=rating, comment=(comment or "").strip() or None))
+        await self.uow.commit()
+        return await self.uow.conversations.get_message(conversation_id, message_id)
+
+    async def unrate(self, project_name: str, conversation_id: str, message_id: int) -> None:
+        await self._answer(project_name, conversation_id, message_id)
+        await self.uow.conversations.set_feedback(message_id, None)
+        await self.uow.commit()
+
+    async def feedback(self, project_name: str, rating: str | None, offset: int,
+                       limit: int) -> FeedbackPage:
+        project = await self._project(project_name)
+        counts = await self.uow.conversations.count_feedback(project.id)
+        total = {"up": counts.up, "down": counts.down}.get(rating, counts.up + counts.down)
+        items = await self.uow.conversations.rated_answers(project.id, rating=rating,
+                                                           offset=offset, limit=limit)
+        return FeedbackPage(page=Page(items=items, total=total, offset=offset, limit=limit),
+                            counts=counts)
+
+    async def _answer(self, project_name: str, conversation_id: str,
+                      message_id: int) -> ConversationMessage:
+        project = await self._project(project_name)
+        if await self.uow.conversations.get(project.id, conversation_id) is None:
+            raise ConversationNotFound()
+        message = await self.uow.conversations.get_message(conversation_id, message_id)
+        if message is None or message.role != "assistant":
+            raise MessageNotFound()
+        return message
 
     async def _project(self, name: str) -> Project:
         project = await self.uow.projects.get_by_name(name)

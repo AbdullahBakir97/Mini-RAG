@@ -189,6 +189,9 @@ class AskResponse(BaseModel):
     search_question: str | None = Field(
         default=None, description="In a conversation: the standalone question the sources were "
                                   "searched with, when the follow-up had to be rewritten.")
+    message_id: int | None = Field(
+        default=None, description="In a conversation: the answer's message, to rate it with "
+                                  "PUT .../messages/{message_id}/feedback.")
 
 
 class ProjectResponse(BaseModel):
@@ -251,6 +254,7 @@ class ChunkListResponse(BaseModel):
 
 
 ConversationIdPath = Annotated[UUID, Path(description="The conversation's id.")]
+MessageIdPath = Annotated[int, Path(ge=1, description="The answer's message id.")]
 
 
 class ConversationCreateRequest(BaseModel):
@@ -272,7 +276,20 @@ class ConversationListResponse(BaseModel):
     items: list[ConversationResponse]
 
 
+class FeedbackRequest(BaseModel):
+    rating: Literal["up", "down"] = Field(description="Thumbs up or down.")
+    comment: str | None = Field(default=None, max_length=1000,
+                                description="What was good or wrong, in a few words.")
+
+
+class FeedbackResponse(BaseModel):
+    rating: Literal["up", "down"]
+    comment: str | None
+    created_at: datetime
+
+
 class MessageResponse(BaseModel):
+    id: int
     role: Literal["user", "assistant"]
     content: str | None = Field(description="Null for an answer when the documents did not answer.")
     citations: list[CitationResponse] = Field(description="The sources an answer cited.")
@@ -280,6 +297,25 @@ class MessageResponse(BaseModel):
     search_question: str | None = Field(
         description="The standalone question an answer was searched with, when rewritten.")
     created_at: datetime
+    feedback: FeedbackResponse | None = Field(default=None, description="An answer's rating, if any.")
+
+
+class RatedAnswerResponse(BaseModel):
+    conversation_id: str
+    message_id: int
+    question: str = Field(description="The question the answer answered.")
+    answer: str | None = Field(description="Null when the documents did not answer.")
+    citations: list[CitationResponse]
+    feedback: FeedbackResponse
+
+
+class FeedbackListResponse(BaseModel):
+    up: int = Field(description="Answers rated thumbs up in the project.")
+    down: int = Field(description="Answers rated thumbs down in the project.")
+    total: int = Field(description="Rated answers matching the filter.")
+    offset: int
+    limit: int
+    items: list[RatedAnswerResponse]
 
 
 class ConversationDetailResponse(ConversationResponse):
