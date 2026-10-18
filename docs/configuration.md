@@ -56,6 +56,6 @@ Prices change, so they are not built in: copy them from your provider's pricing 
 
 ## Validation
 
-Settings are validated when the app starts: a missing or invalid value stops it with a message naming the setting. Values are never printed in these messages, so secrets such as `OPENAI_API_KEY` or the database password cannot end up in logs.
+Every setting has a default, so `.env` only needs what you change, typically the model settings above. Settings are validated when the app starts: an invalid value stops it with a message naming the setting. Values are never printed in these messages, so secrets such as `OPENAI_API_KEY` or the database password cannot end up in logs.
 
 `.env` holds secrets and is git-ignored; never commit it. The values in `.env.example` are for local development only.
