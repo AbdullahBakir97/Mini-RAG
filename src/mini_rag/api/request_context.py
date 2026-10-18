@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from mini_rag.core.log_context import log_context
+from mini_rag.core.metrics import HTTP_DURATION, HTTP_REQUESTS
 from mini_rag.domain.signals import ResponseSignal
 
 logger = logging.getLogger("mini_rag.access")
@@ -66,7 +67,12 @@ class RequestContext:
                     {"signal": ResponseSignal.INTERNAL_ERROR.value, "request_id": request_id},
                     status_code=500, headers={HEADER: request_id})(scope, receive, send)
             finally:
-                duration_ms = round((time.perf_counter() - started) * 1000, 1)
+                seconds = time.perf_counter() - started
+                duration_ms = round(seconds * 1000, 1)
+                # The route's template, e.g. /api/v1/ask/{project_id}, keeps the labels few.
+                route = getattr(scope.get("route"), "path", "unmatched")
+                HTTP_REQUESTS.labels(method, route, str(status)).inc()
+                HTTP_DURATION.labels(method, route).observe(seconds)
                 logger.log(logging.DEBUG if path in QUIET_PATHS else logging.INFO,
                            "%s %s %d %.0fms", method, path, status, duration_ms,
                            extra={"method": method, "path": path, "status": status,

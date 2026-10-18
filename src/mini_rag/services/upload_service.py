@@ -14,6 +14,7 @@ from mini_rag.core.errors import (
     UnsupportedFileType,
     UploadFailed,
 )
+from mini_rag.core.metrics import UPLOADS
 from mini_rag.domain.file_types import HEAD_BYTES, content_mismatch, content_type_for
 from mini_rag.domain.malware_scanner import MalwareScanner
 from mini_rag.domain.repositories import UnitOfWork
@@ -98,12 +99,14 @@ class UploadService:
                     "content_type": record.content_type, "size_bytes": record.size_bytes})
                 await self.uow.commit()
                 completed = True
+                UPLOADS.labels(outcome="stored").inc()
                 return Upload(file_id=file_id)
             # Already there, or recorded by another upload of it a moment ago.
             existing = existing or await self.uow.files.get_by_content(project.id, digest)
             if existing is None:
                 raise UploadFailed()  # That other upload was deleted again meanwhile.
             await self.uow.commit()
+            UPLOADS.labels(outcome="duplicate").inc()
             return Upload(file_id=existing.key, duplicate=True)
         except AppError:
             raise
@@ -135,4 +138,5 @@ class UploadService:
         if found := await self.scanner.scan(path):
             logger.warning("Upload of %s to %s refused: the scanner found %s",
                            filename, project_name, found)
+            UPLOADS.labels(outcome="infected").inc()
             raise FileInfected(f"{filename}: {found}")

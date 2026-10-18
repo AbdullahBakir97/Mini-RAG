@@ -7,6 +7,7 @@ from http import HTTPStatus
 
 from mini_rag.core.errors import AppError, EmbeddingNotConfigured
 from mini_rag.core.log_context import log_context
+from mini_rag.core.metrics import JOBS
 from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.models import Job, Project
 from mini_rag.domain.repositories import UnitOfWork
@@ -97,6 +98,7 @@ class JobRunner:
                 await uow.jobs.succeed(job.id, chunks)
                 await self._emit(uow, job, "job.succeeded", chunks_count=chunks, error=None)
                 await uow.commit()
+                JOBS.labels(outcome="succeeded").inc()
                 logger.info("Job %s: %d chunks processed and indexed", job.id, chunks)
             except Exception as exc:
                 await uow.rollback()
@@ -121,6 +123,7 @@ class JobRunner:
         if retry_at is None:
             await self._emit(uow, job, "job.failed", chunks_count=None, error=signal)
         await uow.commit()
+        JOBS.labels(outcome="retried" if retry_at else "failed").inc()
         then = f"trying again at {retry_at.isoformat()}" if retry_at else "giving up"
         # The details stay in the log: they can quote a provider's reply.
         cause = exc.__cause__ if isinstance(exc, AppError) else exc

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = Field(
         default="", description="OpenAI API key; may stay empty with EMBEDDING_BASE_URL")
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    # Required as a bearer token by /metrics when set; unset, /metrics is open.
+    METRICS_TOKEN: str | None = None
     # "json" writes one JSON object per line, for log collectors.
     LOG_FORMAT: Literal["text", "json"] = "text"
 
