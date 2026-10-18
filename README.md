@@ -56,7 +56,7 @@ cp .env.example .env             # Windows: copy .env.example .env; then add you
 docker compose up --build
 ```
 
-Open **http://localhost:3000** for the web app.
+Open **http://localhost:3000** for the web app. If a port is already in use, set another one in `.env`, e.g. `WEB_PORT=3001` (see [Docker ports](docs/configuration.md#docker-ports)).
 
 ### With Python
 
