@@ -25,7 +25,12 @@ async def welcome(settings: SettingsDep) -> WelcomeResponse:
     "/health",
     summary="Health check for load balancers and orchestrators",
     response_model=HealthResponse,
-    responses={503: {"model": HealthResponse, "description": "The database is unreachable"}},
+    responses={503: {
+        "model": HealthResponse,
+        "description": "The database is unreachable",
+        "content": {"application/json": {
+            "example": {"status": "unavailable", "database": "unavailable"}}},
+    }},
 )
 async def health(engine: EngineDep) -> HealthResponse | JSONResponse:
     if await is_database_available(engine):

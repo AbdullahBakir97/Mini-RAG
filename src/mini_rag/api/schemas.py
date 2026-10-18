@@ -17,9 +17,12 @@ ProjectId = Annotated[str, Path(
 
 FILE_ID_PATTERN = r"^[\w.]+$"
 FILE_ID_DESCRIPTION = "The file_id returned by the upload endpoint."
+# What the docs show for a file_id, so it looks like one the upload returned.
+FILE_ID_EXAMPLE = "a16q20nzrtvj_notes.txt"
+QUESTION_EXAMPLE = "What do my notes say about overlap?"
 
 FileId = Annotated[str, Field(pattern=FILE_ID_PATTERN, max_length=255,
-                              description=FILE_ID_DESCRIPTION)]
+                              description=FILE_ID_DESCRIPTION, examples=[FILE_ID_EXAMPLE])]
 FileIdPath = Annotated[str, Path(pattern=FILE_ID_PATTERN, max_length=255,
                                  description=FILE_ID_DESCRIPTION)]
 
@@ -32,19 +35,31 @@ class Pagination:
     limit: Annotated[int, Query(ge=1, le=100, description="Items to return (1-100).")] = 20
 
 
+def signal_field(signal: ResponseSignal, **kwargs: Any) -> Any:
+    """A response's ``signal`` field, shown in the docs with the signal it carries."""
+    return Field(examples=[signal.value], **kwargs)
+
+
 class ErrorResponse(BaseModel):
     signal: ResponseSignal
 
 
 def error_responses(*errors: type[AppError]) -> dict[int | str, dict[str, Any]]:
-    """OpenAPI entries for the errors a route can raise, grouped by status."""
-    responses: dict[int | str, dict[str, Any]] = {}
+    """OpenAPI entries for the errors a route can raise, grouped by status.
+
+    Each signal is a named example, so the docs show the real error bodies.
+    """
+    signals: dict[int, list[str]] = {}
     for error in errors:
-        entry = responses.setdefault(int(error.status_code), {"model": ErrorResponse, "signals": []})
-        entry["signals"].append(f"`{error.signal.value}`")
+        signals.setdefault(int(error.status_code), []).append(error.signal.value)
     return {
-        status: {"model": entry["model"], "description": "Signal: " + ", ".join(entry["signals"])}
-        for status, entry in responses.items()
+        status: {
+            "model": ErrorResponse,
+            "description": "Signal: " + ", ".join(f"`{signal}`" for signal in status_signals),
+            "content": {"application/json": {"examples": {
+                signal: {"value": {"signal": signal}} for signal in status_signals}}},
+        }
+        for status, status_signals in signals.items()
     }
 
 
@@ -60,8 +75,8 @@ class WelcomeResponse(BaseModel):
 
 
 class UploadResponse(BaseModel):
-    signal: ResponseSignal
-    file_id: str
+    signal: ResponseSignal = signal_field(ResponseSignal.FILE_UPLOAD_SUCCESS)
+    file_id: str = Field(examples=[FILE_ID_EXAMPLE])
 
 
 class ProcessRequest(BaseModel):
@@ -79,8 +94,8 @@ class ProcessRequest(BaseModel):
 
 
 class ProcessResponse(BaseModel):
-    signal: ResponseSignal
-    file_id: str
+    signal: ResponseSignal = signal_field(ResponseSignal.PROCESSING_SUCCESS)
+    file_id: str = Field(examples=[FILE_ID_EXAMPLE])
     chunks_count: int
 
 
@@ -90,13 +105,14 @@ class IndexRequest(BaseModel):
 
 
 class IndexResponse(BaseModel):
-    signal: ResponseSignal
+    signal: ResponseSignal = signal_field(ResponseSignal.INDEXING_SUCCESS)
     embedded_count: int = Field(description="Chunks embedded by this request.")
     chunks_count: int = Field(description="All chunks of the project, or of the file.")
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(min_length=1, max_length=2000, description="The question or search text.")
+    query: str = Field(min_length=1, max_length=2000, description="The question or search text.",
+                       examples=[QUESTION_EXAMPLE])
     top_k: int = Field(default=5, ge=1, le=50, description="Maximum number of results.")
     min_score: float | None = Field(default=None, ge=-1, le=1,
                                     description="Leave out results scoring below this.")
@@ -118,12 +134,13 @@ class SearchResult(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    signal: ResponseSignal
+    signal: ResponseSignal = signal_field(ResponseSignal.SEARCH_SUCCESS)
     results: list[SearchResult]
 
 
 class AskRequest(BaseModel):
-    question: str = Field(min_length=1, max_length=2000, description="The question to answer.")
+    question: str = Field(min_length=1, max_length=2000, description="The question to answer.",
+                          examples=[QUESTION_EXAMPLE])
     top_k: int = Field(default=5, ge=1, le=20, description="Most chunks to answer from.")
     min_score: float | None = Field(
         default=None, ge=-1, le=1,
@@ -155,8 +172,8 @@ class UsageResponse(BaseModel):
 
 
 class AskResponse(BaseModel):
-    signal: ResponseSignal = Field(
-        description="`answer_success`, or `no_answer` when the documents do not answer the question.")
+    signal: ResponseSignal = signal_field(
+        ResponseSignal.ANSWER_SUCCESS, description="`answer_success`, or `no_answer` when the documents do not answer the question.")
     answer: str | None = Field(description="The answer with [n] citation markers; null for `no_answer`.")
     citations: list[CitationResponse] = Field(description="The sources the answer cites, in order of first citation.")
     prompt_version: str = Field(description="The prompt that produced the answer, e.g. `answer-v1`.")
