@@ -117,10 +117,12 @@ async def test_deleting_a_project_cascades_to_files_and_chunks(uow):
     file = await add_file(uow, project)
     await uow.chunks.replace_for_file(file, [Chunk(0, "text")])
 
-    await uow.session.execute(delete(ProjectRow).where(ProjectRow.id == project.id))
+    assert await uow.projects.delete("demo") is True
 
+    assert await uow.projects.get_by_name("demo") is None
     assert await uow.files.count_for_project(project.id) == 0
     assert await uow.chunks.count_for_file(file.id) == 0
+    assert await uow.projects.delete("demo") is False
 
 
 async def test_uncommitted_work_is_discarded_and_commit_persists(session_factory):

@@ -1,0 +1,15 @@
+{
+  "name": "handbook",
+  "version": "v1",
+  "description": "The employee handbook of Larkspur Labs, a fictional company: engineering workflow, incidents, security (a PDF), expenses, time off, remote work, onboarding and growth. Topics overlap on purpose, so ranking matters.",
+  "documents": [
+    "engineering-workflow.txt",
+    "expenses-and-travel.txt",
+    "incident-response.txt",
+    "onboarding.txt",
+    "performance-and-growth.txt",
+    "remote-work.txt",
+    "security-policy.pdf",
+    "time-off-and-leave.txt"
+  ]
+}
