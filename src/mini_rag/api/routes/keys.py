@@ -1,16 +1,26 @@
 from fastapi import APIRouter, Response, status
 
-from mini_rag.api.dependencies import ADMIN, AuthServiceDep, PrincipalDep, SettingsDep
+from mini_rag.api.dependencies import (
+    ADMIN,
+    READ,
+    AuthServiceDep,
+    LimitServiceDep,
+    PrincipalDep,
+    SettingsDep,
+)
 from mini_rag.api.schemas import (
     ApiKeyCreatedResponse,
     ApiKeyRequest,
     ApiKeyResponse,
     KeyIdPath,
     MeResponse,
+    Meter,
+    TenantUsageResponse,
     error_responses,
 )
 from mini_rag.core.errors import ApiKeyNotFound
 from mini_rag.domain.models import ApiKey
+from mini_rag.services.limit_service import BYTES_PER_MB
 
 router = APIRouter(prefix="/api/v1", tags=["keys"])
 
@@ -48,3 +58,17 @@ async def revoke_key(key_id: KeyIdPath, principal: PrincipalDep,
                      service: AuthServiceDep) -> Response:
     await service.revoke_key(principal.tenant_id, str(key_id))
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/usage", dependencies=[READ], summary="The tenant's usage this month, and its limits")
+async def usage(principal: PrincipalDep, limits: LimitServiceDep) -> TenantUsageResponse:
+    used, limit = await limits.usage(principal.tenant_id)
+    return TenantUsageResponse(
+        tenant=principal.tenant_name, period_start=used.period_start,
+        requests_per_minute=limit.requests_per_minute or None,
+        answers=Meter(used=used.answers, limit=limit.answers_per_month or None),
+        storage_bytes=Meter(used=used.storage_bytes,
+                            limit=limit.storage_mb * BYTES_PER_MB if limit.storage_mb else None),
+        input_tokens=used.input_tokens, output_tokens=used.output_tokens,
+        cost_usd=used.cost_usd)
+

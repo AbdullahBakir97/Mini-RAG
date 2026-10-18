@@ -68,6 +68,21 @@ class TenantRow(Base):
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = _created_at()
+    # NULL keeps the server's default (settings); 0 is unlimited.
+    requests_per_minute: Mapped[int | None] = mapped_column(Integer)
+    answers_per_month: Mapped[int | None] = mapped_column(Integer)
+    storage_mb: Mapped[int | None] = mapped_column(Integer)
+
+
+class RequestCountRow(Base):
+    """Requests a tenant made in one minute, for its rate limit."""
+
+    __tablename__ = "request_counts"
+
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    count: Mapped[int] = mapped_column(Integer)
 
 
 class ApiKeyRow(Base):

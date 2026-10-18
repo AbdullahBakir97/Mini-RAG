@@ -17,7 +17,8 @@ async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         # corrupt PDF): keep the cause in the server log for debugging.
         logger.warning("%s %s: %s (cause: %r)", request.method, request.url.path,
                        exc, exc.__cause__)
-    return JSONResponse(status_code=exc.status_code, content={"signal": exc.signal.value})
+    return JSONResponse(status_code=exc.status_code, content={"signal": exc.signal.value},
+                        headers=exc.headers or None)
 
 
 def register_error_handlers(app: FastAPI) -> None:

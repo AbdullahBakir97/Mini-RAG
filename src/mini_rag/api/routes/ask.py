@@ -5,7 +5,7 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 
-from mini_rag.api.dependencies import ASK, AnswerServiceDep
+from mini_rag.api.dependencies import ANSWER_QUOTA, ASK, AnswerServiceDep
 from mini_rag.api.schemas import (
     AskRequest,
     AskResponse,
@@ -30,7 +30,7 @@ from mini_rag.services.answer_service import Answer, AnswerDelta
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/ask", tags=["ask"], dependencies=[ASK])
+router = APIRouter(prefix="/api/v1/ask", tags=["ask"], dependencies=[ASK, ANSWER_QUOTA])
 
 ASK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, FileNotFound, EmbeddingFailed,
                              LLMFailed, EmbeddingNotConfigured, LLMNotConfigured)

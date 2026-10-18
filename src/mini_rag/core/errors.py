@@ -16,8 +16,10 @@ class AppError(Exception):
     signal: ResponseSignal
     status_code: HTTPStatus = HTTPStatus.BAD_REQUEST
 
-    def __init__(self, detail: str | None = None):
+    def __init__(self, detail: str | None = None, headers: dict[str, str] | None = None):
         super().__init__(detail or self.signal.value)
+        # Sent with the error response, e.g. Retry-After.
+        self.headers = headers or {}
 
 
 class UnsupportedFileType(AppError):
@@ -105,6 +107,27 @@ class ScopeMissing(AppError):
 class ApiKeyNotFound(AppError):
     signal = ResponseSignal.API_KEY_NOT_FOUND
     status_code = HTTPStatus.NOT_FOUND
+
+
+class RateLimited(AppError):
+    """The tenant made too many requests this minute; Retry-After says when to try again."""
+
+    signal = ResponseSignal.RATE_LIMITED
+    status_code = HTTPStatus.TOO_MANY_REQUESTS
+
+
+class AnswerQuotaExceeded(AppError):
+    """The tenant used up its answers for this calendar month."""
+
+    signal = ResponseSignal.ANSWER_QUOTA_EXCEEDED
+    status_code = HTTPStatus.TOO_MANY_REQUESTS
+
+
+class StorageQuotaExceeded(AppError):
+    """The upload would take the tenant's files over its storage limit."""
+
+    signal = ResponseSignal.STORAGE_QUOTA_EXCEEDED
+    status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
 
 
 class WebhookFailed(Exception):

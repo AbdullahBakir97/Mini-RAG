@@ -11,6 +11,7 @@ from typing import Any
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
+    DateTime,
     Interval,
     String,
     and_,
@@ -19,6 +20,7 @@ from sqlalchemy import (
     delete,
     func,
     insert,
+    literal_column,
     or_,
     select,
     text,
@@ -48,6 +50,7 @@ from mini_rag.domain.models import (
     SearchFilters,
     StoredCitation,
     Tenant,
+    TenantUsage,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -64,6 +67,7 @@ from .tables import (
     FileRow,
     JobRow,
     ProjectRow,
+    RequestCountRow,
     TenantRow,
     WebhookDeliveryRow,
     WebhookRow,
@@ -150,7 +154,9 @@ class SqlProjectRepository:
 
 
 def _tenant(row: TenantRow) -> Tenant:
-    return Tenant(id=row.id, name=row.name, created_at=row.created_at)
+    return Tenant(id=row.id, name=row.name, created_at=row.created_at,
+                  requests_per_minute=row.requests_per_minute,
+                  answers_per_month=row.answers_per_month, storage_mb=row.storage_mb)
 
 
 class SqlTenantRepository:
@@ -174,6 +180,59 @@ class SqlTenantRepository:
     async def list_all(self) -> list[Tenant]:
         rows = await self.session.scalars(select(TenantRow).order_by(TenantRow.name))
         return [_tenant(row) for row in rows]
+
+    async def set_limits(self, tenant_id: int, limits: Mapping[str, int | None]) -> None:
+        allowed = {"requests_per_minute", "answers_per_month", "storage_mb"}
+        if unknown := set(limits) - allowed:
+            raise ValueError(f"Unknown limits: {sorted(unknown)}")
+        if limits:
+            await self.session.execute(
+                update(TenantRow).where(TenantRow.id == tenant_id).values(**limits))
+
+
+# The start of the current calendar month in UTC, whatever the session's time zone.
+_MONTH_START = literal_column(
+    "date_trunc('month', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'", DateTime(timezone=True))
+
+
+class SqlUsageRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def count_request(self, tenant_id: int) -> tuple[int, datetime]:
+        window = func.date_trunc("minute", func.now())
+        row = (await self.session.execute(
+            pg_insert(RequestCountRow).values(tenant_id=tenant_id, window_start=window, count=1)
+            .on_conflict_do_update(index_elements=["tenant_id", "window_start"],
+                                   set_={"count": RequestCountRow.count + 1})
+            .returning(RequestCountRow.count, RequestCountRow.window_start))).one()
+        if row.count == 1:
+            # A new minute: forget the tenant's minutes from over an hour ago.
+            await self.session.execute(
+                delete(RequestCountRow).where(
+                    RequestCountRow.tenant_id == tenant_id,
+                    RequestCountRow.window_start
+                    < func.now() - bindparam("hour", timedelta(hours=1), type_=Interval)))
+        return row.count, row.window_start
+
+    async def tenant_usage(self, tenant_id: int) -> TenantUsage:
+        mine = select(ProjectRow.id).where(ProjectRow.tenant_id == tenant_id).scalar_subquery()
+        answers = (await self.session.execute(
+            select(
+                func.count().label("answers"),
+                func.coalesce(func.sum(AnswerRow.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(AnswerRow.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(AnswerRow.cost_usd), 0).label("cost_usd"),
+                _MONTH_START.label("period_start"),
+            ).where(AnswerRow.project_id.in_(mine), AnswerRow.created_at >= _MONTH_START))).one()
+        storage = await self.session.scalar(
+            select(func.coalesce(func.sum(FileRow.size_bytes), 0))
+            .where(FileRow.project_id.in_(mine)))
+        return TenantUsage(period_start=answers.period_start, answers=answers.answers,
+                           input_tokens=answers.input_tokens,
+                           output_tokens=answers.output_tokens,
+                           cost_usd=float(answers.cost_usd), storage_bytes=storage)
 
 
 def _api_key(row: ApiKeyRow) -> ApiKey:
@@ -881,6 +940,7 @@ class SqlUnitOfWork:
         self.webhooks = SqlWebhookRepository(session)
         self.tenants = SqlTenantRepository(session)
         self.api_keys = SqlApiKeyRepository(session)
+        self.usage = SqlUsageRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

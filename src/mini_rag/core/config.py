@@ -90,6 +90,12 @@ class Settings(BaseSettings):
     AUTH_ENABLED: bool = Field(
         default=False, description="Require an API key on every request (except health and the "
                                    "welcome); off, everything acts for the default tenant")
+    RATE_LIMIT_PER_MINUTE: int = Field(
+        default=0, ge=0, description="Requests per minute per tenant; 0 is unlimited")
+    ANSWERS_PER_MONTH: int = Field(
+        default=0, ge=0, description="Answers per calendar month per tenant; 0 is unlimited")
+    STORAGE_MB_PER_TENANT: int = Field(
+        default=0, ge=0, description="Megabytes of uploaded files per tenant; 0 is unlimited")
     JOB_WORKERS: int = Field(
         default=1, ge=0, le=32,
         description="Background jobs the app runs at once; 0 leaves them to `mini-rag worker`")

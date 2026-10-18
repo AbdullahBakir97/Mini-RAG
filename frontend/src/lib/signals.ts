@@ -29,6 +29,9 @@ const MESSAGES: Record<string, string> = {
   api_key_invalid: "The API key is unknown or was revoked.",
   api_key_scope_missing: "Your API key may not do this. Ask for a key with the scope it needs.",
   api_key_not_found: "That API key does not exist.",
+  rate_limited: "Too many requests this minute. Wait a moment and try again.",
+  answer_quota_exceeded: "This month's answers are used up. Ask the administrator for a higher quota.",
+  storage_quota_exceeded: "The file does not fit in the storage left. Delete files or ask for more room.",
   validation_error: "The request was not valid.",
   network_error: "The server could not be reached. Is the API running?",
 };
