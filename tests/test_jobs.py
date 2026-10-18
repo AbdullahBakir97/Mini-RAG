@@ -347,3 +347,13 @@ def test_the_worker_command_runs_the_configured_number_of_workers(db, monkeypatc
     assert cli.main(["worker", "--workers", "3"]) == 0
     assert len(runs) == 4
     assert "Running jobs with 3 workers" in capsys.readouterr().out
+
+
+def test_a_jobs_log_lines_carry_its_id(client, run_jobs, capsys):
+    queued = enqueue(client, upload(client)).json()
+    capsys.readouterr()
+
+    run_jobs(FakeEmbedder())
+
+    err = capsys.readouterr().err
+    assert f"[request_id=job:{queued['id']}]: Job {queued['id']}: processing" in err

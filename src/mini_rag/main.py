@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mini_rag.api.dependencies import get_loader_registry
 from mini_rag.api.error_handlers import register_error_handlers
+from mini_rag.api.request_context import RequestContext
 from mini_rag.api.routes import (
     ask,
     base,
@@ -102,7 +103,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    configure_logging(settings.LOG_LEVEL)
+    configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
 
     app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION,
                   lifespan=_lifespan(settings))
@@ -122,6 +123,8 @@ def create_app() -> FastAPI:
     app.include_router(conversations.router)
     register_error_handlers(app)
     app.add_middleware(WidgetCors)
+    # Outermost, so it sees every response, the widget routes' included.
+    app.add_middleware(RequestContext)
 
     @app.get("/", include_in_schema=False)
     async def root() -> RedirectResponse:

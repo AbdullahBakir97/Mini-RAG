@@ -40,3 +40,4 @@ class ResponseSignal(Enum):
     RATE_LIMITED = "rate_limited"
     ANSWER_QUOTA_EXCEEDED = "answer_quota_exceeded"
     STORAGE_QUOTA_EXCEEDED = "storage_quota_exceeded"
+    INTERNAL_ERROR = "internal_error"

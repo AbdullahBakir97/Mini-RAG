@@ -45,4 +45,5 @@ HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
 # Settings come from the environment (see .env.example); DATABASE_URL must
 # point at PostgreSQL with pgvector. Apply migrations first with:
 #   docker run --rm --env-file .env mini-rag alembic upgrade head
-CMD ["uvicorn", "mini_rag.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# The API logs each request itself, with its id, so uvicorn's access log is off.
+CMD ["uvicorn", "mini_rag.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]

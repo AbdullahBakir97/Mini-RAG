@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 
 from mini_rag.core.errors import AppError, EmbeddingNotConfigured
+from mini_rag.core.log_context import log_context
 from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.models import Job, Project
 from mini_rag.domain.repositories import UnitOfWork
@@ -67,10 +68,11 @@ class JobRunner:
             await uow.commit()
         if job is None:
             return False
-        logger.info("Job %s: processing %s (attempt %d of %d)", job.id, job.file_key,
-                    job.attempts, job.max_attempts)
         try:
-            await self._run(job)
+            with log_context(f"job:{job.id}"):
+                logger.info("Job %s: processing %s (attempt %d of %d)", job.id, job.file_key,
+                            job.attempts, job.max_attempts)
+                await self._run(job)
         except asyncio.CancelledError:
             # Stopping: leave the job for the next worker, without using up an attempt.
             await asyncio.shield(self._release(job))

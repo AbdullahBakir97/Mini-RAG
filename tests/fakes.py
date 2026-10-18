@@ -537,7 +537,8 @@ class FakeWidgets:
         project = next(p for p in self.projects.by_name.values() if p.id == project_id)
         widget = Widget(id=widget_id, tenant_id=project.tenant_id, project_id=project_id,
                         project_name=project.name, name=name, welcome=welcome, accent=accent,
-                        allowed_origins=tuple(allowed_origins), created_at=datetime.now(UTC))
+                        allowed_origins=tuple(allowed_origins), created_at=datetime.now(UTC),
+                        tenant_name="default")
         self.by_id[widget_id] = widget
         return widget
 

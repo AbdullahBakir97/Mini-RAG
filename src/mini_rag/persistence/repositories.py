@@ -930,11 +930,11 @@ class SqlWebhookRepository:
             .where(WebhookDeliveryRow.webhook_id == webhook_id))
 
 
-def _widget(row: WidgetRow, project: ProjectRow) -> Widget:
+def _widget(row: WidgetRow, project: ProjectRow, tenant_name: str) -> Widget:
     return Widget(id=row.id, tenant_id=project.tenant_id, project_id=project.id,
                   project_name=project.name, name=row.name, welcome=row.welcome,
                   accent=row.accent, allowed_origins=tuple(row.allowed_origins),
-                  created_at=row.created_at)
+                  created_at=row.created_at, tenant_name=tenant_name)
 
 
 class SqlWidgetRepository:
@@ -943,8 +943,9 @@ class SqlWidgetRepository:
         self.session = session
 
     def _select(self):
-        return select(WidgetRow, ProjectRow).join(ProjectRow,
-                                                  ProjectRow.id == WidgetRow.project_id)
+        return (select(WidgetRow, ProjectRow, TenantRow.name)
+                .join(ProjectRow, ProjectRow.id == WidgetRow.project_id)
+                .join(TenantRow, TenantRow.id == ProjectRow.tenant_id))
 
     async def create(self, *, widget_id: str, project_id: int, name: str, welcome: str | None,
                      accent: str, allowed_origins: Sequence[str]) -> Widget:

@@ -34,6 +34,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `SEARCH_MODE` | `"hybrid"` | `hybrid` ranks chunks by meaning and by the words they share with the question, merged by reciprocal rank fusion; `vector` by meaning only. Scores are the cosine similarity either way |
 | `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |
+| `LOG_FORMAT` | `"text"` | `text`: readable lines. `json`: one JSON object per line (`time`, `level`, `logger`, `message`, `request_id`, `tenant`, and fields such as `method`, `path`, `status` and `duration_ms` on access lines), uvicorn's own lines included, for log collectors |
 | `FILES_DIR` | `"assets/files"` | Folder where uploaded files are stored, one subfolder per project |
 | `FILE_ALLOWED_TYPES` | Text, Markdown, HTML, PDF and Word (`.docx`) | MIME types accepted for upload. An upload with no type, or `application/octet-stream`, gets the type of its extension |
 | `FILE_MAX_SIZE` | `10` | Maximum upload size in MB |
