@@ -9,4 +9,4 @@ def create_llm(settings: Settings) -> OpenAILLM | None:
         return None
     return OpenAILLM(api_key=settings.OPENAI_API_KEY, model=settings.LLM_MODEL,
                      max_tokens=settings.LLM_MAX_TOKENS, temperature=settings.LLM_TEMPERATURE,
-                     base_url=settings.LLM_BASE_URL)
+                     base_url=settings.LLM_BASE_URL, stream_usage=settings.LLM_STREAM_USAGE)

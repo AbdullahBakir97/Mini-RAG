@@ -5,7 +5,7 @@ import pytest
 
 from mini_rag.core.config import Settings
 from mini_rag.core.errors import LLMFailed
-from mini_rag.domain.llm import Message
+from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.llm.factory import create_llm
 from mini_rag.llm.openai_llm import OpenAILLM
 
@@ -17,8 +17,10 @@ MESSAGES = [Message("system", "Be brief."), Message("user", "Hello?")]
 class FakeChatServer:
     """Answers POST /chat/completions like the OpenAI API and records the requests."""
 
-    def __init__(self, content="Hi there.", status_code=200, choices=True, pieces=None):
+    def __init__(self, content="Hi there.", status_code=200, choices=True, pieces=None,
+                 report_usage=True):
         self.content = content
+        self.report_usage = report_usage
         self.status_code = status_code
         self.choices = choices
         # What a streamed reply is made of; defaults to two halves of content.
@@ -30,15 +32,17 @@ class FakeChatServer:
         if self.status_code != 200:
             return httpx2.Response(self.status_code, json={"error": {"message": "boom"}})
         if json.loads(request.content).get("stream"):
-            return self.stream_response()
+            return self.stream_response(include_usage=self.report_usage and "stream_options"
+                                        in json.loads(request.content))
         choices = [{"index": 0, "finish_reason": "stop",
                     "message": {"role": "assistant", "content": self.content}}]
         return httpx2.Response(200, json={
             "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "test-model",
             "choices": choices if self.choices else [],
-            "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+            "usage": ({"prompt_tokens": 12, "completion_tokens": 3, "total_tokens": 15}
+                      if self.report_usage else None)})
 
-    def stream_response(self) -> httpx2.Response:
+    def stream_response(self, include_usage: bool) -> httpx2.Response:
         pieces = self.pieces
         if pieces is None:
             half = len(self.content) // 2
@@ -47,6 +51,11 @@ class FakeChatServer:
                    "model": "test-model",
                    "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]}
                   for piece in pieces]
+        if include_usage:
+            events.append({"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 0,
+                           "model": "test-model", "choices": [],
+                           "usage": {"prompt_tokens": 12, "completion_tokens": 3,
+                                     "total_tokens": 15}})
         body = "".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n"
         return httpx2.Response(200, headers={"content-type": "text/event-stream"},
                                content=body.encode())
@@ -68,13 +77,21 @@ async def test_sends_the_messages_and_returns_the_reply():
 
     reply = await make_llm(server).complete(MESSAGES)
 
-    assert reply == "Hi there."
+    assert reply == Completion(text="Hi there.",
+                               usage=TokenUsage(input_tokens=12, output_tokens=3))
     assert server.requests[0].url == "http://llm.test/v1/chat/completions"
     assert server.requests[0].headers["authorization"] == "Bearer sk-test"
     assert server.last_body == {
         "model": "test-model", "max_tokens": 100,
         "messages": [{"role": "system", "content": "Be brief."},
                      {"role": "user", "content": "Hello?"}]}
+
+
+async def test_usage_is_none_when_the_server_does_not_report_it():
+    server = FakeChatServer(report_usage=False)
+
+    assert await make_llm(server).complete(MESSAGES) == Completion(text="Hi there.")
+    assert await collect(make_llm(server)) == ["Hi t", "here."]
 
 
 async def test_temperature_is_sent_only_when_set():
@@ -133,9 +150,19 @@ async def test_streams_the_reply_in_pieces():
 
     pieces = await collect(make_llm(server))
 
-    assert pieces == ["Hi", " there", "."]
+    assert pieces == ["Hi", " there", ".", TokenUsage(input_tokens=12, output_tokens=3)]
     assert server.last_body["stream"] is True
+    assert server.last_body["stream_options"] == {"include_usage": True}
     assert server.last_body["max_tokens"] == 100
+
+
+async def test_stream_usage_can_be_turned_off():
+    server = FakeChatServer(pieces=["Hi"])
+
+    pieces = await collect(make_llm(server, stream_usage=False))
+
+    assert pieces == ["Hi"]
+    assert "stream_options" not in server.last_body
 
 
 @pytest.mark.parametrize("server", [
@@ -180,8 +207,10 @@ def test_factory_uses_the_llm_settings(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "local-model")
     monkeypatch.setenv("LLM_MAX_TOKENS", "256")
     monkeypatch.setenv("LLM_TEMPERATURE", "0.1")
+    monkeypatch.setenv("LLM_STREAM_USAGE", "false")
 
     llm = create_llm(Settings())
 
-    assert (llm.model, llm.max_tokens, llm.temperature) == ("local-model", 256, 0.1)
+    assert (llm.model, llm.max_tokens, llm.temperature, llm.stream_usage) == (
+        "local-model", 256, 0.1, False)
     assert str(llm._client.base_url) == "http://localhost:11434/v1/"

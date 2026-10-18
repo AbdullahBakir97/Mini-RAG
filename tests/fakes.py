@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from itertools import count
 
 from mini_rag.core.errors import EmbeddingFailed, LLMFailed
-from mini_rag.domain.llm import Message
+from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.domain.models import (
     Chunk,
     FileRecord,
@@ -174,31 +174,35 @@ class FakeEmbedder:
         return vector
 
 
-class FakeLLM:
-    """Replies with ``reply``, or raises LLMFailed when ``fail`` is set.
+FAKE_USAGE = TokenUsage(input_tokens=1200, output_tokens=40)
 
-    Streams the reply in pieces of ``piece_size`` characters; ``fail_after``
-    makes a stream raise LLMFailed after that many pieces. ``calls`` records
-    the messages of every request.
+
+class FakeLLM:
+    """Replies with ``reply`` and reports ``usage``, or raises LLMFailed when ``fail`` is set.
+
+    Streams the reply in pieces of ``piece_size`` characters, then the usage
+    unless it is None; ``fail_after`` makes a stream raise LLMFailed after
+    that many pieces. ``calls`` records the messages of every request.
     """
 
     model = "fake-llm"
 
     def __init__(self, reply: str = "A fake answer.", fail: bool = False, piece_size: int = 4,
-                 fail_after: int | None = None):
+                 fail_after: int | None = None, usage: TokenUsage | None = FAKE_USAGE):
         self.reply = reply
         self.fail = fail
         self.piece_size = piece_size
         self.fail_after = fail_after
+        self.usage = usage
         self.calls: list[list[Message]] = []
 
-    async def complete(self, messages: Sequence[Message]) -> str:
+    async def complete(self, messages: Sequence[Message]) -> Completion:
         self.calls.append(list(messages))
         if self.fail:
             raise LLMFailed("fake failure")
-        return self.reply
+        return Completion(text=self.reply, usage=self.usage)
 
-    async def stream(self, messages: Sequence[Message]) -> AsyncIterator[str]:
+    async def stream(self, messages: Sequence[Message]) -> AsyncIterator[str | TokenUsage]:
         self.calls.append(list(messages))
         if self.fail:
             raise LLMFailed("fake failure")
@@ -206,3 +210,5 @@ class FakeLLM:
             if sent == self.fail_after:
                 raise LLMFailed("fake failure mid-stream")
             yield self.reply[start:start + self.piece_size]
+        if self.usage is not None:
+            yield self.usage

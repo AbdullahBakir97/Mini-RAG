@@ -6,6 +6,8 @@ from typing import Any, Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from mini_rag.domain.llm import TokenPrices
+
 BYTES_PER_MB = 1024 * 1024
 
 # pgvector's HNSW index supports vectors of up to 2000 dimensions.
@@ -56,6 +58,12 @@ class Settings(BaseSettings):
                                 description="Most tokens the model may write per answer")
     LLM_TEMPERATURE: float | None = Field(
         default=None, ge=0, le=2, description="Sampling temperature; empty uses the model's default")
+    LLM_STREAM_USAGE: bool = Field(
+        default=True, description="Ask for token usage at the end of streamed answers")
+    LLM_INPUT_PRICE_PER_MILLION: float | None = Field(
+        default=None, ge=0, description="US dollars per million prompt tokens; empty: cost unknown")
+    LLM_OUTPUT_PRICE_PER_MILLION: float | None = Field(
+        default=None, ge=0, description="US dollars per million reply tokens; empty: cost unknown")
     ANSWER_MIN_SCORE: float = Field(
         default=0.3, ge=-1, le=1,
         description="Chunks scoring below this are not used for answers; none left means no answer")
@@ -84,9 +92,10 @@ class Settings(BaseSettings):
     def empty_base_url_means_default(cls, url: str | None) -> str | None:
         return url or None
 
-    @field_validator("LLM_TEMPERATURE", mode="before")
+    @field_validator("LLM_TEMPERATURE", "LLM_INPUT_PRICE_PER_MILLION",
+                     "LLM_OUTPUT_PRICE_PER_MILLION", mode="before")
     @classmethod
-    def empty_temperature_means_default(cls, value: Any) -> Any:
+    def empty_number_means_unset(cls, value: Any) -> Any:
         return None if value == "" else value
 
     @property
@@ -98,6 +107,14 @@ class Settings(BaseSettings):
     def llm_configured(self) -> bool:
         """Whether there is an API key, or a server that may not need one."""
         return bool(self.OPENAI_API_KEY or self.LLM_BASE_URL)
+
+    @property
+    def llm_prices(self) -> TokenPrices | None:
+        """The model's prices, when both are set; otherwise costs are unknown."""
+        if self.LLM_INPUT_PRICE_PER_MILLION is None or self.LLM_OUTPUT_PRICE_PER_MILLION is None:
+            return None
+        return TokenPrices(input_per_million=self.LLM_INPUT_PRICE_PER_MILLION,
+                           output_per_million=self.LLM_OUTPUT_PRICE_PER_MILLION)
 
     @property
     def max_upload_bytes(self) -> int:

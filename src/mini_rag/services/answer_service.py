@@ -52,8 +52,8 @@ class AnswerService:
         sources = await self.retrieve(project_name, question, top_k, min_score)
         if not sources:
             return self._no_answer()
-        reply = await self.llm.complete(self.prompt.messages(question, sources))
-        return self._finish(reply, sources)
+        completion = await self.llm.complete(self.prompt.messages(question, sources))
+        return self._finish(completion.text, sources)
 
     async def retrieve(self, project_name: str, question: str, top_k: int,
                        min_score: float | None = None) -> list[ScoredChunk]:
@@ -76,6 +76,8 @@ class AnswerService:
         reply = ""
         holding = True
         async for piece in self.llm.stream(self.prompt.messages(question, sources)):
+            if not isinstance(piece, str):
+                continue  # token usage, not text
             reply += piece
             if holding and self.prompt.could_be_no_answer(reply):
                 continue
