@@ -3,16 +3,32 @@ import { LoaderCircle, Search, SearchX } from "@lucide/vue";
 import { ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
-import type { SearchHit } from "@/api/types";
+import type { SearchFilters, SearchHit } from "@/api/types";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
+import FilePicker from "@/components/FilePicker.vue";
 import SourceCard from "@/components/SourceCard.vue";
 import { useProject } from "@/composables/useProject";
 
-const { name, project, fileName } = useProject();
+const { name, project, fileName, files } = useProject();
 
 const query = ref("");
 const topK = ref(10);
 const minScore = ref<number | "">("");
+const chosenFiles = ref<string[]>([]);
+const pageFrom = ref<number | "">("");
+const pageTo = ref<number | "">("");
+const onePerFile = ref(false);
+
+function filters(): SearchFilters | null {
+  const chosen: SearchFilters = {
+    file_ids: chosenFiles.value,
+    page_from: pageFrom.value === "" ? null : pageFrom.value,
+    page_to: pageTo.value === "" ? null : pageTo.value,
+    max_per_file: onePerFile.value ? 1 : null,
+  };
+  const any = chosen.file_ids!.length || chosen.page_from || chosen.page_to || chosen.max_per_file;
+  return any ? chosen : null;
+}
 const results = ref<SearchHit[] | null>(null);
 const searched = ref("");
 const loading = ref(false);
@@ -28,6 +44,7 @@ async function search() {
     const response = await api.search(name.value, text, {
       top_k: Math.max(1, Math.min(50, topK.value || 10)),
       min_score: minScore.value === "" ? null : minScore.value,
+      filters: filters(),
     });
     results.value = response.results;
     searched.value = text;
@@ -44,7 +61,7 @@ async function search() {
   <section class="search">
     <div>
       <h2>Search</h2>
-      <p class="muted small">Find passages by meaning, without generating an answer. Best match first.</p>
+      <p class="muted small">Find passages by meaning and by their words, without generating an answer. Best match first.</p>
     </div>
 
     <form class="search-form card" @submit.prevent="search">
@@ -68,6 +85,16 @@ async function search() {
         <label class="inline-field">
           <span>Min score</span>
           <input v-model.number="minScore" class="input small-input" type="number" min="-1" max="1" step="0.05" placeholder="Any" />
+        </label>
+        <FilePicker v-model="chosenFiles" :files="files" class="below" />
+        <label class="inline-field">
+          <span>Pages</span>
+          <input v-model.number="pageFrom" class="input small-input" type="number" min="1" placeholder="From" aria-label="From page" />
+          <input v-model.number="pageTo" class="input small-input" type="number" min="1" placeholder="To" aria-label="To page" />
+        </label>
+        <label class="inline-field check">
+          <input v-model="onePerFile" type="checkbox" />
+          <span>One per document</span>
         </label>
         <button class="btn btn-primary" type="submit" :disabled="loading || !query.trim() || !project">
           <LoaderCircle v-if="loading" :size="16" class="spin" />
@@ -167,6 +194,16 @@ async function search() {
 
 .small-input {
   width: 76px;
+}
+
+.check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.controls .btn-primary {
+  margin-left: auto;
 }
 
 .results {

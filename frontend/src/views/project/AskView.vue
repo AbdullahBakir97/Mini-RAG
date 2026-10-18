@@ -24,6 +24,7 @@ import type { Citation, Rating } from "@/api/types";
 import AnswerText from "@/components/AnswerText.vue";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
 import ConversationList from "@/components/ConversationList.vue";
+import FilePicker from "@/components/FilePicker.vue";
 import SourceCard from "@/components/SourceCard.vue";
 import { type AskSettings, type Turn, useAsk } from "@/composables/useAsk";
 import { rememberConversation, useConversations } from "@/composables/useConversations";
@@ -31,7 +32,7 @@ import { useProject } from "@/composables/useProject";
 import { useToasts } from "@/composables/useToasts";
 import { formatCost, formatNumber } from "@/lib/format";
 
-const { name, project, loading: projectLoading, fileName } = useProject();
+const { name, project, loading: projectLoading, fileName, files } = useProject();
 const route = useRoute();
 const router = useRouter();
 const toasts = useToasts();
@@ -47,7 +48,11 @@ function show(id: string | null) {
   return router.push({ name: "ask", params });
 }
 
-const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true });
+const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true, files: [] });
+const chosenFiles = computed({
+  get: () => settings.value.files ?? [],
+  set: (value: string[]) => (settings.value.files = value),
+});
 const { turns, busy, loading, ask, stop, retry, rate } = useAsk(name, conversationId, settings, {
   // The new conversation gets its own address, without a new history entry.
   onStarted: (id) => {
@@ -421,6 +426,10 @@ watch(
           <input v-model="settings.stream" type="checkbox" />
           <span>Stream the answer as it is written</span>
         </label>
+        <div class="field documents">
+          <span>Answer from</span>
+          <FilePicker v-model="chosenFiles" :files="files" />
+        </div>
       </div>
 
       <form class="composer card" @submit.prevent="submit">
@@ -463,6 +472,15 @@ watch(
             @click="newConversation"
           >
             <SquarePen :size="16" />
+          </button>
+          <button
+            v-if="chosenFiles.length && !showSettings"
+            type="button"
+            class="badge narrowed"
+            title="Answers use only the chosen documents"
+            @click="showSettings = true"
+          >
+            {{ chosenFiles.length === 1 ? "1 document" : `${chosenFiles.length} documents` }}
           </button>
           <span class="grow" />
           <span class="hint subtle small">Enter to send · Shift+Enter for a new line</span>
@@ -879,6 +897,20 @@ watch(
   .toggle {
     grid-column: 1 / -1;
   }
+}
+
+.documents {
+  grid-column: 1 / -1;
+}
+
+.narrowed {
+  border: 0;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
 }
 
 .toggle {

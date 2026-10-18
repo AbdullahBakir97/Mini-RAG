@@ -82,9 +82,20 @@ export interface IndexResult {
   chunks_count: number;
 }
 
+export interface SearchFilters {
+  file_ids?: string[];
+  page_from?: number | null;
+  page_to?: number | null;
+  uploaded_after?: string | null;
+  uploaded_before?: string | null;
+  metadata?: Record<string, string | number | boolean> | null;
+  max_per_file?: number | null;
+}
+
 export interface SearchOptions {
   top_k: number;
   min_score: number | null;
+  filters?: SearchFilters | null;
 }
 
 export interface SearchHit {

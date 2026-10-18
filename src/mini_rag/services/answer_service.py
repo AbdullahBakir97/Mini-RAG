@@ -9,6 +9,7 @@ from mini_rag.domain.models import (
     ConversationMessage,
     Project,
     ScoredChunk,
+    SearchFilters,
     StoredCitation,
 )
 from mini_rag.domain.repositories import UnitOfWork
@@ -102,7 +103,8 @@ class AnswerService:
         self.condense_prompt = condense_prompt
 
     async def ask(self, project_name: str, question: str, top_k: int,
-                  min_score: float | None = None, conversation_id: str | None = None) -> Answer:
+                  min_score: float | None = None, conversation_id: str | None = None,
+                  filters: SearchFilters | None = None) -> Answer:
         """Retrieve the best matching chunks and have the model answer from them.
 
         Only chunks scoring at least ``min_score`` (default: the service's)
@@ -111,7 +113,8 @@ class AnswerService:
         the answer. With ``conversation_id``, the answer follows on from
         that conversation and is added to it.
         """
-        prepared = await self.prepare(project_name, question, top_k, min_score, conversation_id)
+        prepared = await self.prepare(project_name, question, top_k, min_score, conversation_id,
+                                      filters)
         if not prepared.sources:
             answer = self._no_answer(prepared, NOT_CALLED)
         else:
@@ -121,7 +124,8 @@ class AnswerService:
 
     async def prepare(self, project_name: str, question: str, top_k: int,
                       min_score: float | None = None,
-                      conversation_id: str | None = None) -> Prepared:
+                      conversation_id: str | None = None,
+                      filters: SearchFilters | None = None) -> Prepared:
         """Find the sources for ``question``, rewriting a follow-up first.
 
         Raises ConversationNotFound for a conversation that is not this
@@ -148,7 +152,7 @@ class AnswerService:
         if min_score is None:
             min_score = self.min_score
         sources = await self.search.search(project_name, search_question, top_k=top_k,
-                                           min_score=min_score)
+                                           min_score=min_score, filters=filters)
         return Prepared(project=project, question=question, search_question=search_question,
                         sources=sources, conversation=conversation, history=history, usage=usage)
 

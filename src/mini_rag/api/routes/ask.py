@@ -19,10 +19,12 @@ from mini_rag.core.errors import (
     ConversationNotFound,
     EmbeddingFailed,
     EmbeddingNotConfigured,
+    FileNotFound,
     LLMFailed,
     LLMNotConfigured,
     ProjectNotFound,
 )
+from mini_rag.domain.models import SearchFilters
 from mini_rag.domain.signals import ResponseSignal
 from mini_rag.services.answer_service import Answer, AnswerDelta
 
@@ -30,8 +32,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/ask", tags=["ask"])
 
-ASK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, EmbeddingFailed, LLMFailed,
-                             EmbeddingNotConfigured, LLMNotConfigured)
+ASK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, FileNotFound, EmbeddingFailed,
+                             LLMFailed, EmbeddingNotConfigured, LLMNotConfigured)
 
 
 def ask_response(answer: Answer) -> AskResponse:
@@ -68,12 +70,17 @@ async def ask_project(project_id: ProjectId, request: AskRequest,
                       service: AnswerServiceDep) -> AskResponse:
     answer = await service.ask(project_id, request.question, top_k=request.top_k,
                                min_score=request.min_score,
-                               conversation_id=_conversation_id(request))
+                               conversation_id=_conversation_id(request),
+                               filters=_filters(request))
     return ask_response(answer)
 
 
 def _conversation_id(request: AskRequest) -> str | None:
     return str(request.conversation_id) if request.conversation_id else None
+
+
+def _filters(request: AskRequest) -> SearchFilters | None:
+    return request.filters.to_filters() if request.filters else None
 
 
 def sse(event: str, data: dict) -> str:
@@ -100,7 +107,8 @@ async def ask_project_stream(project_id: ProjectId, request: AskRequest,
     # embedder, is still an ordinary error response rather than an event.
     prepared = await service.prepare(project_id, request.question, top_k=request.top_k,
                                      min_score=request.min_score,
-                                     conversation_id=_conversation_id(request))
+                                     conversation_id=_conversation_id(request),
+                                     filters=_filters(request))
 
     async def events() -> AsyncIterator[str]:
         try:

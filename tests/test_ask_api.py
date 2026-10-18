@@ -260,3 +260,19 @@ def test_failed_answers_are_not_recorded(client, embedder, query):
 
     assert ask(client, question="embedding vector", min_score=0.2).status_code == 502
     assert query("SELECT count(*) FROM answers") == [(0,)]
+
+
+def test_answers_only_from_the_filtered_files(client, embedder, llm):
+    upload_process_and_index(client)
+    other = upload_process_and_index(client, name="other.txt",
+                                     text="Embedding vectors are stored elsewhere entirely.")
+
+    answer = ask(client, question="Where is the embedding vector stored?",
+                 filters={"file_ids": [other]}).json()
+    unknown = ask(client, question="Where is the embedding vector stored?",
+                  filters={"file_ids": ["nope_missing.txt"]})
+
+    assert {citation["file_id"] for citation in answer["citations"]} <= {other}
+    assert "other.txt" in llm.calls[-1][-1].content
+    assert "guide.txt" not in llm.calls[-1][-1].content
+    assert (unknown.status_code, unknown.json()) == (404, {"signal": "file_not_found"})

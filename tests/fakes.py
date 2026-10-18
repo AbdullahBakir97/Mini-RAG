@@ -27,6 +27,7 @@ from mini_rag.domain.models import (
     Project,
     RatedAnswer,
     ScoredChunk,
+    SearchFilters,
     UnembeddedChunk,
     UsageTotals,
 )
@@ -136,12 +137,14 @@ class FakeChunks:
                    for row in self.rows)
 
     async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
-                     min_score: float | None, query: str | None = None) -> list[ScoredChunk]:
+                     min_score: float | None, query: str | None = None,
+                     filters: SearchFilters | None = None) -> list[ScoredChunk]:
         # The fake embedder already scores shared words, so hybrid search adds nothing here.
         hits = [ScoredChunk(file_key=row.file.key, chunk=row.chunk,
                             score=cosine_similarity(row.embedding, embedding))
                 for row in self.rows
-                if row.file.project_id == project_id and row.embedding is not None]
+                if row.file.project_id == project_id and row.embedding is not None
+                and (not filters or not filters.file_keys or row.file.key in filters.file_keys)]
         hits.sort(key=lambda hit: -hit.score)
         return [hit for hit in hits[:top_k] if min_score is None or hit.score >= min_score]
 

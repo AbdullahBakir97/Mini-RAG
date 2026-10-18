@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Literal
@@ -163,3 +164,22 @@ class RatedAnswer:
 class FeedbackCounts:
     up: int = 0
     down: int = 0
+
+
+@dataclass(frozen=True)
+class SearchFilters:
+    """Narrows a search to some of a project's chunks; empty fields do not narrow it.
+
+    ``file_keys`` limits it to those files; the page range applies to chunks
+    with a page (PDFs), so it leaves out all others; the upload dates are
+    the files'; ``metadata`` keeps chunks whose metadata contains it.
+    ``max_per_file`` keeps results from crowding into one file.
+    """
+
+    file_keys: tuple[str, ...] = ()
+    page_from: int | None = None
+    page_to: int | None = None
+    uploaded_after: datetime | None = None
+    uploaded_before: datetime | None = None
+    metadata: Mapping[str, Any] | None = None
+    max_per_file: int | None = None

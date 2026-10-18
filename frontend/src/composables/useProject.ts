@@ -13,6 +13,8 @@ export interface ProjectContext {
   refresh: () => Promise<void>;
   /** The name a file was uploaded with, from its file_id. */
   fileName: (fileId: string) => string;
+  /** The project's first 100 files, for choosing what to search. */
+  files: Ref<{ file_id: string; original_name: string }[]>;
 }
 
 const KEY: InjectionKey<ProjectContext> = Symbol("project");
@@ -23,6 +25,7 @@ export function provideProject(name: Ref<string>): ProjectContext {
   const loading = ref(true);
   const error = ref<ApiError | null>(null);
   const names = ref<Record<string, string>>({});
+  const files = ref<{ file_id: string; original_name: string }[]>([]);
 
   // Sources only carry file ids; the upload's own name reads better. Large
   // projects fall back to the name kept in the id.
@@ -31,6 +34,7 @@ export function provideProject(name: Ref<string>): ProjectContext {
       const page = await api.files(requested, { limit: 100 });
       if (requested === name.value) {
         names.value = Object.fromEntries(page.items.map((file) => [file.file_id, file.original_name]));
+        files.value = page.items.map(({ file_id, original_name }) => ({ file_id, original_name }));
       }
     } catch {
       // Ids still show a readable name.
@@ -66,13 +70,14 @@ export function provideProject(name: Ref<string>): ProjectContext {
     () => {
       project.value = null;
       names.value = {};
+      files.value = [];
       loading.value = true;
       void refresh();
     },
     { immediate: true },
   );
 
-  const context = { name, project, loading, error, refresh, fileName };
+  const context = { name, project, loading, error, refresh, fileName, files };
   provide(KEY, context);
   return context;
 }

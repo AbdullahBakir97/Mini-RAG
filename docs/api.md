@@ -155,8 +155,29 @@ Results are the project's indexed chunks that best match the query, best first. 
 | `query` | required | 1–2000 characters, not blank |
 | `top_k` | `5` | 1–50 |
 | `min_score` | none | -1 to 1; leaves out weaker results |
+| `filters` | none | Narrows the chunks searched; see [Filters](#filters) |
 
-Errors are the same as for indexing, without `file_not_found`.
+Errors are the same as for indexing; `file_not_found` means a file named in `filters.file_ids` is not in the project.
+
+### Filters
+
+`filters` narrows search, and answers, to some of the project's chunks. Every field is optional, and the given ones all apply:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/search/demo1 \
+  -H "Content-Type: application/json" \
+  -d '{"query": "refund window", "filters": {"file_ids": ["a16q20nzrtvj_policies.pdf"], "page_from": 3, "page_to": 8, "max_per_file": 2}}'
+```
+
+| Field | Rules | Keeps |
+|---|---|---|
+| `file_ids` | up to 100 of the project's file ids | Chunks of these files only |
+| `page_from`, `page_to` | 1 or more; `page_from` ≤ `page_to` | Chunks on these pages; chunks without a page (not from a PDF) are left out |
+| `uploaded_after`, `uploaded_before` | ISO 8601 timestamps, after before before | Chunks of files uploaded in that time |
+| `metadata` | up to 10 keys with string, number or boolean values | Chunks whose metadata has these values, e.g. `{"page": 3}` |
+| `max_per_file` | 1–50 | At most this many results per file, so one long document does not fill all of them |
+
+An invalid combination returns `422`.
 
 ## Ask a question
 
@@ -197,6 +218,7 @@ That happens when no indexed chunk scores at least `min_score` (the model is the
 | `question` | required | 1–2000 characters, not blank |
 | `top_k` | `5` | 1–20; most chunks the answer may use |
 | `min_score` | `ANSWER_MIN_SCORE` (`0.3`) | -1 to 1; chunks scoring below it are not used |
+| `filters` | none | Answer only from the chunks these [filters](#filters) keep |
 | `conversation_id` | none | A conversation of this project (see [Conversations](#conversations)); omit to ask on its own |
 
 | Case | Status | Response |

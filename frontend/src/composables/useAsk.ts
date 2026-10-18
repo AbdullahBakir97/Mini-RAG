@@ -20,6 +20,8 @@ export interface Turn {
 
 export interface AskSettings extends SearchOptions {
   stream: boolean;
+  /** Answer only from these files; none means all. */
+  files?: string[];
 }
 
 export interface AskEvents {
@@ -133,7 +135,7 @@ export function useAsk(
     if (busy.value || loading.value || !question.trim()) return;
     const id = nextId++;
     const started = performance.now();
-    const { stream, top_k, min_score } = settings.value;
+    const { stream, top_k, min_score, files } = settings.value;
     turns.value = [
       ...turns.value,
       {
@@ -161,7 +163,8 @@ export function useAsk(
         events.onStarted?.(current);
       }
       const conversationId = current;
-      const options = { top_k, min_score, conversation_id: conversationId };
+      const filters = files?.length ? { file_ids: files } : null;
+      const options = { top_k, min_score, filters, conversation_id: conversationId };
       let text = "";
       const answer = stream
         ? await api.askStream(
