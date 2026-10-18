@@ -48,7 +48,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 - [x] Tenants with hashed, scoped, revocable API keys; strict data isolation between tenants.
 - [x] Usage accounting, quotas and rate limits per tenant.
-- [ ] TypeScript and Python SDKs generated from the OpenAPI schema.
+- [x] TypeScript and Python SDKs generated from the OpenAPI schema, checked in CI against the API.
 - [x] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations; a name, colour, welcome text and allowed website origins per widget.
 - [ ] **White-label:** a logo for the widget; an assistant persona and instructions per project; custom domains.
 - [x] **Collections and tags:** tag files (at upload, by hand, or per website source), list them by tag, and limit search, answers, chat widgets and the MCP tools to some tags.

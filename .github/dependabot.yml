@@ -41,3 +41,28 @@ updates:
       npm:
         patterns: ["*"]
         update-types: ["minor", "patch"]
+
+  # The SDKs' packages.
+  - package-ecosystem: "npm"
+    directory: "/sdk/typescript"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "javascript", "sdk"]
+    commit-message:
+      prefix: "deps(sdk-npm)"
+    groups:
+      sdk-npm:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "pip"
+    directory: "/sdk/python"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "python", "sdk"]
+    commit-message:
+      prefix: "deps(sdk-pip)"

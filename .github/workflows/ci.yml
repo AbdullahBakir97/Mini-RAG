@@ -75,6 +75,60 @@ jobs:
         # The web app, then the chat widget's script.
         run: npx vite build && npx vite build --config vite.widget.config.ts
 
+  sdk-python:
+    # The Python client: generated from sdk/openapi.json (which tests/test_openapi.py
+    # keeps equal to the API's schema), type-checked and tested on its oldest and
+    # newest Python.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.13']
+    defaults:
+      run:
+        working-directory: sdk/python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[test]" mypy==2.4.0
+      - name: Generated code is up to date
+        run: python generate.py --check
+      - name: Type check
+        run: mypy src --strict
+      - name: Test
+        run: pytest
+
+  sdk-typescript:
+    # The TypeScript client: its types are generated from sdk/openapi.json.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: sdk/typescript
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: sdk/typescript/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Generated types are up to date
+        run: npm run generate && git diff --exit-code -- src/schema.ts
+      - name: Type check
+        run: npm run typecheck
+      - name: Test
+        run: npm test
+      - name: Build
+        run: npm run build
+
   security:
     # Known vulnerabilities in the dependencies (Python and npm, development
     # tools included), and secrets anywhere in the history.
@@ -94,6 +148,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install pip-audit==2.10.1
           pip-audit .
+          pip-audit ./sdk/python
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -101,6 +156,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Audit the npm dependencies
         working-directory: frontend
+        run: npm audit --audit-level=moderate
+      - name: Audit the TypeScript SDK's npm dependencies
+        working-directory: sdk/typescript
         run: npm audit --audit-level=moderate
       - name: Look for secrets in the history
         env:

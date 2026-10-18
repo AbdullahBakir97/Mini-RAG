@@ -5,6 +5,7 @@ from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
+from fastapi.routing import APIRoute
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mini_rag.api.dependencies import get_loader_registry
@@ -114,12 +115,17 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
     return lifespan
 
 
+def _operation_id(route: APIRoute) -> str:
+    """The route function's name, e.g. ``upload_data``: SDKs name their methods after it."""
+    return route.name
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL, settings.LOG_FORMAT)
 
     app = FastAPI(title=settings.APP_NAME, version=settings.APP_VERSION,
-                  lifespan=_lifespan(settings))
+                  lifespan=_lifespan(settings), generate_unique_id_function=_operation_id)
 
     app.include_router(base.router)
     app.include_router(metrics.router)
