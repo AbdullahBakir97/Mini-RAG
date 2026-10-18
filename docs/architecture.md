@@ -10,9 +10,9 @@ api          routes, request/response schemas, dependency wiring, error handler
 services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService,
              AnswerService, ConversationService, EvaluationService
  │
-persistence · embeddings · llm · prompts · evaluation · storage · loaders · text
+persistence · embeddings · llm · rerankers · prompts · evaluation · storage · loaders · text
              PostgreSQL + pgvector repositories · embedding client · chat model client ·
-             versioned prompts · datasets and metrics · files on disk ·
+             reranking client · versioned prompts · datasets and metrics · files on disk ·
              one loader per file type · text splitter
  │
 domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, Conversation, repository,
@@ -23,7 +23,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 
 `cli.py` wires the same pieces together for the `mini-rag` command, as `api` does for HTTP: `mini-rag eval` runs a dataset through the real services (see [Evaluation](evaluation.md)), and `evaluation` itself holds only datasets, metrics and reports, depending on nothing but `domain`.
 
-`core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, and `prompts` only on `domain`, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
+`core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `rerankers`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, and `prompts` only on `domain`, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
 
 | Concern | Where it lives |
 |---|---|
@@ -36,6 +36,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Usage and cost | `AnswerService` records every answer's tokens and cost in the `answers` table, never the question or answer text; `GET /api/v1/projects/{project_id}/usage` adds them up |
 | Conversations | `conversations` and `conversation_messages` keep the questions and answers asked in a conversation, with their citations (copied, so they still read the same after a file is re-processed); deleting a project's rows cascades to them. `AnswerService` rewrites a follow-up with the condense prompt before searching |
 | Vector search | `chunks.embedding vector(1536)` (another length after `mini-rag resize-embeddings`, for another embedding model) with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
+| Reranking | Optional: `SearchService` hands the best `RERANK_CANDIDATES` results to a `Reranker` (the interface in `domain/reranker.py`; `rerankers/` implements the common `POST /rerank` API) and keeps the best `top_k` in its order; on failure the search order stays |
 | Hybrid search | `chunks.search_vector`, a stored `tsvector` (English stemming) with a GIN index. The nearest chunks by vector and the chunks matching any of the question's words are ranked separately and merged by reciprocal rank fusion (k = 60) in one SQL query; results keep their cosine similarity as score |
 
 ## Prompts
@@ -74,6 +75,7 @@ Mini-RAG/
 │   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs
 │   ├── llm/                  # Chat model client for OpenAI-compatible APIs
+│   ├── rerankers/            # Reranking client for the common POST /rerank API
 │   ├── prompts/              # Versioned prompts
 │   ├── evaluation/           # Evaluation datasets, retrieval metrics, reports and baselines
 │   ├── storage/              # File storage and path safety

@@ -88,6 +88,13 @@ class LLMNotConfigured(AppError):
     status_code = HTTPStatus.SERVICE_UNAVAILABLE
 
 
+class RerankFailed(AppError):
+    """The reranking server failed or returned something unusable."""
+
+    signal = ResponseSignal.RERANK_FAILED
+    status_code = HTTPStatus.BAD_GATEWAY
+
+
 class LLMFailed(AppError):
     """The language model provider failed or returned something unusable."""
 

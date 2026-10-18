@@ -73,6 +73,13 @@ class Settings(BaseSettings):
     ANSWER_MIN_SCORE: float = Field(
         default=0.3, ge=-1, le=1,
         description="Chunks scoring below this are not used for answers; none left means no answer")
+    RERANK_BASE_URL: str | None = Field(
+        default=None, description="A server with the common POST /rerank API (Cohere, Jina, "
+                                  "vLLM, Infinity); empty turns reranking off")
+    RERANK_MODEL: str = ""
+    RERANK_API_KEY: str = ""
+    RERANK_CANDIDATES: int = Field(
+        default=20, ge=1, le=100, description="Results reranked per search; the best top_k stay")
     SEARCH_MODE: Literal["hybrid", "vector"] = Field(
         default="hybrid",
         description="hybrid: chunks close in meaning or sharing the question's words; "
@@ -97,7 +104,7 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL must start with postgresql+asyncpg://")
         return url
 
-    @field_validator("EMBEDDING_BASE_URL", "LLM_BASE_URL")
+    @field_validator("EMBEDDING_BASE_URL", "LLM_BASE_URL", "RERANK_BASE_URL")
     @classmethod
     def empty_base_url_means_default(cls, url: str | None) -> str | None:
         return url or None

@@ -17,6 +17,7 @@ from mini_rag.persistence.database import (
     create_session_factory,
     match_embedding_dimensions,
 )
+from mini_rag.rerankers.factory import create_reranker
 
 logger = logging.getLogger(__name__)
 
@@ -38,13 +39,14 @@ async def _check_embedding_dimensions(engine: AsyncEngine, settings: Settings) -
 def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextManager[None]]:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # One connection pool, one embedding client and one LLM client per
-        # app, closed cleanly on shutdown.
+        # One connection pool and one client each for embeddings, the LLM and
+        # reranking per app, closed cleanly on shutdown.
         engine = create_engine(settings.DATABASE_URL)
         app.state.engine = engine
         app.state.session_factory = create_session_factory(engine)
         app.state.embedder = embedder = create_embedder(settings)
         app.state.llm = llm = create_llm(settings)
+        app.state.reranker = reranker = create_reranker(settings)
         try:
             await _check_embedding_dimensions(engine, settings)
             yield
@@ -53,6 +55,8 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
                 await embedder.aclose()
             if llm is not None:
                 await llm.aclose()
+            if reranker is not None:
+                await reranker.aclose()
             await engine.dispose()
 
     return lifespan

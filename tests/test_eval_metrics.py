@@ -108,7 +108,7 @@ def report_for(results, **parameters):
     return build_report(dataset=dataset, results=results, chunks=3, version="1.0",
                         seconds={"processing": 0.1, "indexing": 0.2, "search": 0.3},
                         parameters={"dataset": "tiny/v1", "embedding_model": "m",
-                                    "embedding_dimensions": 8, "search_mode": "hybrid", "top_k": 5, "chunk_size": 1000,
+                                    "embedding_dimensions": 8, "search_mode": "hybrid", "reranker": None, "top_k": 5, "chunk_size": 1000,
                                     "overlap_size": 200, "min_score": 0.5, **parameters})
 
 

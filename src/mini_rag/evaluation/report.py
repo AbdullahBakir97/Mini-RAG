@@ -17,7 +17,7 @@ GATED_METRICS = ("hit_rate", "recall", "mrr", "above_min_score", "rejected")
 
 # Metrics are only comparable between runs with the same parameters.
 COMPARED_PARAMETERS = ("dataset", "embedding_model", "embedding_dimensions", "search_mode",
-                       "top_k", "chunk_size", "overlap_size", "min_score")
+                       "reranker", "top_k", "chunk_size", "overlap_size", "min_score")
 
 
 class BaselineMismatch(ValueError):

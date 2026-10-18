@@ -148,7 +148,7 @@ curl -X POST http://localhost:8000/api/v1/search/demo1 \
 }
 ```
 
-Results are the project's indexed chunks that best match the query, best first. With `SEARCH_MODE=hybrid` (the default), a chunk ranks higher both for being close in meaning and for containing the query's words, so exact terms such as names, codes and numbers are found even when the embedding misses them; with `vector`, only meaning counts. Either way `score` is the cosine similarity between the query and the chunk (1 is the best match), which `min_score` and `ANSWER_MIN_SCORE` are compared with. Chunks that are not indexed yet are not found; a project without any returns an empty list.
+Results are the project's indexed chunks that best match the query, best first. With `SEARCH_MODE=hybrid` (the default), a chunk ranks higher both for being close in meaning and for containing the query's words, so exact terms such as names, codes and numbers are found even when the embedding misses them; with `vector`, only meaning counts. With a reranker configured (`RERANK_BASE_URL`), the best `RERANK_CANDIDATES` results are reordered by a reranking model, which reads the query and each passage together. Either way `score` is the cosine similarity between the query and the chunk (1 is the best match), which `min_score` and `ANSWER_MIN_SCORE` are compared with. Chunks that are not indexed yet are not found; a project without any returns an empty list.
 
 | Field | Default | Rules |
 |---|---|---|

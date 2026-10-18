@@ -199,3 +199,17 @@ def test_search_filters_are_validated(client, embedder, filters):
     response = client.post("/api/v1/search/demo", json={"query": "retrieval", "filters": filters})
 
     assert response.status_code == 422
+
+
+def test_search_is_reranked_when_a_reranker_is_set(client, embedder):
+    from .test_search_service import FakeReranker
+
+    upload_and_process(client)
+    client.post("/api/v1/index/demo")
+    plain = client.post("/api/v1/search/demo", json={"query": "retrieval", "top_k": 5}).json()
+    last = plain["results"][-1]["text"]
+    client.app.state.reranker = FakeReranker({last: 1.0})
+
+    reranked = client.post("/api/v1/search/demo", json={"query": "retrieval", "top_k": 5}).json()
+
+    assert reranked["results"][0]["text"] == last

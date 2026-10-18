@@ -32,6 +32,7 @@ from mini_rag.persistence.database import (
     stored_embedding_dimensions,
 )
 from mini_rag.persistence.repositories import SqlUnitOfWork
+from mini_rag.rerankers.factory import create_reranker
 from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.evaluation_service import (
     AnswerSettings,
@@ -87,6 +88,7 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
         judge = create_llm(settings.model_copy(update={
             "LLM_MODEL": args.judge_model or settings.LLM_MODEL, "LLM_TEMPERATURE": 0.0}))
     parameters = _parameters(settings, args, dataset)
+    reranker = create_reranker(settings)
     engine = create_engine(settings.DATABASE_URL)
     try:
         if await stored_embedding_dimensions(engine) is None:
@@ -99,7 +101,8 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
                 uow = SqlUnitOfWork(session)
                 storage = FileStorage(root=Path(files))
                 search = SearchService(uow=uow, embedder=embedder,
-                                       mode=parameters["search_mode"])
+                                       mode=parameters["search_mode"], reranker=reranker,
+                                       rerank_candidates=settings.RERANK_CANDIDATES)
                 service = EvaluationService(
                     uow=uow,
                     upload=UploadService(storage=storage, uow=uow,
@@ -126,7 +129,7 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
         raise _Failure(str(exc)) from exc
     finally:
         await embedder.aclose()
-        for model in (llm, judge):
+        for model in (llm, judge, reranker):
             if model is not None:
                 await model.aclose()
         await engine.dispose()
@@ -156,11 +159,19 @@ def _parameters(settings: Settings, args: argparse.Namespace, dataset: Dataset) 
         "embedding_model": settings.EMBEDDING_MODEL,
         "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
         "search_mode": args.search_mode or settings.SEARCH_MODE,
+        "reranker": _reranker_name(settings),
         "top_k": args.top_k,
         "chunk_size": args.chunk_size,
         "overlap_size": args.overlap_size,
         "min_score": settings.ANSWER_MIN_SCORE if args.min_score is None else args.min_score,
     }
+
+
+def _reranker_name(settings: Settings) -> str | None:
+    """The reranking model, or None when search is not reranked."""
+    if not settings.RERANK_BASE_URL:
+        return None
+    return settings.RERANK_MODEL or "the server's default model"
 
 
 class _Failure(Exception):
@@ -177,7 +188,9 @@ def _print_summary(report: dict) -> None:
           f"({metrics['answerable']} answerable), {dataset['documents']} documents in "
           f"{dataset['chunks']} chunks")
     print(f"{parameters['embedding_model']} ({parameters['embedding_dimensions']} dimensions), "
-          f"{parameters['search_mode']} search, top {parameters['top_k']}, chunks of {parameters['chunk_size']} with "
+          f"{parameters['search_mode']} search"
+          + (f" reranked by {parameters['reranker']}" if parameters["reranker"] else "")
+          + f", top {parameters['top_k']}, chunks of {parameters['chunk_size']} with "
           f"{parameters['overlap_size']} overlap, min score {parameters['min_score']}")
     print()
     rows = [("hit rate", "hit_rate", "answerable questions with a relevant result"),
