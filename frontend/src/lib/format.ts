@@ -67,3 +67,30 @@ export function displayName(fileId: string): string {
   const underscore = fileId.indexOf("_");
   return underscore === -1 ? fileId : fileId.slice(underscore + 1);
 }
+
+const LIST_LINE = /^\s*([•▪◦●*–-]|\d{1,3}[.)])\s/;
+
+/**
+ * Joins the lines a PDF breaks inside paragraphs, so a passage reads as
+ * prose. Blank lines and list lines (bullets, "1.") keep their breaks.
+ */
+export function reflow(text: string): string {
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split(/\n\s*\n/)
+    .map((paragraph) =>
+      paragraph
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .reduce((joined, line) => {
+          if (!joined) return line;
+          if (LIST_LINE.test(line)) return `${joined}\n${line}`;
+          // A word split by a hyphen at the line end keeps the hyphen, which
+          // is right for compounds ("well-known") and harmless otherwise.
+          return joined.endsWith("-") ? joined + line : `${joined} ${line}`;
+        }, ""),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}

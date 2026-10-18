@@ -4,6 +4,7 @@ import { computed, ref } from "vue";
 
 import ScoreBar from "@/components/ScoreBar.vue";
 import { highlight } from "@/lib/citations";
+import { reflow } from "@/lib/format";
 
 const props = defineProps<{
   fileId: string;
@@ -19,8 +20,9 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [] }>();
 
 const expanded = ref(false);
-const long = computed(() => props.text.length > 360);
-const pieces = computed(() => highlight(props.text, props.query ?? ""));
+const text = computed(() => reflow(props.text));
+const long = computed(() => text.value.length > 360);
+const pieces = computed(() => highlight(text.value, props.query ?? ""));
 </script>
 
 <template>

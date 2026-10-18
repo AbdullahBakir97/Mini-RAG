@@ -9,7 +9,7 @@ The web app in `frontend/` is the interface for people: create projects, upload 
 | Page | What it does |
 |---|---|
 | **Projects** | All projects with their file, chunk and index counts. A new project is kept in the browser until its first file is uploaded, because the API creates a project with its first upload. |
-| **Ask** | Questions answered from the project's documents. Answers stream as they are written and can be stopped. Each `[n]` marker is a link to its source, and every source opens at its chunk in the document. A question the documents don't answer says so plainly. Each answer shows its tokens, cost, time and prompt version. The settings set the number of sources, the minimum score and streaming. |
+| **Ask** | Questions answered from the project's documents. Answers stream as they are written and can be stopped, formatted as the model writes them: paragraphs, headings, nested lists, bold, italics and code. Each `[n]` marker is a link to its source, and every source opens at its chunk in the document. A question the documents don't answer says so plainly. Each answer shows its tokens, cost, time and prompt version. The settings set the number of sources, the minimum score and streaming. |
 | **Documents** | Drop PDF or text files: each one is uploaded with a progress bar, split into chunks and indexed, with its state shown at each step. Files list their size and chunk count; a file's chunks open in a side panel, and a file can be re-processed with other chunking options. |
 | **Search** | Passages that match a query by meaning, best first, with their scores and the query's words highlighted. |
 | **Usage** | Questions asked, how many were answered, tokens and cost for the project. |
@@ -35,7 +35,7 @@ It follows the system's light or dark theme, or the one chosen in the sidebar, a
 | Tests | Vitest: the event-stream reader, the API client, citation parsing, formatting and the answer component |
 | Serving | nginx (unprivileged) serves the built files, sends every page path to `index.html`, caches hashed assets for a year, and forwards `/api`, `/docs` and `/openapi.json` to the API without buffering, so streamed answers arrive event by event |
 
-Answer text is always rendered as text, never as HTML, so a document cannot inject markup into the page.
+Answers are formatted by a small Markdown reader (`src/lib/markdown.ts`) that turns them into a tree of plain strings; the page builds elements from that tree, so answer text is never rendered as HTML and a document cannot inject markup into the page. Source passages are shown with the line breaks of the PDF joined back into paragraphs; list lines keep theirs.
 
 ```
 frontend/
