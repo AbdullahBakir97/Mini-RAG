@@ -25,6 +25,7 @@ import type {
   Rating,
   SearchOptions,
   SearchResult,
+  TenantUsage,
   UploadResult,
   Webhook,
   WebhookDelivery,
@@ -185,6 +186,7 @@ export const api = {
     post<Job>(`/projects/${project(name)}/jobs`, { file_id: fileId, ...options }),
   job: (name: string, jobId: string) => get<Job>(`/projects/${project(name)}/jobs/${encodeURIComponent(jobId)}`),
   me: () => get<Me>("/me"),
+  tenantUsage: () => get<TenantUsage>("/usage"),
   webhooks: (name: string, page: PageParams = {}) =>
     get<Page<Webhook>>(`/projects/${project(name)}/webhooks`, { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
   createWebhook: (name: string, body: { url: string; events: WebhookEvent[]; description?: string | null }) =>

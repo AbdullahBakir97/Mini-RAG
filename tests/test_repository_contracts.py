@@ -23,6 +23,7 @@ CONTRACTS = [
     (interfaces.WebhookRepository, sql.SqlWebhookRepository, fakes.FakeWebhooks),
     (interfaces.TenantRepository, sql.SqlTenantRepository, fakes.FakeTenants),
     (interfaces.ApiKeyRepository, sql.SqlApiKeyRepository, fakes.FakeApiKeys),
+    (interfaces.UsageRepository, sql.SqlUsageRepository, fakes.FakeUsage),
     (interfaces.UnitOfWork, sql.SqlUnitOfWork, fakes.FakeUnitOfWork),
 ]
 
@@ -52,7 +53,7 @@ def test_implementation_matches_interface(interface, implementation):
 def test_unit_of_work_exposes_the_repositories(implementation):
     assert set(interfaces.UnitOfWork.__annotations__) == {"projects", "files", "chunks", "answers",
                                                             "conversations", "jobs", "webhooks",
-                                                            "tenants", "api_keys"}
+                                                            "tenants", "api_keys", "usage"}
     instance = implementation(None) if implementation is sql.SqlUnitOfWork else implementation()
 
     assert all(hasattr(instance, name) for name in interfaces.UnitOfWork.__annotations__)

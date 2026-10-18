@@ -13,6 +13,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.file_types import content_type_for
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.limit_service import check_storage
 from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
 
@@ -34,12 +35,14 @@ class Upload:
 class UploadService:
 
     def __init__(self, storage: FileStorage, uow: UnitOfWork, allowed_types: list[str],
-                 max_bytes: int, read_size: int):
+                 max_bytes: int, read_size: int, storage_left: int | None = None):
+        """``storage_left`` is how many bytes the tenant may still store; None is unlimited."""
         self.storage = storage
         self.uow = uow
         self.allowed_types = set(allowed_types)
         self.max_bytes = max_bytes
         self.read_size = read_size
+        self.storage_left = storage_left
 
     async def save(self, project_name: str, filename: str, content_type: str | None,
                    stream: AsyncReadable, declared_size: int | None = None) -> Upload:
@@ -66,6 +69,9 @@ class UploadService:
         try:
             size, digest = await self._copy(stream, path)
             existing = await self.uow.files.get_by_content(project.id, digest)
+            if existing is None:
+                # Content already stored costs nothing more.
+                check_storage(self.storage_left, size)
             record = existing is None and await self.uow.files.add(
                 project_id=project.id, key=file_id, original_name=filename,
                 content_type=content_type, size_bytes=size, content_sha256=digest)

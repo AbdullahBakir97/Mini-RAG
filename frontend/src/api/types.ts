@@ -78,6 +78,22 @@ export interface ProcessResult {
   chunks_count: number;
 }
 
+export interface Meter {
+  used: number;
+  limit: number | null;
+}
+
+export interface TenantUsage {
+  tenant: string;
+  period_start: string;
+  requests_per_minute: number | null;
+  answers: Meter;
+  storage_bytes: Meter;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+}
+
 export interface Me {
   tenant: string;
   scopes: string[];

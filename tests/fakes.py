@@ -31,6 +31,7 @@ from mini_rag.domain.models import (
     ScoredChunk,
     SearchFilters,
     Tenant,
+    TenantUsage,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -466,6 +467,29 @@ class FakeTenants:
     async def list_all(self) -> list[Tenant]:
         return [self.by_name[name] for name in sorted(self.by_name)]
 
+    async def set_limits(self, tenant_id: int, limits) -> None:
+        tenant = await self.get_by_id(tenant_id)
+        self.by_name[tenant.name] = replace(tenant, **limits)
+
+
+class FakeUsage:
+    """Counts requests per minute of the wall clock; usage is set by tests."""
+
+    def __init__(self):
+        self.counts: dict[tuple[int, datetime], int] = {}
+        self.usage: dict[int, TenantUsage] = {}
+
+    async def count_request(self, tenant_id: int) -> tuple[int, datetime]:
+        window = datetime.now(UTC).replace(second=0, microsecond=0)
+        self.counts[tenant_id, window] = self.counts.get((tenant_id, window), 0) + 1
+        return self.counts[tenant_id, window], window
+
+    async def tenant_usage(self, tenant_id: int) -> TenantUsage:
+        start = datetime.now(UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        return self.usage.get(tenant_id, TenantUsage(period_start=start, answers=0, input_tokens=0,
+                                                      output_tokens=0, cost_usd=0.0,
+                                                      storage_bytes=0))
+
 
 class FakeApiKeys:
 
@@ -511,6 +535,7 @@ class FakeUnitOfWork:
         self.webhooks = FakeWebhooks()
         self.tenants = FakeTenants()
         self.api_keys = FakeApiKeys()
+        self.usage = FakeUsage()
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 

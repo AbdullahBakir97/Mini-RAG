@@ -34,3 +34,6 @@ class ResponseSignal(Enum):
     API_KEY_INVALID = "api_key_invalid"
     API_KEY_SCOPE_MISSING = "api_key_scope_missing"
     API_KEY_NOT_FOUND = "api_key_not_found"
+    RATE_LIMITED = "rate_limited"
+    ANSWER_QUOTA_EXCEEDED = "answer_quota_exceeded"
+    STORAGE_QUOTA_EXCEEDED = "storage_quota_exceeded"

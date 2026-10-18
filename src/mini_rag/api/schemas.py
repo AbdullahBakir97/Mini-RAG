@@ -491,3 +491,19 @@ class MeResponse(BaseModel):
     key_id: str | None = Field(description="Null when authentication is off.")
     auth_enabled: bool
 
+
+class Meter(BaseModel):
+    used: int
+    limit: int | None = Field(description="Null when unlimited.")
+
+
+class TenantUsageResponse(BaseModel):
+    tenant: str
+    period_start: datetime = Field(description="Start of the calendar month (UTC) counted.")
+    requests_per_minute: int | None = Field(description="The rate limit; null when unlimited.")
+    answers: Meter = Field(description="Answers this month, and the monthly quota.")
+    storage_bytes: Meter = Field(description="Bytes of files stored now, and the limit.")
+    input_tokens: int = Field(description="Prompt tokens of this month's answers.")
+    output_tokens: int
+    cost_usd: float = Field(description="Known cost of this month's answers, in US dollars.")
+

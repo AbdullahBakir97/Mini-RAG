@@ -72,11 +72,38 @@ Scope = Literal["read", "write", "ask", "admin"]
 
 @dataclass(frozen=True)
 class Tenant:
-    """An organisation or app with its own projects, invisible to other tenants."""
+    """An organisation or app with its own projects, invisible to other tenants.
+
+    Its limits override the server's defaults; None keeps the default, 0 is unlimited.
+    """
 
     id: int
     name: str
     created_at: datetime
+    requests_per_minute: int | None = None
+    answers_per_month: int | None = None
+    storage_mb: int | None = None
+
+
+@dataclass(frozen=True)
+class Limits:
+    """What a tenant may use; 0 is unlimited."""
+
+    requests_per_minute: int = 0
+    answers_per_month: int = 0
+    storage_mb: int = 0
+
+
+@dataclass(frozen=True)
+class TenantUsage:
+    """What a tenant used this calendar month (UTC), and the storage it holds now."""
+
+    period_start: datetime
+    answers: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    storage_bytes: int
 
 
 @dataclass(frozen=True)

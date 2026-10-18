@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, Request, Security
+from fastapi import Depends, Request, Response, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -12,7 +12,7 @@ from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.errors import EmbeddingNotConfigured, LLMNotConfigured, ScopeMissing
 from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.llm import LLM
-from mini_rag.domain.models import Principal, Scope
+from mini_rag.domain.models import Limits, Principal, Scope
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
@@ -22,6 +22,7 @@ from mini_rag.services.conversation_service import ConversationService
 from mini_rag.services.deletion_service import DeletionService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.job_service import JobService
+from mini_rag.services.limit_service import LimitService, rate_headers
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
 from mini_rag.services.search_service import SearchService
@@ -75,10 +76,40 @@ async def get_principal(
 PrincipalDep = Annotated[Principal, Depends(get_principal)]
 
 
-def require(scope: Scope):
-    """A route dependency that lets only keys with ``scope`` through (403 otherwise)."""
+def get_limit_service(session: SessionDep, settings: SettingsDep) -> LimitService:
+    return LimitService(SqlUnitOfWork(session), Limits(
+        requests_per_minute=settings.RATE_LIMIT_PER_MINUTE,
+        answers_per_month=settings.ANSWERS_PER_MONTH,
+        storage_mb=settings.STORAGE_MB_PER_TENANT))
 
-    def check(principal: PrincipalDep) -> Principal:
+
+LimitServiceDep = Annotated[LimitService, Depends(get_limit_service)]
+
+
+async def count_request(principal: PrincipalDep, limits: LimitServiceDep,
+                        response: Response) -> Principal:
+    """Count the request against its tenant's rate limit (429 over it), once per request."""
+    response.headers.update(rate_headers(await limits.count_request(principal.tenant_id)))
+    return principal
+
+
+CountedPrincipalDep = Annotated[Principal, Depends(count_request)]
+
+
+async def check_answer_quota(principal: PrincipalDep, limits: LimitServiceDep) -> None:
+    await limits.check_answers(principal.tenant_id)
+
+
+ANSWER_QUOTA = Depends(check_answer_quota)
+
+
+def require(scope: Scope):
+    """A route dependency that lets only keys with ``scope`` through (403 otherwise).
+
+    It also counts the request against the tenant's rate limit.
+    """
+
+    def check(principal: CountedPrincipalDep) -> Principal:
         if scope not in principal.scopes:
             raise ScopeMissing(f"This needs an API key with the {scope} scope")
         return principal
@@ -111,14 +142,16 @@ def get_file_storage(settings: SettingsDep) -> FileStorage:
 FileStorageDep = Annotated[FileStorage, Depends(get_file_storage)]
 
 
-def get_upload_service(storage: FileStorageDep, uow: UnitOfWorkDep,
-                       settings: SettingsDep) -> UploadService:
+async def get_upload_service(storage: FileStorageDep, uow: UnitOfWorkDep,
+                             settings: SettingsDep, principal: PrincipalDep,
+                             limits: LimitServiceDep) -> UploadService:
     return UploadService(
         storage=storage,
         uow=uow,
         allowed_types=settings.FILE_ALLOWED_TYPES,
         max_bytes=settings.max_upload_bytes,
         read_size=settings.FILE_DEFAULT_CHUNK_SIZE,
+        storage_left=await limits.storage_left(principal.tenant_id),
     )
 
 

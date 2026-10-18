@@ -44,6 +44,26 @@ curl -X DELETE http://localhost:8000/api/v1/keys/<key id> -H "Authorization: Bea
 
 The first key of a tenant comes from the command line (`mini-rag keys create`), run where the database is reachable, e.g. `docker compose exec app mini-rag keys create --tenant acme --name admin`. `mini-rag keys list` and `mini-rag keys revoke` work there too, and `mini-rag tenants list` lists tenants. Projects that existed before tenants belong to `default`.
 
+## Rate limits and quotas
+
+Each tenant can have three limits. The server's settings give the defaults (`RATE_LIMIT_PER_MINUTE`, `ANSWERS_PER_MONTH`, `STORAGE_MB_PER_TENANT`; `0`, the default, is unlimited), and `mini-rag tenants limits <tenant> --requests-per-minute N --answers-per-month N --storage-mb N` gives a tenant its own (a number, `0` for unlimited, or `default`).
+
+| Limit | When it is reached | Response |
+|---|---|---|
+| Requests per minute | Counted per minute of the clock, across every API process; health checks are not counted | `429` `{"signal": "rate_limited"}` with `Retry-After` (seconds) |
+| Answers per calendar month (UTC) | Asking (`/ask` and `/ask/.../stream`) is refused; search still works | `429` `{"signal": "answer_quota_exceeded"}` |
+| Megabytes of stored files | An upload that would not fit is refused and removed; content already stored costs nothing | `413` `{"signal": "storage_quota_exceeded"}` |
+
+With a rate limit, every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (Unix time when the minute ends). `GET /api/v1/usage` shows the tenant's usage this month against its limits:
+
+```json
+{"tenant": "acme", "period_start": "2026-10-01T00:00:00Z", "requests_per_minute": 600,
+ "answers": {"used": 5, "limit": 50}, "storage_bytes": {"used": 1997, "limit": 10485760},
+ "input_tokens": 4500, "output_tokens": 150, "cost_usd": 0.00204}
+```
+
+A `limit` of `null` is unlimited.
+
 ## Endpoints
 
 | Method | Path | Description |
@@ -52,6 +72,7 @@ The first key of a tenant comes from the command line (`mini-rag keys create`), 
 | `GET` | `/api/v1/` | Welcome message with app name and version |
 | `GET` | `/api/v1/health` | `200` `{"status": "ok", "database": "ok"}`, or `503` when the database is unreachable |
 | `GET` | `/api/v1/me` | The tenant and scopes of the API key used |
+| `GET` | `/api/v1/usage` | The tenant's usage this month, against its limits |
 | `GET` | `/api/v1/keys` | The tenant's API keys (`admin`) |
 | `POST` | `/api/v1/keys` | Create an API key; it is returned once (`admin`) |
 | `DELETE` | `/api/v1/keys/{key_id}` | Revoke an API key (`admin`) |

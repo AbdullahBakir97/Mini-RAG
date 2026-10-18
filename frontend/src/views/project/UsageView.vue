@@ -3,10 +3,10 @@ import { Info } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
 
 import { ApiError, api } from "@/api/client";
-import type { ProjectUsage } from "@/api/types";
+import type { ProjectUsage, TenantUsage } from "@/api/types";
 import FeedbackList from "@/components/FeedbackList.vue";
 import { useProject } from "@/composables/useProject";
-import { formatCost, formatNumber, formatPercent } from "@/lib/format";
+import { formatBytes, formatCost, formatNumber, formatPercent } from "@/lib/format";
 
 const { name } = useProject();
 const usage = ref<ProjectUsage | null>(null);
@@ -49,8 +49,22 @@ const cards = computed(() => {
   ];
 });
 
+// The tenant's quotas, across all its projects; shown when it has any.
+const tenant = ref<TenantUsage | null>(null);
+const meters = computed(() => {
+  const t = tenant.value;
+  if (!t) return [];
+  return [
+    { label: "Answers this month", used: t.answers.used, limit: t.answers.limit, format: formatNumber },
+    { label: "Storage", used: t.storage_bytes.used, limit: t.storage_bytes.limit, format: formatBytes },
+  ].filter((meter) => meter.limit !== null);
+});
+
 watch(name, load);
-onMounted(load);
+onMounted(async () => {
+  await load();
+  tenant.value = await api.tenantUsage().catch(() => null);
+});
 </script>
 
 <template>
@@ -82,6 +96,21 @@ onMounted(load);
         <code>LLM_INPUT_PRICE_PER_MILLION</code> and <code>LLM_OUTPUT_PRICE_PER_MILLION</code> on the server to
         price answers.
       </span>
+    </div>
+
+    <div v-if="meters.length || tenant?.requests_per_minute" class="quotas card">
+      <h3>Limits of {{ tenant?.tenant }}</h3>
+      <p class="muted small">Across all of its projects. The month started on {{ tenant ? new Date(tenant.period_start).toLocaleDateString() : "" }}.</p>
+      <div v-for="meter in meters" :key="meter.label" class="meter">
+        <div class="meter-line">
+          <span>{{ meter.label }}</span>
+          <span class="subtle small">{{ meter.format(meter.used) }} of {{ meter.format(meter.limit!) }}</span>
+        </div>
+        <div class="bar" role="progressbar" :aria-label="meter.label" :aria-valuenow="Math.round((meter.used / meter.limit!) * 100)" aria-valuemin="0" aria-valuemax="100">
+          <span :class="{ full: meter.used >= meter.limit! }" :style="{ width: `${Math.min(100, (meter.used / meter.limit!) * 100)}%` }" />
+        </div>
+      </div>
+      <p v-if="tenant?.requests_per_minute" class="subtle small">Up to {{ formatNumber(tenant.requests_per_minute) }} requests a minute.</p>
     </div>
 
     <FeedbackList :project="name" class="feedback-section" />
@@ -119,6 +148,38 @@ onMounted(load);
   font-weight: 650;
   letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+}
+
+.quotas {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.meter-line {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 13.5px;
+}
+
+.bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+.bar span.full {
+  background: var(--danger);
 }
 
 .feedback-section {

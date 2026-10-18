@@ -25,6 +25,7 @@ from .models import (
     ScoredChunk,
     SearchFilters,
     Tenant,
+    TenantUsage,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -42,6 +43,21 @@ class TenantRepository(Protocol):
 
     async def list_all(self) -> list[Tenant]:
         """In name order."""
+        ...
+
+    async def set_limits(self, tenant_id: int, limits: Mapping[str, int | None]) -> None:
+        """Change the limits named in ``limits``; None returns one to the server's default."""
+        ...
+
+
+class UsageRepository(Protocol):
+
+    async def count_request(self, tenant_id: int) -> tuple[int, datetime]:
+        """Count a request in the current minute; returns the minute's count and its start."""
+        ...
+
+    async def tenant_usage(self, tenant_id: int) -> TenantUsage:
+        """Answers and tokens this calendar month (UTC), and the bytes of files stored."""
         ...
 
 
@@ -328,6 +344,7 @@ class UnitOfWork(Protocol):
     webhooks: WebhookRepository
     tenants: TenantRepository
     api_keys: ApiKeyRepository
+    usage: UsageRepository
 
     async def commit(self) -> None: ...
 
