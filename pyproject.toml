@@ -35,6 +35,7 @@ dependencies = [
     # Imported directly by the OpenAI embedder (for its HTTP client type).
     "httpx2==2.13.1",
     "anyio==4.15.1",
+    "prometheus-client==0.26.0",
 ]
 
 [project.optional-dependencies]

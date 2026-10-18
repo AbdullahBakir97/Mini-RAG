@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 
 from mini_rag.core.errors import ConversationNotFound, ProjectNotFound
+from mini_rag.core.metrics import ANSWERS, LLM_COST, LLM_TOKENS
 from mini_rag.domain.llm import LLM, Message, TokenPrices, TokenUsage
 from mini_rag.domain.models import (
     AnswerRecord,
@@ -237,6 +238,12 @@ class AnswerService:
             ], title=None if conversation.title else _title(prepared.question))
             answer = replace(answer, message_id=message_id)
         await self.uow.commit()
+        ANSWERS.labels(answered=str(answer.text is not None).lower()).inc()
+        if model_called and answer.usage:
+            LLM_TOKENS.labels(kind="input").inc(answer.usage.input_tokens)
+            LLM_TOKENS.labels(kind="output").inc(answer.usage.output_tokens)
+        if answer.cost_usd:
+            LLM_COST.inc(answer.cost_usd)
         return answer
 
 

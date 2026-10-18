@@ -20,6 +20,7 @@ from mini_rag.api.routes import (
     jobs,
     keys,
     mcp,
+    metrics,
     projects,
     search,
     webhooks,
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
                   lifespan=_lifespan(settings))
 
     app.include_router(base.router)
+    app.include_router(metrics.router)
     app.include_router(data.router)
     app.include_router(projects.router)
     app.include_router(index.router)

@@ -10,6 +10,7 @@ from datetime import UTC, datetime, timedelta
 
 from mini_rag.core.errors import WebhookFailed
 from mini_rag.core.log_context import log_context
+from mini_rag.core.metrics import WEBHOOK_DELIVERIES
 from mini_rag.domain.models import Webhook, WebhookDelivery
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.domain.webhook_sender import WebhookSender
@@ -100,6 +101,8 @@ class WebhookDispatcher:
                                               response_status=status, error=error,
                                               retry_at=retry_at)
             await uow.commit()
+        WEBHOOK_DELIVERIES.labels(
+            outcome="delivered" if error is None else "retried" if retry_at else "failed").inc()
         if error:
             then = f"trying again at {retry_at.isoformat()}" if retry_at else "giving up"
             logger.warning("Webhook delivery %s (%s) to %s failed: %s; %s", delivery.id,

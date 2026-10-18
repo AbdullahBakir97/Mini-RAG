@@ -96,7 +96,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] A multi-stage, non-root Docker image and a full `compose.yaml` stack.
 - [ ] Automated deployments to staging and production.
 - [x] Structured logs (text or JSON) with a request id on every line and response, and the tenant.
-- [ ] Metrics and tracing.
+- [x] Prometheus metrics: traffic by route, answers, tokens and cost, uploads, jobs and webhook deliveries ([Operations](operations.md#metrics)).
+- [ ] Tracing.
 - [ ] Cost dashboards and budget alerts; backups with tested restores.
 - [x] Type checking (`mypy`) and a coverage threshold (95% of lines and branches) in CI.
 
