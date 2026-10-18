@@ -43,7 +43,7 @@ class HTTPWebhookSender:
                                                                  type=socket.SOCK_STREAM)
         except OSError as exc:
             raise WebhookFailed(f"{host} could not be resolved") from exc
-        if not all(is_public_address(info[4][0]) for info in infos):
+        if not all(is_public_address(str(info[4][0])) for info in infos):
             raise WebhookFailed(f"{host} is not a public address")
 
     async def aclose(self) -> None:

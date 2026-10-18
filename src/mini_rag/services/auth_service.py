@@ -36,6 +36,8 @@ class AuthService:
         if found is None:
             raise ApiKeyInvalid()
         tenant = await self.uow.tenants.get_by_id(found.tenant_id)
+        if tenant is None:
+            raise ApiKeyInvalid()
         await self.uow.api_keys.touch(found.id)
         await self.uow.commit()
         return Principal(tenant_id=tenant.id, tenant_name=tenant.name,

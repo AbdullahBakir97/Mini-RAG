@@ -97,7 +97,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] Structured logs (text or JSON) with a request id on every line and response, and the tenant.
 - [ ] Metrics and tracing.
 - [ ] Cost dashboards and budget alerts; backups with tested restores.
-- [ ] Type checking and a coverage threshold in CI.
+- [x] Type checking (`mypy`) and a coverage threshold (95% of lines and branches) in CI.
 
 ### Phase 10: Web app
 

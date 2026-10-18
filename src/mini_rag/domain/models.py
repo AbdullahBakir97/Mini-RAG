@@ -68,6 +68,8 @@ DEFAULT_TENANT = "default"
 # What an API key may do. Each route needs one of them.
 SCOPES = ("read", "write", "ask", "admin")
 Scope = Literal["read", "write", "ask", "admin"]
+Rating = Literal["up", "down"]
+Role = Literal["user", "assistant"]
 
 
 @dataclass(frozen=True)
@@ -205,7 +207,7 @@ class StoredCitation:
 class Feedback:
     """What someone thought of an answer: thumbs up or down, and why."""
 
-    rating: Literal["up", "down"]
+    rating: Rating
     comment: str | None = None
     created_at: datetime | None = None
 
@@ -219,7 +221,7 @@ class ConversationMessage:
     with, when it differs from the question asked.
     """
 
-    role: Literal["user", "assistant"]
+    role: Role
     content: str | None
     citations: list[StoredCitation] = field(default_factory=list)
     prompt_version: str | None = None

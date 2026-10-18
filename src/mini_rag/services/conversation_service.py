@@ -74,7 +74,10 @@ class ConversationService:
         await self.uow.conversations.set_feedback(
             message_id, Feedback(rating=rating, comment=(comment or "").strip() or None))
         await self.uow.commit()
-        return await self.uow.conversations.get_message(conversation_id, message_id)
+        rated = await self.uow.conversations.get_message(conversation_id, message_id)
+        if rated is None:
+            raise MessageNotFound()  # Deleted meanwhile.
+        return rated
 
     async def unrate(self, project_name: str, conversation_id: str, message_id: int) -> None:
         await self._answer(project_name, conversation_id, message_id)
@@ -85,7 +88,8 @@ class ConversationService:
                        limit: int) -> FeedbackPage:
         project = await self._project(project_name)
         counts = await self.uow.conversations.count_feedback(project.id)
-        total = {"up": counts.up, "down": counts.down}.get(rating, counts.up + counts.down)
+        total = (counts.up if rating == "up" else counts.down if rating == "down"
+                 else counts.up + counts.down)
         items = await self.uow.conversations.rated_answers(project.id, rating=rating,
                                                            offset=offset, limit=limit)
         return FeedbackPage(page=Page(items=items, total=total, offset=offset, limit=limit),

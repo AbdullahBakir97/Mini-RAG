@@ -84,6 +84,8 @@ class UploadService:
                 return Upload(file_id=file_id)
             # Already there, or recorded by another upload of it a moment ago.
             existing = existing or await self.uow.files.get_by_content(project.id, digest)
+            if existing is None:
+                raise UploadFailed()  # That other upload was deleted again meanwhile.
             await self.uow.commit()
             return Upload(file_id=existing.key, duplicate=True)
         except AppError:

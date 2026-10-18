@@ -39,8 +39,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "mypy==2.4.0",
     "pytest==9.1.1",
+    "pytest-cov==7.1.0",
     "ruff==0.17.1",
+    "types-aiofiles==25.1.0.20260518",
 ]
 
 [project.scripts]
@@ -78,3 +81,22 @@ ignore = ["E501"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Path"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[tool.coverage.run]
+source = ["mini_rag"]
+branch = true
+# SQLAlchemy's async engine switches greenlets: without this, lines after an await go unseen.
+concurrency = ["thread", "greenlet"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+# CI fails below this; raise it as coverage grows.
+fail_under = 95

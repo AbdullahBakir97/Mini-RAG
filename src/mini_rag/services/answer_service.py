@@ -143,7 +143,8 @@ class AnswerService:
             stored = await self.uow.conversations.messages(conversation.id, last=HISTORY_MESSAGES)
             history = [Message(message.role, message.content or NO_ANSWER) for message in stored]
 
-        search_question, usage = question, NOT_CALLED
+        search_question = question
+        usage: TokenUsage | None = NOT_CALLED
         if history:
             completion = await self.llm.complete(self.condense_prompt.messages(history, question))
             search_question = self.condense_prompt.standalone(completion.text, question)
