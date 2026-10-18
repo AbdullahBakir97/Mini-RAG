@@ -125,8 +125,9 @@ def get_indexing_service(uow: UnitOfWorkDep, embedder: EmbedderDep,
 IndexingServiceDep = Annotated[IndexingService, Depends(get_indexing_service)]
 
 
-def get_search_service(uow: UnitOfWorkDep, embedder: EmbedderDep) -> SearchService:
-    return SearchService(uow=uow, embedder=embedder)
+def get_search_service(uow: UnitOfWorkDep, embedder: EmbedderDep,
+                       settings: SettingsDep) -> SearchService:
+    return SearchService(uow=uow, embedder=embedder, mode=settings.SEARCH_MODE)
 
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]

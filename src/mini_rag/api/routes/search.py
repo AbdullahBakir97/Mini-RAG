@@ -21,8 +21,10 @@ router = APIRouter(prefix="/api/v1/search", tags=["search"])
 @router.post(
     "/{project_id}",
     summary="Find the chunks that best match a question",
-    description="Searches the project's indexed chunks (see POST /api/v1/index/{project_id}) "
-                "by meaning, best match first. Chunks that are not indexed yet are not found.",
+    description="Searches the project's indexed chunks (see POST /api/v1/index/{project_id}), "
+                "best match first: by meaning and by the query's words with SEARCH_MODE=hybrid "
+                "(the default), by meaning only with vector. Scores are the cosine similarity "
+                "either way. Chunks that are not indexed yet are not found.",
     responses=error_responses(ProjectNotFound, EmbeddingFailed, EmbeddingNotConfigured),
 )
 async def search_project(project_id: ProjectId, request: SearchRequest,

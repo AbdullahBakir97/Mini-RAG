@@ -47,7 +47,7 @@ def test_evaluates_the_handbook_and_writes_a_report(db, embedder, tmp_path, caps
     report = json.loads(report_path.read_text())
     assert report["parameters"] == {
         "dataset": "handbook/v1", "embedding_model": "text-embedding-3-small",
-        "embedding_dimensions": 1536, "top_k": 5, "chunk_size": 1000, "overlap_size": 200,
+        "embedding_dimensions": 1536, "search_mode": "hybrid", "top_k": 5, "chunk_size": 1000, "overlap_size": 200,
         "min_score": 0.3}
     assert len(report["cases"]) == 53
     assert 0 < report["metrics"]["hit_rate"] <= 1
@@ -155,3 +155,13 @@ def test_a_judge_model_needs_answers(capsys):
     with pytest.raises(SystemExit):
         cli.main(["eval", HANDBOOK, "--judge-model", "other"])
     assert "--judge-model needs --answers" in capsys.readouterr().err
+
+
+def test_the_search_mode_can_be_chosen(db, embedder, tmp_path, capsys):
+    report_path = tmp_path / "report.json"
+
+    assert cli.main(["eval", HANDBOOK, "--search-mode", "vector",
+                     "--output", str(report_path)]) == cli.PASSED
+
+    assert "vector search, top 5" in capsys.readouterr().out
+    assert json.loads(report_path.read_text())["parameters"]["search_mode"] == "vector"

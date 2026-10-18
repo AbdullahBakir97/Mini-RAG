@@ -12,6 +12,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Computed,
     DateTime,
     ForeignKey,
     Identity,
@@ -26,7 +27,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Deterministic constraint names, so migrations are reproducible and
@@ -44,6 +45,10 @@ NAMING_CONVENTION = {
 # with other vectors; EMBEDDING_DIMENSIONS must match the database (checked
 # when the app starts).
 EMBEDDING_DIMENSIONS = 1536
+
+
+# The text search configuration of chunks.search_vector.
+FULL_TEXT_CONFIG = "english"
 
 
 class Base(DeclarativeBase):
@@ -84,6 +89,8 @@ class ChunkRow(Base):
         # no training data, so it works from the first row.
         Index("ix_chunks_embedding", "embedding", postgresql_using="hnsw",
               postgresql_ops={"embedding": "vector_cosine_ops"}),
+        # Full-text search, the other half of hybrid search.
+        Index("ix_chunks_search_vector", "search_vector", postgresql_using="gin"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
@@ -98,6 +105,10 @@ class ChunkRow(Base):
         "metadata", JSONB, server_default="{}", default=dict)
     # NULL until the chunk is indexed; deleted together with the chunk.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    # The chunk's words, kept up to date by PostgreSQL. English stemming lets
+    # "deploys" match "deploy"; words of other languages match as written.
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR, Computed(f"to_tsvector('{FULL_TEXT_CONFIG}', text)", persisted=True))
     created_at: Mapped[datetime] = _created_at()
 
 

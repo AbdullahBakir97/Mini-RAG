@@ -36,6 +36,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Usage and cost | `AnswerService` records every answer's tokens and cost in the `answers` table, never the question or answer text; `GET /api/v1/projects/{project_id}/usage` adds them up |
 | Conversations | `conversations` and `conversation_messages` keep the questions and answers asked in a conversation, with their citations (copied, so they still read the same after a file is re-processed); deleting a project's rows cascades to them. `AnswerService` rewrites a follow-up with the condense prompt before searching |
 | Vector search | `chunks.embedding vector(1536)` (another length after `mini-rag resize-embeddings`, for another embedding model) with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
+| Hybrid search | `chunks.search_vector`, a stored `tsvector` (English stemming) with a GIN index. The nearest chunks by vector and the chunks matching any of the question's words are ranked separately and merged by reciprocal rank fusion (k = 60) in one SQL query; results keep their cosine similarity as score |
 
 ## Prompts
 

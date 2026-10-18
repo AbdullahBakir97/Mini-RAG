@@ -16,8 +16,8 @@ from .metrics import CaseResult, metrics_by_tag, retrieval_metrics, suggest_min_
 GATED_METRICS = ("hit_rate", "recall", "mrr", "above_min_score", "rejected")
 
 # Metrics are only comparable between runs with the same parameters.
-COMPARED_PARAMETERS = ("dataset", "embedding_model", "embedding_dimensions", "top_k",
-                       "chunk_size", "overlap_size", "min_score")
+COMPARED_PARAMETERS = ("dataset", "embedding_model", "embedding_dimensions", "search_mode",
+                       "top_k", "chunk_size", "overlap_size", "min_score")
 
 
 class BaselineMismatch(ValueError):

@@ -136,7 +136,8 @@ class FakeChunks:
                    for row in self.rows)
 
     async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
-                     min_score: float | None) -> list[ScoredChunk]:
+                     min_score: float | None, query: str | None = None) -> list[ScoredChunk]:
+        # The fake embedder already scores shared words, so hybrid search adds nothing here.
         hits = [ScoredChunk(file_key=row.file.key, chunk=row.chunk,
                             score=cosine_similarity(row.embedding, embedding))
                 for row in self.rows

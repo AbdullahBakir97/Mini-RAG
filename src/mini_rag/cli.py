@@ -98,7 +98,8 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
             async with create_session_factory(engine)() as session:
                 uow = SqlUnitOfWork(session)
                 storage = FileStorage(root=Path(files))
-                search = SearchService(uow=uow, embedder=embedder)
+                search = SearchService(uow=uow, embedder=embedder,
+                                       mode=parameters["search_mode"])
                 service = EvaluationService(
                     uow=uow,
                     upload=UploadService(storage=storage, uow=uow,
@@ -154,6 +155,7 @@ def _parameters(settings: Settings, args: argparse.Namespace, dataset: Dataset) 
         "dataset": dataset.label,
         "embedding_model": settings.EMBEDDING_MODEL,
         "embedding_dimensions": settings.EMBEDDING_DIMENSIONS,
+        "search_mode": args.search_mode or settings.SEARCH_MODE,
         "top_k": args.top_k,
         "chunk_size": args.chunk_size,
         "overlap_size": args.overlap_size,
@@ -175,7 +177,7 @@ def _print_summary(report: dict) -> None:
           f"({metrics['answerable']} answerable), {dataset['documents']} documents in "
           f"{dataset['chunks']} chunks")
     print(f"{parameters['embedding_model']} ({parameters['embedding_dimensions']} dimensions), "
-          f"top {parameters['top_k']}, chunks of {parameters['chunk_size']} with "
+          f"{parameters['search_mode']} search, top {parameters['top_k']}, chunks of {parameters['chunk_size']} with "
           f"{parameters['overlap_size']} overlap, min score {parameters['min_score']}")
     print()
     rows = [("hit rate", "hit_rate", "answerable questions with a relevant result"),
@@ -378,6 +380,8 @@ def main(argv: list[str] | None = None) -> int:
                     "the temporary project is deleted afterwards. Exits with 1 when a metric "
                     "falls below --baseline, and 2 when the evaluation cannot run.")
     evaluate.add_argument("dataset", type=Path, help="the dataset folder, e.g. evals/handbook/v1")
+    evaluate.add_argument("--search-mode", choices=["hybrid", "vector"],
+                          help="hybrid or vector search (default SEARCH_MODE)")
     evaluate.add_argument("--top-k", type=_positive, default=5,
                           help="results per question (default 5, as for answers)")
     evaluate.add_argument("--chunk-size", type=_positive, default=1000,

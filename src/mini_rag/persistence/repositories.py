@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import bindparam, delete, func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from mini_rag.domain.models import (
 )
 
 from .tables import (
+    FULL_TEXT_CONFIG,
     AnswerRow,
     ChunkRow,
     ConversationMessageRow,
@@ -48,6 +50,12 @@ def _file(row: FileRow) -> FileRecord:
 def _chunk(row: ChunkRow) -> Chunk:
     return Chunk(index=row.chunk_index, text=row.text, metadata=row.meta)
 
+
+# Hybrid search: how many results each list contributes, per result wanted
+# and at least, and the RRF constant (60 is the usual choice).
+CANDIDATES_PER_RESULT = 4
+MIN_CANDIDATES = 20
+RRF_K = 60
 
 class SqlProjectRepository:
 
@@ -168,7 +176,10 @@ class SqlChunkRepository:
             .where(ChunkRow.project_id == project_id, ChunkRow.embedding.is_not(None)))
 
     async def search(self, project_id: int, embedding: Sequence[float], *, top_k: int,
-                     min_score: float | None) -> list[ScoredChunk]:
+                     min_score: float | None, query: str | None = None) -> list[ScoredChunk]:
+        if query is not None:
+            return await self._hybrid_search(project_id, embedding, query, top_k=top_k,
+                                             min_score=min_score)
         # The HNSW index finds neighbours across all projects; filtering by
         # project afterwards could leave fewer than top_k. An iterative scan
         # (pgvector 0.8+) keeps searching until enough rows pass the filter.
@@ -196,6 +207,58 @@ class SqlChunkRepository:
         rows = await self.session.execute(query)
         return [
             ScoredChunk(file_key=row.key, score=1 - row.distance,
+                        chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
+            for row in rows
+        ]
+
+    async def _hybrid_search(self, project_id: int, embedding: Sequence[float], query: str, *,
+                             top_k: int, min_score: float | None) -> list[ScoredChunk]:
+        """Vector and full-text results, merged by reciprocal rank fusion.
+
+        Each list contributes 1 / (RRF_K + rank) per chunk, so a chunk near
+        the top of both wins, and the two lists' scores, which are not
+        comparable, never need to be. The full-text query matches any of
+        the question's words, not all of them.
+        """
+        await self.session.execute(text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
+        threshold = "" if min_score is None else "AND 1 - (c.embedding <=> :embedding) >= :min_score"
+        statement = text(f"""
+            WITH nearest_rows AS MATERIALIZED (
+                SELECT id, embedding <=> :embedding AS distance FROM chunks
+                WHERE project_id = :project_id AND embedding IS NOT NULL
+                ORDER BY embedding <=> :embedding LIMIT :candidates
+            ), nearest AS (
+                SELECT id, row_number() OVER (ORDER BY distance, id) AS rank FROM nearest_rows
+            ), words AS (
+                SELECT replace(plainto_tsquery('{FULL_TEXT_CONFIG}', :query)::text, '&', '|')
+                       ::tsquery AS q
+            ), matching AS (
+                SELECT c.id, row_number() OVER (
+                           ORDER BY ts_rank_cd(c.search_vector, words.q) DESC, c.id) AS rank
+                FROM chunks c, words
+                WHERE c.project_id = :project_id AND c.embedding IS NOT NULL
+                      AND c.search_vector @@ words.q
+                ORDER BY rank LIMIT :candidates
+            ), fused AS (
+                SELECT id, sum(1.0 / (:rrf_k + rank)) AS score
+                FROM (SELECT * FROM nearest UNION ALL SELECT * FROM matching) ranked
+                GROUP BY id
+            )
+            SELECT c.chunk_index, c.text, c.metadata AS meta, f.key,
+                   1 - (c.embedding <=> :embedding) AS similarity
+            FROM fused JOIN chunks c ON c.id = fused.id JOIN files f ON f.id = c.file_id
+            WHERE TRUE {threshold}
+            ORDER BY fused.score DESC, similarity DESC, c.id
+            LIMIT :top_k
+        """).bindparams(bindparam("embedding", type_=Vector()))
+        params = {"embedding": list(embedding), "project_id": project_id, "query": query,
+                  "candidates": max(top_k * CANDIDATES_PER_RESULT, MIN_CANDIDATES),
+                  "rrf_k": RRF_K, "top_k": top_k}
+        if min_score is not None:
+            params["min_score"] = min_score
+        rows = await self.session.execute(statement, params)
+        return [
+            ScoredChunk(file_key=row.key, score=row.similarity,
                         chunk=Chunk(index=row.chunk_index, text=row.text, metadata=row.meta))
             for row in rows
         ]
