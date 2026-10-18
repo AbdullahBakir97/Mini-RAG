@@ -23,6 +23,7 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `RERANK_MODEL` | `""` | The reranking model, e.g. `"BAAI/bge-reranker-v2-m3"` |
 | `RERANK_API_KEY` | `""` | Sent as a bearer token when set |
 | `RERANK_CANDIDATES` | `20` | Results reranked per search (1–100); the best `top_k` of them are kept. If the reranker fails, the search order stays and a warning is logged |
+| `AUTH_ENABLED` | `false` | Require an API key on every request but the welcome and health endpoints; off, every request acts for the tenant `default` with every scope. Turn it on for any server others can reach (see [Authentication](api.md#authentication-and-tenants)) |
 | `JOB_WORKERS` | `1` | Background jobs the API runs at once (0–32); above 0, the API also sends webhook deliveries. `0` leaves both to `mini-rag worker` processes, for an API that only queues them |
 | `JOB_MAX_ATTEMPTS` | `3` | Tries per job (1–10) when the embedding provider fails, before the job fails |
 | `WEBHOOK_ALLOW_PRIVATE_URLS` | `false` | Let webhooks reach `localhost` and private networks, e.g. n8n next to the API. Off, they reach only public addresses |

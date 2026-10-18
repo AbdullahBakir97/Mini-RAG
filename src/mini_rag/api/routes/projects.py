@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 
-from mini_rag.api.dependencies import DeletionServiceDep, ProjectServiceDep
+from mini_rag.api.dependencies import READ, WRITE, DeletionServiceDep, ProjectServiceDep
 from mini_rag.api.schemas import (
     ChunkListResponse,
     ChunkResponse,
@@ -31,7 +31,7 @@ def _file_response(record: FileRecord) -> FileResponse:
                         created_at=record.created_at)
 
 
-@router.get("", summary="List projects in name order")
+@router.get("", dependencies=[READ], summary="List projects in name order")
 async def list_projects(page: PaginationDep, service: ProjectServiceDep) -> ProjectListResponse:
     result = await service.list_projects(offset=page.offset, limit=page.limit)
     return ProjectListResponse(
@@ -40,7 +40,8 @@ async def list_projects(page: PaginationDep, service: ProjectServiceDep) -> Proj
                for project in result.items])
 
 
-@router.get("/{project_id}", summary="Project details with file, chunk and index counts",
+@router.get("/{project_id}", dependencies=[READ],
+            summary="Project details with file, chunk and index counts",
             responses=error_responses(ProjectNotFound))
 async def get_project(project_id: ProjectId, service: ProjectServiceDep) -> ProjectResponse:
     summary = await service.get_summary(project_id)
@@ -49,7 +50,8 @@ async def get_project(project_id: ProjectId, service: ProjectServiceDep) -> Proj
                            embedded_chunks_count=summary.embedded_chunks_count)
 
 
-@router.get("/{project_id}/usage", summary="Token usage and cost of the project's answers",
+@router.get("/{project_id}/usage", dependencies=[READ],
+            summary="Token usage and cost of the project's answers",
             responses=error_responses(ProjectNotFound))
 async def get_usage(project_id: ProjectId, service: ProjectServiceDep) -> ProjectUsageResponse:
     totals = await service.get_usage(project_id)
@@ -59,7 +61,8 @@ async def get_usage(project_id: ProjectId, service: ProjectServiceDep) -> Projec
                                 unpriced_answers=totals.unpriced_answers)
 
 
-@router.get("/{project_id}/files", summary="List a project's files in upload order",
+@router.get("/{project_id}/files", dependencies=[READ],
+            summary="List a project's files in upload order",
             responses=error_responses(ProjectNotFound))
 async def list_files(project_id: ProjectId, page: PaginationDep,
                      service: ProjectServiceDep) -> FileListResponse:
@@ -68,7 +71,8 @@ async def list_files(project_id: ProjectId, page: PaginationDep,
                             items=[_file_response(record) for record in result.items])
 
 
-@router.get("/{project_id}/files/{file_id}/chunks", summary="List a file's chunks in order",
+@router.get("/{project_id}/files/{file_id}/chunks", dependencies=[READ],
+            summary="List a file's chunks in order",
             responses=error_responses(ProjectNotFound, FileNotFound))
 async def list_chunks(project_id: ProjectId, file_id: FileIdPath, page: PaginationDep,
                       service: ProjectServiceDep) -> ChunkListResponse:
@@ -79,7 +83,7 @@ async def list_chunks(project_id: ProjectId, file_id: FileIdPath, page: Paginati
                for chunk in result.items])
 
 
-@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT,
+@router.delete("/{project_id}", dependencies=[WRITE], status_code=status.HTTP_204_NO_CONTENT,
                summary="Delete a project with all its files, chunks, answers and conversations",
                responses=error_responses(ProjectNotFound))
 async def delete_project(project_id: ProjectId, service: DeletionServiceDep) -> Response:
@@ -87,7 +91,8 @@ async def delete_project(project_id: ProjectId, service: DeletionServiceDep) -> 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.delete("/{project_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT,
+@router.delete("/{project_id}/files/{file_id}", dependencies=[WRITE],
+               status_code=status.HTTP_204_NO_CONTENT,
                summary="Delete a file with its chunks",
                description="Answers that cited the file keep their copy of the cited text.",
                responses=error_responses(ProjectNotFound, FileNotFound))

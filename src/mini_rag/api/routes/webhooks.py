@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 
-from mini_rag.api.dependencies import WebhookServiceDep
+from mini_rag.api.dependencies import ADMIN, WebhookServiceDep
 from mini_rag.api.schemas import (
     DeliveryListResponse,
     DeliveryResponse,
@@ -18,7 +18,7 @@ from mini_rag.api.schemas import (
 from mini_rag.core.errors import ProjectNotFound, WebhookNotFound, WebhookUrlNotAllowed
 from mini_rag.domain.models import Webhook, WebhookDelivery
 
-router = APIRouter(prefix="/api/v1/projects", tags=["webhooks"])
+router = APIRouter(prefix="/api/v1/projects", tags=["webhooks"], dependencies=[ADMIN])
 
 PaginationDep = Annotated[Pagination, Depends()]
 

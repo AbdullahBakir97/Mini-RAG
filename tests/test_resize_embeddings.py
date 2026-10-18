@@ -59,7 +59,9 @@ async def _resize(dimensions: int) -> int:
 
 
 def add_chunk(vector: list[float] | None):
-    run("INSERT INTO projects (name) VALUES ('demo') ON CONFLICT DO NOTHING")
+    run("INSERT INTO tenants (name) VALUES ('default') ON CONFLICT DO NOTHING")
+    run("INSERT INTO projects (tenant_id, name, storage_name) "
+        "SELECT id, 'demo', 'demo' FROM tenants WHERE name = 'default' ON CONFLICT DO NOTHING")
     run("INSERT INTO files (project_id, key, original_name, content_type, size_bytes) "
         "SELECT id, 'abc_notes.txt', 'notes.txt', 'text/plain', 1 FROM projects "
         "ON CONFLICT DO NOTHING")
@@ -77,7 +79,8 @@ def resize_db(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", RESIZE_DATABASE_URL)
     get_settings.cache_clear()
     yield RESIZE_DATABASE_URL
-    run("TRUNCATE projects, files, chunks, answers, conversations, conversation_messages RESTART IDENTITY CASCADE")
+    run("TRUNCATE tenants, projects, files, chunks, answers, conversations, conversation_messages "
+        "RESTART IDENTITY CASCADE")
     if stored_dimensions() != 1536:
         asyncio.run(_resize(1536))
 

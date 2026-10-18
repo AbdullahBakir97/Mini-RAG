@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from mini_rag.api.dependencies import SearchServiceDep
+from mini_rag.api.dependencies import READ, SearchServiceDep
 from mini_rag.api.schemas import (
     ProjectId,
     SearchRequest,
@@ -16,7 +16,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.signals import ResponseSignal
 
-router = APIRouter(prefix="/api/v1/search", tags=["search"])
+router = APIRouter(prefix="/api/v1/search", tags=["search"], dependencies=[READ])
 
 
 @router.post(

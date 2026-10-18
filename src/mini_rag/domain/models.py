@@ -47,9 +47,60 @@ class ScoredChunk:
 
 @dataclass(frozen=True)
 class Project:
+    """A collection of documents, owned by one tenant.
+
+    ``folder`` is where its files are stored: the name in the default
+    tenant, so files uploaded before tenants existed stay where they are.
+    """
+
     id: int
     name: str
     created_at: datetime
+    tenant_id: int | None = None
+    storage_name: str | None = None
+
+    @property
+    def folder(self) -> str:
+        return self.storage_name or self.name
+
+
+DEFAULT_TENANT = "default"
+# What an API key may do. Each route needs one of them.
+SCOPES = ("read", "write", "ask", "admin")
+Scope = Literal["read", "write", "ask", "admin"]
+
+
+@dataclass(frozen=True)
+class Tenant:
+    """An organisation or app with its own projects, invisible to other tenants."""
+
+    id: int
+    name: str
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class ApiKey:
+    """A tenant's API key. Only its hash is stored; ``prefix`` identifies it in lists."""
+
+    id: str
+    tenant_id: int
+    name: str
+    prefix: str
+    scopes: tuple[str, ...]
+    created_at: datetime
+    last_used_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+
+@dataclass(frozen=True)
+class Principal:
+    """Who a request acts for: a tenant, with the scopes its key has."""
+
+    tenant_id: int
+    tenant_name: str
+    scopes: frozenset[str]
+    key_id: str | None = None  # None when authentication is off.
 
 
 @dataclass(frozen=True)
@@ -219,6 +270,8 @@ class Job:
     error_signal: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # The tenant that owns its project; the worker acts for it.
+    tenant_id: int | None = None
 
 
 # What webhooks can subscribe to; "ping" is sent on request, to any webhook.

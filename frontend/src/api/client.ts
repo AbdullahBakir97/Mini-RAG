@@ -1,5 +1,6 @@
 import { signalMessage } from "@/lib/signals";
 
+import { authHeaders, noteRefusal } from "./auth";
 import { readEvents } from "./sse";
 import type {
   Answer,
@@ -14,6 +15,7 @@ import type {
   Health,
   IndexResult,
   Job,
+  Me,
   Page,
   ProcessOptions,
   ProcessResult,
@@ -61,14 +63,16 @@ export function errorFromBody(status: number, body: unknown): ApiError {
 async function send(path: string, init: RequestInit = {}): Promise<Response> {
   let response: Response;
   try {
-    response = await fetch(BASE + path, init);
+    response = await fetch(BASE + path, { ...init, headers: { ...authHeaders(), ...(init.headers as object) } });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
     throw new ApiError(0, "network_error");
   }
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw errorFromBody(response.status, body);
+    const error = errorFromBody(response.status, body);
+    noteRefusal(error.signal);
+    throw error;
   }
   return response;
 }
@@ -153,12 +157,17 @@ export const api = {
       const request = new XMLHttpRequest();
       request.open("POST", `${BASE}/data/upload/${project(name)}`);
       request.responseType = "json";
+      for (const [header, value] of Object.entries(authHeaders())) request.setRequestHeader(header, value);
       request.upload.onprogress = (event) => {
         if (event.lengthComputable) options.onProgress?.(event.loaded / event.total);
       };
       request.onload = () => {
         if (request.status >= 200 && request.status < 300) resolve(request.response as UploadResult);
-        else reject(errorFromBody(request.status, request.response));
+        else {
+          const error = errorFromBody(request.status, request.response);
+          noteRefusal(error.signal);
+          reject(error);
+        }
       };
       request.onerror = () => reject(new ApiError(0, "network_error"));
       request.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
@@ -175,6 +184,7 @@ export const api = {
   createJob: (name: string, fileId: string, options: ProcessOptions) =>
     post<Job>(`/projects/${project(name)}/jobs`, { file_id: fileId, ...options }),
   job: (name: string, jobId: string) => get<Job>(`/projects/${project(name)}/jobs/${encodeURIComponent(jobId)}`),
+  me: () => get<Me>("/me"),
   webhooks: (name: string, page: PageParams = {}) =>
     get<Page<Webhook>>(`/projects/${project(name)}/webhooks`, { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
   createWebhook: (name: string, body: { url: string; events: WebhookEvent[]; description?: string | null }) =>

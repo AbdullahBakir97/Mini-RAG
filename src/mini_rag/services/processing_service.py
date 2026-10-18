@@ -31,7 +31,7 @@ class ProcessingService:
         if record is None:
             raise FileNotFound()
 
-        path = self.storage.get_file_path(project_name, file_key)
+        path = self.storage.get_file_path(project.folder, file_key)
         loader = self.loaders.get(file_key)
         splitter = RecursiveTextSplitter(chunk_size=chunk_size, overlap_size=overlap_size)
 

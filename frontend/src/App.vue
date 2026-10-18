@@ -3,6 +3,7 @@ import { Menu } from "@lucide/vue";
 import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
 
+import ApiKeyDialog from "@/components/ApiKeyDialog.vue";
 import AppSidebar from "@/components/AppSidebar.vue";
 import BrandMark from "@/components/BrandMark.vue";
 import ToastHost from "@/components/ToastHost.vue";
@@ -33,6 +34,7 @@ watch(
       <RouterView />
     </main>
     <ToastHost />
+    <ApiKeyDialog />
   </div>
 </template>
 

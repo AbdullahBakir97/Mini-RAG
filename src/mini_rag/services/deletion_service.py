@@ -21,11 +21,12 @@ class DeletionService:
         self.storage = storage
 
     async def delete_project(self, project_name: str) -> None:
-        if not await self.uow.projects.delete(project_name):
+        project = await self.uow.projects.get_by_name(project_name)
+        if project is None or not await self.uow.projects.delete(project_name):
             raise ProjectNotFound()
         await self.uow.commit()
         try:
-            self.storage.delete_project(project_name)
+            self.storage.delete_project(project.folder)
         except OSError:
             logger.warning("The files of project %s could not be removed from disk.",
                            project_name, exc_info=True)
@@ -39,7 +40,7 @@ class DeletionService:
         await emit(self.uow, project, "file.deleted", {"file_id": file_key})
         await self.uow.commit()
         try:
-            self.storage.delete_file(project_name, file_key)
+            self.storage.delete_file(project.folder, file_key)
         except OSError:
             logger.warning("The file %s of project %s could not be removed from disk.",
                            file_key, project_name, exc_info=True)

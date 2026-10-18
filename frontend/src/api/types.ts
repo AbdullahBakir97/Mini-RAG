@@ -78,6 +78,13 @@ export interface ProcessResult {
   chunks_count: number;
 }
 
+export interface Me {
+  tenant: string;
+  scopes: string[];
+  key_id: string | null;
+  auth_enabled: boolean;
+}
+
 export type JobStatus = "queued" | "running" | "succeeded" | "failed";
 
 export interface Job {

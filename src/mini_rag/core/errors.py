@@ -81,6 +81,32 @@ class WebhookUrlNotAllowed(AppError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
 
+class ApiKeyRequired(AppError):
+    """Authentication is on, and the request carried no API key."""
+
+    signal = ResponseSignal.API_KEY_REQUIRED
+    status_code = HTTPStatus.UNAUTHORIZED
+
+
+class ApiKeyInvalid(AppError):
+    """The API key is unknown or was revoked."""
+
+    signal = ResponseSignal.API_KEY_INVALID
+    status_code = HTTPStatus.UNAUTHORIZED
+
+
+class ScopeMissing(AppError):
+    """The API key may not do this; the message names the scope it needs."""
+
+    signal = ResponseSignal.API_KEY_SCOPE_MISSING
+    status_code = HTTPStatus.FORBIDDEN
+
+
+class ApiKeyNotFound(AppError):
+    signal = ResponseSignal.API_KEY_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
 class WebhookFailed(Exception):
     """Sending a webhook failed; the message says how (for the delivery log)."""
 

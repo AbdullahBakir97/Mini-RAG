@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, status
 
-from mini_rag.api.dependencies import JobServiceDep
+from mini_rag.api.dependencies import READ, WRITE, JobServiceDep
 from mini_rag.api.schemas import (
     JobIdPath,
     JobListResponse,
@@ -34,7 +34,7 @@ def _job(job: Job) -> JobResponse:
                        started_at=job.started_at, finished_at=job.finished_at)
 
 
-@router.post("/{project_id}/jobs", status_code=status.HTTP_202_ACCEPTED,
+@router.post("/{project_id}/jobs", dependencies=[WRITE], status_code=status.HTTP_202_ACCEPTED,
              summary="Process and index a file in the background",
              description="The same work as POST /data/process and POST /index, done by a "
                          "worker. Follow it with GET .../jobs/{job_id}.",
@@ -45,7 +45,7 @@ async def create_job(project_id: ProjectId, request: JobRequest,
                                       request.overlap_size))
 
 
-@router.get("/{project_id}/jobs", summary="List jobs, most recent first",
+@router.get("/{project_id}/jobs", dependencies=[READ], summary="List jobs, most recent first",
             responses=error_responses(ProjectNotFound))
 async def list_jobs(project_id: ProjectId, page: PaginationDep, service: JobServiceDep,
                     status_filter: Annotated[
@@ -58,14 +58,16 @@ async def list_jobs(project_id: ProjectId, page: PaginationDep, service: JobServ
                            items=[_job(job) for job in result.items])
 
 
-@router.get("/{project_id}/jobs/{job_id}", summary="A job's status and progress",
+@router.get("/{project_id}/jobs/{job_id}", dependencies=[READ],
+            summary="A job's status and progress",
             responses=error_responses(ProjectNotFound, JobNotFound))
 async def get_job(project_id: ProjectId, job_id: JobIdPath,
                   service: JobServiceDep) -> JobResponse:
     return _job(await service.get(project_id, str(job_id)))
 
 
-@router.post("/{project_id}/jobs/{job_id}/retry", status_code=status.HTTP_202_ACCEPTED,
+@router.post("/{project_id}/jobs/{job_id}/retry", dependencies=[WRITE],
+             status_code=status.HTTP_202_ACCEPTED,
              summary="Queue a failed job again",
              responses=error_responses(ProjectNotFound, JobNotFound, JobNotFailed))
 async def retry_job(project_id: ProjectId, job_id: JobIdPath,

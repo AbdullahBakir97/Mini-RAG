@@ -30,3 +30,7 @@ class ResponseSignal(Enum):
     JOB_FAILED = "job_failed"
     WEBHOOK_NOT_FOUND = "webhook_not_found"
     WEBHOOK_URL_NOT_ALLOWED = "webhook_url_not_allowed"
+    API_KEY_REQUIRED = "api_key_required"
+    API_KEY_INVALID = "api_key_invalid"
+    API_KEY_SCOPE_MISSING = "api_key_scope_missing"
+    API_KEY_NOT_FOUND = "api_key_not_found"

@@ -30,6 +30,7 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Validation of IDs and request bodies | `api/schemas.py` (`ProjectId`, `FileId`, request models) |
 | Turning errors into responses | Services raise an `AppError` subclass; `api/error_handlers.py` maps it to `{"signal": ...}` and its status code |
 | Wiring objects together | `api/dependencies.py`, using FastAPI `Depends` |
+| Tenants and API keys | `get_principal` (in `api/dependencies.py`) turns the request's API key into a `Principal`: its tenant and scopes (`AuthService`, which stores only a SHA-256 of each key). Every route requires a scope with `READ`, `WRITE`, `ASK` or `ADMIN`. The unit of work of a request acts for its tenant, so `uow.projects` only ever finds that tenant's projects; every other repository is reached through a project's id, so isolation follows. Workers act for the tenant of each job. A project's files live in its `storage_name` folder: its name in the default tenant, `<name>.t<tenant id>` in others |
 | Path safety | `storage/file_storage.py`: every path is checked to stay inside `FILES_DIR` |
 | Transactions | One database session per request; services call `uow.commit()`, and anything uncommitted is rolled back |
 | Database schema | `persistence/tables.py`, changed only through Alembic migrations |

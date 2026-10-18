@@ -55,7 +55,7 @@ class FeedbackExportService:
             for file in files:
                 name = _document_name(file.original_name, file.key, set(names.values()))
                 try:
-                    path = self.storage.get_file_path(project_name, file.key)
+                    path = self.storage.get_file_path(project.folder, file.key)
                 except FileNotFound:
                     # Its record outlived the file; answers citing it go to review.
                     continue

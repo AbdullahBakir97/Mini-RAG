@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { BookOpen, FolderOpen, LayoutGrid, Plus, Search, X } from "@lucide/vue";
+import { BookOpen, FolderOpen, KeyRound, LayoutGrid, LogOut, Plus, Search, X } from "@lucide/vue";
 import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 
+import { apiKey, setApiKey } from "@/api/auth";
+import { api } from "@/api/client";
 import BrandMark from "@/components/BrandMark.vue";
 import HealthStatus from "@/components/HealthStatus.vue";
 import NewProjectDialog from "@/components/NewProjectDialog.vue";
@@ -22,7 +24,18 @@ const visible = computed(() => {
   return query ? names.value.filter((name) => name.toLowerCase().includes(query)) : names.value;
 });
 
-onMounted(refresh);
+// Signed in with a key: which tenant it opens.
+const tenant = ref<string | null>(null);
+
+function signOut() {
+  setApiKey(null);
+  window.location.assign("/");
+}
+
+onMounted(async () => {
+  void refresh();
+  if (apiKey.value) tenant.value = (await api.me().catch(() => null))?.tenant ?? null;
+});
 </script>
 
 <template>
@@ -76,6 +89,13 @@ onMounted(refresh);
     <button class="btn new" @click="dialog?.open()"><Plus :size="16" /> New project</button>
 
     <div class="foot">
+      <div v-if="apiKey" class="signed-in small">
+        <KeyRound :size="14" class="subtle" />
+        <span class="tenant" :title="tenant ?? undefined">{{ tenant ?? "Signed in" }}</span>
+        <button class="btn btn-ghost btn-sm" title="Forget the API key in this browser" @click="signOut">
+          <LogOut :size="14" /> Sign out
+        </button>
+      </div>
       <HealthStatus />
       <div class="foot-row">
         <a class="nav-item docs" href="/docs" target="_blank" rel="noopener"><BookOpen :size="16" /> API docs</a>
@@ -88,6 +108,22 @@ onMounted(refresh);
 </template>
 
 <style scoped>
+.signed-in {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  color: var(--text-2);
+}
+
+.signed-in .tenant {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

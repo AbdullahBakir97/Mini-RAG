@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from mini_rag.domain.models import AnswerRecord, Chunk, UsageTotals
 from mini_rag.persistence.database import create_engine, create_session_factory
-from mini_rag.persistence.repositories import SqlUnitOfWork
+from mini_rag.persistence.repositories import SqlTenantRepository, SqlUnitOfWork
 from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS, ProjectRow
 
 pytestmark = pytest.mark.anyio
@@ -17,10 +17,16 @@ async def session_factory(db):
     await engine.dispose()
 
 
+async def tenant_uow(session, tenant="default"):
+    """A unit of work acting for ``tenant``, created if needed."""
+    found = await SqlTenantRepository(session).get_or_create(tenant)
+    return SqlUnitOfWork(session, found.id)
+
+
 @pytest.fixture
 async def uow(session_factory):
     async with session_factory() as session:
-        yield SqlUnitOfWork(session)
+        yield await tenant_uow(session)
 
 
 async def add_file(uow, project, key="abc_notes.txt", size=10):
@@ -127,14 +133,14 @@ async def test_deleting_a_project_cascades_to_files_and_chunks(uow):
 
 async def test_uncommitted_work_is_discarded_and_commit_persists(session_factory):
     async with session_factory() as session:
-        await SqlUnitOfWork(session).projects.get_or_create("discarded")
+        await (await tenant_uow(session)).projects.get_or_create("discarded")
     async with session_factory() as session:
-        uow = SqlUnitOfWork(session)
+        uow = await tenant_uow(session)
         await uow.projects.get_or_create("kept")
         await uow.commit()
 
     async with session_factory() as session:
-        uow = SqlUnitOfWork(session)
+        uow = await tenant_uow(session)
         assert await uow.projects.get_by_name("discarded") is None
         assert await uow.projects.get_by_name("kept") is not None
 
@@ -344,7 +350,7 @@ async def test_conversations_are_listed_by_last_update(uow, session_factory):
     await uow.commit()
     # now() is the time of the transaction, so the update happens in a later one.
     async with session_factory() as session:
-        later = SqlUnitOfWork(session)
+        later = await tenant_uow(session)
         await later.conversations.add_messages(older.id, [])
         await later.commit()
 

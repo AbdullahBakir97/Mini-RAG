@@ -4,6 +4,46 @@ All endpoints are under `/api/v1` (only `/` sits outside it, redirecting to `/do
 
 Every error response has the form `{"signal": "<name>"}` with a matching HTTP status; validation errors (`422`) list the fields that failed.
 
+## Authentication and tenants
+
+Every project belongs to a **tenant**: an organisation or app whose projects, files, answers, jobs and webhooks are invisible to every other tenant. Two tenants can each have a project called `docs`.
+
+With `AUTH_ENABLED=false` (the default, for your own computer), no key is needed and every request acts for the tenant `default` with every scope. With `AUTH_ENABLED=true`, every endpoint except `/api/v1/` and `/api/v1/health` needs an API key, sent as `Authorization: Bearer <key>` or `X-API-Key: <key>`:
+
+```bash
+mini-rag tenants create acme
+mini-rag keys create --tenant acme --name website --scope read --scope ask
+curl -H "Authorization: Bearer mrag_…" http://localhost:8000/api/v1/projects
+```
+
+A key belongs to one tenant and has one or more **scopes**:
+
+| Scope | Allows |
+|---|---|
+| `read` | Listing and reading projects, files, chunks, usage, conversations, feedback and jobs; search |
+| `write` | Uploading, processing, indexing and deleting; queuing and retrying jobs |
+| `ask` | Asking questions, starting and deleting conversations, rating answers |
+| `admin` | Managing the tenant's API keys and webhooks |
+
+A key is shown once, when it is created; the server keeps only its SHA-256, and the first 12 characters (`prefix`) to recognise it in lists. Revoking a key stops it at once.
+
+| Case | Status | Response |
+|---|---|---|
+| No key | `401` | `{"signal": "api_key_required"}` |
+| Unknown or revoked key | `401` | `{"signal": "api_key_invalid"}` |
+| The key lacks the route's scope | `403` | `{"signal": "api_key_scope_missing"}` |
+
+`GET /api/v1/me` shows the tenant and scopes of the key used. With an `admin` key, a tenant manages its own keys:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/keys -H "Authorization: Bearer mrag_…" \
+  -H "Content-Type: application/json" -d '{"name": "ci", "scopes": ["read"]}'
+curl http://localhost:8000/api/v1/keys -H "Authorization: Bearer mrag_…"
+curl -X DELETE http://localhost:8000/api/v1/keys/<key id> -H "Authorization: Bearer mrag_…"
+```
+
+The first key of a tenant comes from the command line (`mini-rag keys create`), run where the database is reachable, e.g. `docker compose exec app mini-rag keys create --tenant acme --name admin`. `mini-rag keys list` and `mini-rag keys revoke` work there too, and `mini-rag tenants list` lists tenants. Projects that existed before tenants belong to `default`.
+
 ## Endpoints
 
 | Method | Path | Description |
@@ -11,6 +51,10 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `GET` | `/` | Redirects to `/docs` |
 | `GET` | `/api/v1/` | Welcome message with app name and version |
 | `GET` | `/api/v1/health` | `200` `{"status": "ok", "database": "ok"}`, or `503` when the database is unreachable |
+| `GET` | `/api/v1/me` | The tenant and scopes of the API key used |
+| `GET` | `/api/v1/keys` | The tenant's API keys (`admin`) |
+| `POST` | `/api/v1/keys` | Create an API key; it is returned once (`admin`) |
+| `DELETE` | `/api/v1/keys/{key_id}` | Revoke an API key (`admin`) |
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
 | `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
 | `POST` | `/api/v1/index/{project_id}` | Embed a project's chunks so they can be searched |

@@ -60,11 +60,43 @@ def _created_at() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class ProjectRow(Base):
-    __tablename__ = "projects"
+class TenantRow(Base):
+    """An organisation or app; its projects are invisible to other tenants."""
+
+    __tablename__ = "tenants"
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     name: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class ApiKeyRow(Base):
+    """A tenant's API key: only a SHA-256 of it is kept."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(
+        ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(100))
+    # The start of the key, to tell keys apart; not enough to use it.
+    prefix: Mapped[str] = mapped_column(String(16))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    scopes: Mapped[list[str]] = mapped_column(ARRAY(String(16)))
+    created_at: Mapped[datetime] = _created_at()
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ProjectRow(Base):
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("tenant_id", "name"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(64))
+    # The project's folder under FILES_DIR; unique across tenants.
+    storage_name: Mapped[str] = mapped_column(String(100), unique=True)
     created_at: Mapped[datetime] = _created_at()
 
 

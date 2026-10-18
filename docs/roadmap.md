@@ -46,7 +46,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 3: Platform and white-label
 
-- [ ] Tenants with hashed, scoped, revocable API keys; strict data isolation between tenants.
+- [x] Tenants with hashed, scoped, revocable API keys; strict data isolation between tenants.
 - [ ] Usage accounting, quotas and rate limits per tenant.
 - [ ] TypeScript and Python SDKs generated from the OpenAPI schema.
 - [ ] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations.
