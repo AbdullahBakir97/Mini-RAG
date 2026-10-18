@@ -13,10 +13,12 @@ from mini_rag.embeddings.factory import create_embedder
 from mini_rag.evaluation.dataset import Dataset, DatasetError, load_dataset
 from mini_rag.evaluation.report import (
     BaselineMismatch,
+    add_answers,
     baseline_from,
     build_report,
     compare,
 )
+from mini_rag.llm.factory import create_llm
 from mini_rag.loaders.registry import default_loader_registry
 from mini_rag.persistence.database import (
     EmbeddingDimensionsMismatch,
@@ -27,7 +29,12 @@ from mini_rag.persistence.database import (
     stored_embedding_dimensions,
 )
 from mini_rag.persistence.repositories import SqlUnitOfWork
-from mini_rag.services.evaluation_service import EvaluationService
+from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.evaluation_service import (
+    AnswerSettings,
+    EvaluationService,
+    Usage,
+)
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.search_service import SearchService
@@ -60,12 +67,22 @@ async def _resize_embeddings() -> int:
     return 0
 
 
-async def _run_retrieval(settings: Settings, args: argparse.Namespace,
-                         dataset: Dataset) -> dict:
+async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -> dict:
     embedder = create_embedder(settings)
     if embedder is None:
         raise _Failure("No embedding model is configured: set OPENAI_API_KEY, or "
                        "EMBEDDING_BASE_URL for an OpenAI-compatible server such as Ollama.")
+    llm = judge = None
+    if args.answers:
+        llm = create_llm(settings)
+        if llm is None:
+            await embedder.aclose()
+            raise _Failure("--answers needs a language model: set OPENAI_API_KEY, or "
+                           "LLM_BASE_URL for an OpenAI-compatible server such as Ollama.")
+        # The judge grades at temperature 0, so the same answer gets the same grade.
+        judge = create_llm(settings.model_copy(update={
+            "LLM_MODEL": args.judge_model or settings.LLM_MODEL, "LLM_TEMPERATURE": 0.0}))
+    parameters = _parameters(settings, args, dataset)
     engine = create_engine(settings.DATABASE_URL)
     try:
         if await stored_embedding_dimensions(engine) is None:
@@ -89,18 +106,43 @@ async def _run_retrieval(settings: Settings, args: argparse.Namespace,
                     indexing=IndexingService(uow=uow, embedder=embedder,
                                              batch_size=settings.EMBEDDING_BATCH_SIZE),
                     search=search)
-                run = await service.run_retrieval(dataset, top_k=args.top_k,
-                                                  chunk_size=args.chunk_size,
-                                                  overlap_size=args.overlap_size)
+                answers = None
+                if llm is not None and judge is not None:
+                    answers = AnswerSettings(
+                        answers=AnswerService(search=search, llm=llm, uow=uow,
+                                              min_score=parameters["min_score"],
+                                              prices=settings.llm_prices),
+                        judge=judge, min_score=parameters["min_score"],
+                        # Another judge model has prices of its own, which are not configured.
+                        judge_prices=None if args.judge_model else settings.llm_prices)
+                run = await service.run(dataset, top_k=args.top_k, chunk_size=args.chunk_size,
+                                        overlap_size=args.overlap_size, answers=answers)
     except EmbeddingDimensionsMismatch as exc:
         raise _Failure(str(exc)) from exc
     finally:
         await embedder.aclose()
+        for model in (llm, judge):
+            if model is not None:
+                await model.aclose()
         await engine.dispose()
 
-    return build_report(dataset=dataset, parameters=_parameters(settings, args, dataset),
-                        results=run.results, chunks=run.chunks, seconds=run.seconds,
-                        version=settings.APP_VERSION)
+    report = build_report(dataset=dataset, parameters=parameters, results=run.results,
+                          chunks=run.chunks, seconds=run.seconds, version=settings.APP_VERSION)
+    if answers is not None:
+        add_answers(report, run.answers, parameters={
+            "llm_model": settings.LLM_MODEL, "judge_model": judge.model,
+            "answer_prompt": answers.answers.prompt.version,
+            "judge_prompt": answers.judge_prompt.version,
+        }, usage={"answers": _usage(run.answer_usage), "judge": _usage(run.judge_usage)})
+    return report
+
+
+def _usage(usage: Usage | None) -> dict | None:
+    if usage is None:
+        return None
+    cost = None if usage.cost_usd is None else round(usage.cost_usd, 6)
+    return {"input_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+            "cost_usd": cost}
 
 
 def _parameters(settings: Settings, args: argparse.Namespace, dataset: Dataset) -> dict:
@@ -158,9 +200,43 @@ def _print_summary(report: dict) -> None:
         print(f"\n  No relevant result in the top {parameters['top_k']}:")
         for case in missed:
             print(f"    {case['id']}: {case['question']}")
+    if "answer_metrics" in report:
+        _print_answers(report)
     seconds = report["seconds"]
     print(f"\n  Took {seconds['processing']} s to process, {seconds['indexing']} s to index "
-          f"and {seconds['search']} s to search.")
+          f"and {seconds['search']} s to search"
+          + (f", {seconds['answers']} s to answer and grade." if "answers" in seconds else "."))
+
+
+def _print_answers(report: dict) -> None:
+    parameters, metrics = report["answer_parameters"], report["answer_metrics"]
+    print(f"\nAnswers by {parameters['llm_model']} ({parameters['answer_prompt']}), graded by "
+          f"{parameters['judge_model']} ({parameters['judge_prompt']})")
+    print()
+    rows = [("answered", "answered", "answerable questions that got an answer"),
+            ("abstained", "abstained", "unanswerable questions answered with no_answer"),
+            ("citation precision", "citation_precision", "citations of an expected passage"),
+            ("cites expected", "cites_expected", "answers citing an expected passage"),
+            ("grounded", "grounded", "statements supported by the cited sources, per the judge"),
+            ("correct", "correct", "agreement with the reference answer, per the judge")]
+    for label, key, meaning in rows:
+        print(f"  {label:<19}{_percent(metrics[key])}   {meaning}")
+    if metrics["unjudged"]:
+        print(f"  The judge gave no clear verdict on {metrics['unjudged']} answers.")
+    wrong = [case for case in report["cases"]
+             if case.get("answer") and case["answer"]["correct"] is not None
+             and case["answer"]["correct"] < 1]
+    if wrong:
+        print("\n  Not fully correct:")
+        for case in wrong:
+            print(f"    {case['id']}: {case['answer']['reason'] or case['question']}")
+    usage = report["answer_usage"]
+    for name in ("answers", "judge"):
+        spent = usage[name]
+        if spent and spent["input_tokens"] is not None:
+            cost = "" if spent["cost_usd"] is None else f", ${spent['cost_usd']:.4f}"
+            print(f"  {name.capitalize()}: {spent['input_tokens']:,} tokens in, "
+                  f"{spent['output_tokens']:,} out{cost}")
 
 
 def _read_baseline(path: Path) -> dict:
@@ -208,7 +284,7 @@ async def _evaluate(args: argparse.Namespace) -> int:
             # Fail before the run when its parameters cannot match.
             compare({"parameters": _parameters(settings, args, dataset), "metrics": {}},
                     {**baseline, "metrics": {}})
-        report = await _run_retrieval(settings, args, dataset)
+        report = await _run(settings, args, dataset)
         _print_summary(report)
         if args.output:
             args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n",
@@ -261,6 +337,12 @@ def main(argv: list[str] | None = None) -> int:
                           help="characters of overlap between chunks (default 200)")
     evaluate.add_argument("--min-score", type=float,
                           help="the minimum score for an answer (default ANSWER_MIN_SCORE)")
+    evaluate.add_argument("--answers", action="store_true",
+                          help="also answer every question with the configured language model "
+                               "and have a judge grade the answers (costs model calls)")
+    evaluate.add_argument("--judge-model",
+                          help="the model that grades answers (default LLM_MODEL, on the same "
+                               "server)")
     evaluate.add_argument("--output", type=Path, help="write the full JSON report here")
     evaluate.add_argument("--baseline", type=Path,
                           help="fail when a metric is lower than in this baseline")
@@ -272,6 +354,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "eval":
         if args.overlap_size >= args.chunk_size:
             parser.error("--overlap-size must be smaller than --chunk-size")
+        if args.judge_model and not args.answers:
+            parser.error("--judge-model needs --answers")
         return asyncio.run(_evaluate(args))
     return asyncio.run(_resize_embeddings())
 
