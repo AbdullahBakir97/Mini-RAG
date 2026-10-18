@@ -122,6 +122,38 @@ class SearchResponse(BaseModel):
     results: list[SearchResult]
 
 
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000, description="The question to answer.")
+    top_k: int = Field(default=5, ge=1, le=20, description="Most chunks to answer from.")
+    min_score: float | None = Field(
+        default=None, ge=-1, le=1,
+        description="Leave out chunks scoring below this; omit for the server's ANSWER_MIN_SCORE.")
+
+    @field_validator("question")
+    @classmethod
+    def question_must_contain_text(cls, question: str) -> str:
+        if not question.strip():
+            raise ValueError("question must not be blank")
+        return question
+
+
+class CitationResponse(BaseModel):
+    number: int = Field(description="The [n] marker that cites this source in the answer.")
+    file_id: str
+    chunk_index: int
+    page: int | None = Field(description="Page number for PDFs, starting at 1; null otherwise.")
+    score: float = Field(description="Cosine similarity to the question: 1 is the best match.")
+    text: str
+
+
+class AskResponse(BaseModel):
+    signal: ResponseSignal = Field(
+        description="`answer_success`, or `no_answer` when the documents do not answer the question.")
+    answer: str | None = Field(description="The answer with [n] citation markers; null for `no_answer`.")
+    citations: list[CitationResponse] = Field(description="The sources the answer cites, in order of first citation.")
+    prompt_version: str = Field(description="The prompt that produced the answer, e.g. `answer-v1`.")
+
+
 class ProjectResponse(BaseModel):
     name: str
     created_at: datetime

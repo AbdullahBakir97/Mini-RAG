@@ -13,7 +13,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
 
-from mini_rag.core.errors import EmbeddingFailed
+from mini_rag.core.errors import EmbeddingFailed, LLMFailed
+from mini_rag.domain.llm import Message
 from mini_rag.domain.models import (
     Chunk,
     FileRecord,
@@ -171,3 +172,23 @@ class FakeEmbedder:
         for word in re.findall(r"\w+", text.lower()):
             vector[1 + zlib.crc32(word.encode()) % (self.dimensions - 1)] += 1.0
         return vector
+
+
+class FakeLLM:
+    """Replies with ``reply``, or raises LLMFailed when ``fail`` is set.
+
+    ``calls`` records the messages of every request.
+    """
+
+    model = "fake-llm"
+
+    def __init__(self, reply: str = "A fake answer.", fail: bool = False):
+        self.reply = reply
+        self.fail = fail
+        self.calls: list[list[Message]] = []
+
+    async def complete(self, messages: Sequence[Message]) -> str:
+        self.calls.append(list(messages))
+        if self.fail:
+            raise LLMFailed("fake failure")
+        return self.reply

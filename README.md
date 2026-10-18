@@ -4,15 +4,34 @@
 
 [![CI](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/AbdullahBakir97/Mini-RAG/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-3776AB?style=flat-square&logo=python&logoColor=white) ![FastAPI](https://img.shields.io/badge/FastAPI-009688?style=flat-square&logo=fastapi&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](./LICENSE)
 
+<p align="center">
+  <img src="docs/media/how-an-answer-is-made.gif" width="880" alt="Animation of how Mini RAG answers a question: a PDF is uploaded, read page by page, split into overlapping chunks, embedded as vectors and indexed; a question is then embedded, the nearest chunks above the minimum score become numbered sources, and the model answers from them with citations.">
+</p>
+<p align="center"><sub>How an answer is made, with sample data · <a href="docs/media/how-an-answer-is-made.mp4">MP4</a></sub></p>
+
 ## Features
 
 - **Upload** TXT and PDF files into separate projects, with type checks and a size limit enforced while streaming.
 - **Process** them into chunks that respect paragraphs, with exact overlap between chunks and page numbers for PDFs.
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
 - **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
+- **Ask** questions and get answers with citations to the file, page and chunk, or an explicit "no answer" when the documents don't say.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
 
-Answer generation with citations is next; see the [roadmap](docs/roadmap.md).
+Streaming answers and conversations are next; see the [roadmap](docs/roadmap.md).
+
+## How it works
+
+Documents are indexed once: uploaded, read, split into overlapping chunks, embedded and stored in PostgreSQL with pgvector. Every question is then embedded with the same model, the closest chunks above a minimum score become numbered sources, and the language model answers only from them, citing each one.
+
+<p align="center">
+  <img src="docs/media/live-trace.gif" width="880" alt="Animated trace of one run: the ingest steps (upload, extract text, split, embed, store) complete one after another, then the ask steps (question, embed query, vector search, rank, build prompt, generate, answer), with a timing chart and an event log.">
+</p>
+<p align="center"><sub>One run from upload to cited answer, with sample data · <a href="docs/media/live-trace.mp4">MP4</a></sub></p>
+
+<p align="center">
+  <img src="docs/media/system-overview.png" width="880" alt="System overview infographic: the five ingest steps and the seven ask steps around the shared index, key defaults (1,000-character chunks, 200 characters of overlap, 1,536-dimension vectors, 64 chunks per request, 5 sources per answer), and diagrams of chunking with overlap, search by meaning, the prompt and a cited answer.">
+</p>
 
 ## Quick start
 
@@ -32,7 +51,7 @@ alembic upgrade head             # create or update the database tables
 uvicorn mini_rag.main:app --reload
 ```
 
-Open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing and search need `OPENAI_API_KEY` in `.env`, or an OpenAI-compatible server in `EMBEDDING_BASE_URL`.
+Open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
 
 ### Try it
 
@@ -46,6 +65,8 @@ curl -X POST http://localhost:8000/api/v1/index/demo
 
 curl -X POST http://localhost:8000/api/v1/search/demo \
   -H "Content-Type: application/json" -d '{"query": "What do my notes say about overlap?"}'
+curl -X POST http://localhost:8000/api/v1/ask/demo \
+  -H "Content-Type: application/json" -d '{"question": "What do my notes say about overlap?"}'
 ```
 
 ## Documentation
@@ -60,7 +81,7 @@ curl -X POST http://localhost:8000/api/v1/search/demo \
 
 ## Tech stack
 
-FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings · pypdf · pytest and ruff in GitHub Actions
+FastAPI · PostgreSQL 16 with pgvector · SQLAlchemy 2 (async) and Alembic · OpenAI-compatible embeddings and chat models · pypdf · pytest and ruff in GitHub Actions
 
 ## Contributing
 
