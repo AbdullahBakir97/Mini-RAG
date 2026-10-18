@@ -21,7 +21,9 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
 | `GET` | `/api/v1/projects/{project_id}/usage` | Token usage and cost of the project's answers |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
+| `DELETE` | `/api/v1/projects/{project_id}` | Delete a project with all its files, chunks, answers and conversations |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
+| `DELETE` | `/api/v1/projects/{project_id}/files/{file_id}` | Delete a file with its chunks |
 | `POST` | `/api/v1/projects/{project_id}/conversations` | Start a conversation |
 | `GET` | `/api/v1/projects/{project_id}/conversations` | List conversations, most recent first (paged) |
 | `GET` | `/api/v1/projects/{project_id}/conversations/{conversation_id}` | A conversation with its questions and answers |
@@ -32,7 +34,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 
 ## Upload a file
 
-`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other.
+`project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other. Each file's SHA-256 is kept, and content the project already has is not stored again, whatever the file's name: the response then carries the existing file's id, so uploading the same files twice is safe.
 
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
@@ -45,6 +47,7 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | Case | Status | Response |
 |---|---|---|
 | Upload saved | `200` | `{"signal": "file_uploaded_successfully", "file_id": "..."}` |
+| The project has this content already | `200` | `{"signal": "file_already_uploaded", "file_id": "<the existing file>"}` |
 | File type not in `FILE_ALLOWED_TYPES` | `415` | `{"signal": "file_type_not_supported"}` |
 | File larger than `FILE_MAX_SIZE` | `413` | `{"signal": "file_size_exceeded"}` |
 | Invalid `project_id` | `422` | Validation error details |
@@ -106,6 +109,15 @@ curl "http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt/c
 ```
 
 Lists are paged with `offset` (default `0`) and `limit` (default `20`, at most `100`); `total` is the number of items overall. Projects are listed by name, with only `name` and `created_at`; a project exists once a file was uploaded into it. Files are listed in upload order, chunks by `chunk_index`. An unknown project returns `404` `{"signal": "project_not_found"}`, an unknown file `404` `{"signal": "file_not_found"}`.
+
+## Delete files and projects
+
+```bash
+curl -X DELETE http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_notes.txt
+curl -X DELETE http://localhost:8000/api/v1/projects/demo1
+```
+
+Both return `204`. Deleting a file removes its chunks and embeddings from the database and the file from `FILES_DIR`; answers that cited it keep their copy of the cited text. Deleting a project removes everything in it: files, chunks, answers, conversations and ratings, and its folder under `FILES_DIR`. The database is changed first, in one transaction; if the files on disk cannot be removed afterwards, a warning is logged and the request still succeeds, since nothing points at them any more. An unknown project or file returns `404`, as above.
 
 ## Index chunks for search
 

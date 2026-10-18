@@ -9,15 +9,17 @@ import {
   LoaderCircle,
   RefreshCw,
   Settings2,
+  Trash2,
 } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 
 import { ApiError, api } from "@/api/client";
 import type { FileInfo, ProcessOptions } from "@/api/types";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
 import FileDropzone from "@/components/FileDropzone.vue";
 import PagerControls from "@/components/PagerControls.vue";
-import { type Stage, useIngest } from "@/composables/useIngest";
+import { FINISHED, type Stage, useIngest } from "@/composables/useIngest";
 import { useProject } from "@/composables/useProject";
 import { useProjects } from "@/composables/useProjects";
 import { useToasts } from "@/composables/useToasts";
@@ -27,6 +29,7 @@ const LIMIT = 20;
 const { name, project, refresh: refreshProject } = useProject();
 const { refresh: refreshProjects } = useProjects();
 const toasts = useToasts();
+const router = useRouter();
 
 const files = ref<FileInfo[]>([]);
 const total = ref(0);
@@ -128,12 +131,51 @@ const stageLabel: Record<Stage, string> = {
   processing: "Splitting into chunks",
   indexing: "Indexing",
   done: "Ready",
+  duplicate: "Already in the project",
   "not-indexed": "Not indexed",
   failed: "Failed",
 };
 
 const busyStages: Stage[] = ["uploading", "processing", "indexing"];
-const finished = computed(() => jobs.value.some((job) => ["done", "failed", "not-indexed"].includes(job.stage)));
+const finished = computed(() => jobs.value.some((job) => FINISHED.includes(job.stage)));
+
+// The file whose deletion waits for confirmation, and the one being deleted.
+const confirmingDelete = ref<string | null>(null);
+const deleting = ref<string | null>(null);
+
+async function deleteFile(file: FileInfo) {
+  deleting.value = file.file_id;
+  try {
+    await api.deleteFile(name.value, file.file_id);
+    toasts.success("File deleted", `${file.original_name} and its chunks are gone.`);
+    // The last file of a page: show the page before.
+    await load(files.value.length === 1 && offset.value > 0 ? offset.value - LIMIT : offset.value);
+    await refreshProject();
+  } catch (caught) {
+    toasts.error("The file could not be deleted", caught instanceof ApiError ? caught.message : undefined);
+  } finally {
+    deleting.value = null;
+    confirmingDelete.value = null;
+  }
+}
+
+const projectConfirmation = ref("");
+const deletingProject = ref(false);
+
+async function deleteProject() {
+  if (projectConfirmation.value !== name.value) return;
+  deletingProject.value = true;
+  try {
+    await api.deleteProject(name.value);
+    toasts.success("Project deleted", `${name.value} and everything in it are gone.`);
+    await refreshProjects();
+    await router.push({ name: "home" });
+  } catch (caught) {
+    toasts.error("The project could not be deleted", caught instanceof ApiError ? caught.message : undefined);
+  } finally {
+    deletingProject.value = false;
+  }
+}
 const isEmpty = computed(() => !loading.value && total.value === 0 && jobs.value.length === 0);
 
 function kind(file: FileInfo) {
@@ -188,7 +230,7 @@ onMounted(() => load(0));
         <li v-for="job in jobs" :key="job.id" class="job">
           <span class="job-icon" :class="job.stage">
             <LoaderCircle v-if="busyStages.includes(job.stage)" :size="16" class="spin" />
-            <CircleCheck v-else-if="job.stage === 'done'" :size="16" />
+            <CircleCheck v-else-if="job.stage === 'done' || job.stage === 'duplicate'" :size="16" />
             <CircleAlert v-else-if="job.stage === 'failed' || job.stage === 'not-indexed'" :size="16" />
             <Clock v-else :size="16" />
           </span>
@@ -206,7 +248,7 @@ onMounted(() => load(0));
             </p>
           </div>
           <span class="badge" :class="{
-            'badge-success': job.stage === 'done',
+            'badge-success': job.stage === 'done' || job.stage === 'duplicate',
             'badge-danger': job.stage === 'failed',
             'badge-warning': job.stage === 'not-indexed',
             'badge-accent': busyStages.includes(job.stage),
@@ -251,7 +293,15 @@ onMounted(() => load(0));
               <span v-else>{{ formatNumber(chunkCounts[file.file_id]!) }}</span>
             </td>
             <td class="hide-sm muted" :title="file.created_at">{{ formatRelative(file.created_at) }}</td>
-            <td class="actions-col">
+            <td v-if="confirmingDelete === file.file_id" class="actions-col confirm-col">
+              <span class="small">Delete with its chunks?</span>
+              <button class="btn btn-danger btn-sm" :disabled="deleting !== null" @click="deleteFile(file)">
+                <LoaderCircle v-if="deleting === file.file_id" :size="14" class="spin" />
+                Delete
+              </button>
+              <button class="btn btn-ghost btn-sm" @click="confirmingDelete = null">Cancel</button>
+            </td>
+            <td v-else class="actions-col">
               <button class="btn btn-ghost btn-sm btn-icon" title="View chunks" aria-label="View chunks" @click="viewing = file">
                 <Eye :size="15" />
               </button>
@@ -264,6 +314,14 @@ onMounted(() => load(0));
               >
                 <LoaderCircle v-if="reprocessing === file.file_id" :size="15" class="spin" />
                 <RefreshCw v-else :size="15" />
+              </button>
+              <button
+                class="btn btn-ghost btn-sm btn-icon"
+                :title="`Delete ${file.original_name}`"
+                :aria-label="`Delete ${file.original_name}`"
+                @click="confirmingDelete = file.file_id"
+              >
+                <Trash2 :size="15" />
               </button>
             </td>
           </tr>
@@ -278,11 +336,66 @@ onMounted(() => load(0));
       Upload a document to start. The project is saved with its first file.
     </p>
 
+    <section v-if="project" class="danger card" aria-labelledby="delete-project">
+      <div>
+        <h3 id="delete-project">Delete this project</h3>
+        <p class="muted small">
+          Deletes {{ formatNumber(project.files_count) }} files with their chunks, answers, conversations and ratings.
+          This cannot be undone.
+        </p>
+      </div>
+      <form class="danger-form" @submit.prevent="deleteProject">
+        <input
+          v-model="projectConfirmation"
+          class="input"
+          :placeholder="`Type ${name} to confirm`"
+          :aria-label="`Type ${name} to confirm`"
+          autocomplete="off"
+        />
+        <button class="btn btn-danger" type="submit" :disabled="projectConfirmation !== name || deletingProject">
+          <LoaderCircle v-if="deletingProject" :size="14" class="spin" />
+          Delete project
+        </button>
+      </form>
+    </section>
+
     <ChunkDrawer :project="name" :file="viewing" @close="viewing = null" />
   </section>
 </template>
 
 <style scoped>
+.confirm-col {
+  white-space: nowrap;
+}
+
+.confirm-col .small {
+  margin-right: 6px;
+}
+
+.danger {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 24px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.danger h3 {
+  color: var(--danger);
+}
+
+.danger-form {
+  display: flex;
+  gap: 8px;
+}
+
+.danger-form .input {
+  width: 220px;
+}
+
 .documents {
   display: flex;
   flex-direction: column;

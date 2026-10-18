@@ -24,18 +24,23 @@ router = APIRouter(prefix="/api/v1/data", tags=["data"])
 @router.post(
     "/upload/{project_id}",
     summary="Upload a file into a project",
+    description="Content the project already has is not stored again: the response then has "
+                "signal `file_already_uploaded` and the existing file's id, so uploading "
+                "the same files again is safe.",
     responses=error_responses(UnsupportedFileType, FileTooLarge, UploadFailed),
 )
 async def upload_data(project_id: ProjectId, file: UploadFile,
                       upload_service: UploadServiceDep) -> UploadResponse:
-    file_id = await upload_service.save(
+    upload = await upload_service.save(
         project_name=project_id,
         filename=file.filename or "",
         content_type=file.content_type,
         stream=file,
         declared_size=file.size,
     )
-    return UploadResponse(signal=ResponseSignal.FILE_UPLOAD_SUCCESS, file_id=file_id)
+    signal = (ResponseSignal.FILE_ALREADY_UPLOADED if upload.duplicate
+              else ResponseSignal.FILE_UPLOAD_SUCCESS)
+    return UploadResponse(signal=signal, file_id=upload.file_id)
 
 
 @router.post(

@@ -37,7 +37,7 @@ def test_full_flow_upload_process_and_read_back(client):
 
 
 def test_lists_are_paged(client):
-    file_ids = [upload(client, "demo") for _ in range(3)]
+    file_ids = [upload(client, "demo", content=CONTENT + str(i).encode()) for i in range(3)]
     process(client, "demo", file_ids[0], chunk_size=60, overlap_size=0)
 
     files = client.get("/api/v1/projects/demo/files", params={"offset": 1, "limit": 1}).json()
@@ -103,3 +103,44 @@ def test_projects_are_listed_by_name(client):
     assert (page["total"], page["offset"], page["limit"]) == (3, 1, 5)
     assert [p["name"] for p in page["items"]] == ["notes", "papers"]
     assert set(page["items"][0]) == {"name", "created_at"}
+
+
+def test_files_and_projects_are_deleted_everywhere(client, files_dir):
+    kept = upload(client, "demo", content=CONTENT + b"kept")
+    gone = upload(client, "demo", content=CONTENT + b"gone")
+    process(client, "demo", gone, chunk_size=60, overlap_size=0)
+
+    assert client.delete(f"/api/v1/projects/demo/files/{gone}").status_code == 204
+
+    files = client.get("/api/v1/projects/demo/files").json()
+    assert [f["file_id"] for f in files["items"]] == [kept]
+    assert client.get(f"/api/v1/projects/demo/files/{gone}/chunks").json() == {
+        "signal": "file_not_found"}
+    assert not (files_dir / "demo" / gone).exists()
+    again = client.delete(f"/api/v1/projects/demo/files/{gone}")
+    assert (again.status_code, again.json()) == (404, {"signal": "file_not_found"})
+
+    assert client.delete("/api/v1/projects/demo").status_code == 204
+
+    assert client.get("/api/v1/projects/demo").json() == {"signal": "project_not_found"}
+    assert not (files_dir / "demo").exists()
+    assert client.delete("/api/v1/projects/demo").status_code == 404
+
+
+def test_a_deleted_file_can_be_uploaded_again(client):
+    first = upload(client, "demo")
+    client.delete(f"/api/v1/projects/demo/files/{first}")
+
+    response = client.post("/api/v1/data/upload/demo", files={"file": ("notes.txt", CONTENT, "text/plain")})
+
+    assert response.json()["signal"] == "file_uploaded_successfully"
+    assert response.json()["file_id"] != first
+
+
+def test_nul_characters_in_a_text_file_are_dropped(client):
+    file_id = upload(client, "demo", content=b"Cats\x00 purr when content.")
+
+    process(client, "demo", file_id, chunk_size=60, overlap_size=0)
+
+    chunks = client.get(f"/api/v1/projects/demo/files/{file_id}/chunks").json()
+    assert [chunk["text"] for chunk in chunks["items"]] == ["Cats purr when content."]

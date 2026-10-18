@@ -39,10 +39,19 @@ def test_upload_stores_file_under_project(client, files_dir):
 
 
 def test_upload_generates_unique_file_ids(client):
-    first = upload(client, "p1").json()["file_id"]
-    second = upload(client, "p1").json()["file_id"]
+    first = upload(client, "p1", content=b"hello").json()["file_id"]
+    second = upload(client, "p1", content=b"world").json()["file_id"]
 
     assert first != second
+
+
+def test_uploading_the_same_content_again_returns_the_file_already_there(client, files_dir):
+    first = upload(client, "p1", name="notes.txt").json()
+    again = upload(client, "p1", name="renamed.txt").json()
+
+    assert first["signal"] == "file_uploaded_successfully"
+    assert again == {"signal": "file_already_uploaded", "file_id": first["file_id"]}
+    assert len(list((files_dir / "p1").iterdir())) == 1
 
 
 def test_upload_rejects_unsupported_type(client, files_dir):

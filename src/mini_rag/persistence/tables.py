@@ -69,7 +69,12 @@ class ProjectRow(Base):
 
 class FileRow(Base):
     __tablename__ = "files"
-    __table_args__ = (UniqueConstraint("project_id", "key"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "key"),
+        # The same content is kept once per project.
+        Index("uq_files_project_id_content_sha256", "project_id", "content_sha256", unique=True,
+              postgresql_where=text("content_sha256 IS NOT NULL")),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
     project_id: Mapped[int] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -78,6 +83,8 @@ class FileRow(Base):
     original_name: Mapped[str] = mapped_column(Text)
     content_type: Mapped[str] = mapped_column(String(255))
     size_bytes: Mapped[int] = mapped_column(BigInteger)
+    # Hex SHA-256 of the content; NULL for files uploaded before it was kept.
+    content_sha256: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = _created_at()
 
 

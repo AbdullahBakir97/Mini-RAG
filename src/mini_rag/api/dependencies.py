@@ -16,6 +16,7 @@ from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.conversation_service import ConversationService
+from mini_rag.services.deletion_service import DeletionService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
@@ -97,6 +98,13 @@ def get_project_service(uow: UnitOfWorkDep) -> ProjectService:
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_deletion_service(uow: UnitOfWorkDep, storage: FileStorageDep) -> DeletionService:
+    return DeletionService(uow=uow, storage=storage)
+
+
+DeletionServiceDep = Annotated[DeletionService, Depends(get_deletion_service)]
 
 
 def get_conversation_service(uow: UnitOfWorkDep) -> ConversationService:

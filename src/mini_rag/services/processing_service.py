@@ -60,6 +60,7 @@ class ProcessingService:
     def _split(documents: list[Document], splitter: RecursiveTextSplitter) -> list[Chunk]:
         chunks: list[Chunk] = []
         for document in documents:
-            for text in splitter.split(document.text):
+            # NUL characters (some PDFs and exports have them) cannot be stored as text.
+            for text in splitter.split(document.text.replace("\x00", "")):
                 chunks.append(Chunk(index=len(chunks), text=text, metadata=dict(document.metadata)))
         return chunks
