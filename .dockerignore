@@ -1,0 +1,17 @@
+# Only what the image needs: pyproject.toml, README.md, LICENSE and src/.
+# Secrets and local data must never reach an image.
+.env
+.git
+.github
+.venv
+venv
+assets
+docs
+tests
+**/__pycache__
+**/*.py[cod]
+*.egg-info
+build
+dist
+.pytest_cache
+.ruff_cache

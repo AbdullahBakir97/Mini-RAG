@@ -36,7 +36,20 @@ Documents are indexed once: uploaded, read, split into overlapping chunks, embed
 
 ## Quick start
 
-Requires Python 3.11+ and Docker.
+### With Docker
+
+Requires only Docker. One command starts PostgreSQL with pgvector, applies the migrations and serves the API:
+
+```bash
+git clone https://github.com/AbdullahBakir97/Mini-RAG.git
+cd Mini-RAG
+cp .env.example .env             # Windows: copy .env.example .env; then add your API key
+docker compose up --build
+```
+
+### With Python
+
+Requires Python 3.11+ and Docker for the database. Use this to work on the code: the API reloads on every change.
 
 ```bash
 git clone https://github.com/AbdullahBakir97/Mini-RAG.git
@@ -52,7 +65,7 @@ alembic upgrade head             # create or update the database tables
 uvicorn mini_rag.main:app --reload
 ```
 
-Open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
+Either way, open **http://localhost:8000** for the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.
 
 ### Try it
 

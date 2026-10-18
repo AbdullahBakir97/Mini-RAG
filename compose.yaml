@@ -1,4 +1,6 @@
-# Local development services. Start with: docker compose up -d db
+# The whole stack: docker compose up --build   (API on http://localhost:8000)
+# Only the database, to run the API with uvicorn: docker compose up -d db
+# Both read settings from .env (copy .env.example first).
 services:
   db:
     # PostgreSQL 16 with the pgvector extension (0.8 or newer) for vector search.
@@ -17,5 +19,26 @@ services:
       timeout: 3s
       retries: 10
 
+  app:
+    build: .
+    image: mini-rag
+    env_file: .env
+    environment:
+      # Inside the stack the database is reached by its service name.
+      DATABASE_URL: postgresql+asyncpg://mini_rag:mini_rag@db:5432/mini_rag
+      FILES_DIR: /app/assets/files
+    # Bring the schema up to date, then serve. Migrations are safe to run on
+    # every start: Alembic applies only the missing ones.
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn mini_rag.main:app --host 0.0.0.0 --port 8000"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - files:/app/assets/files
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   db-data:
+  files:
