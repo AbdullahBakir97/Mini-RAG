@@ -14,6 +14,10 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `POST` | `/api/v1/data/upload/{project_id}` | Upload a file into a project |
 | `POST` | `/api/v1/data/process/{project_id}` | Split an uploaded file into chunks and store them |
 | `POST` | `/api/v1/index/{project_id}` | Embed a project's chunks so they can be searched |
+| `POST` | `/api/v1/projects/{project_id}/jobs` | Process and index a file in the background |
+| `GET` | `/api/v1/projects/{project_id}/jobs` | List jobs, most recent first (paged; `?status=` filters) |
+| `GET` | `/api/v1/projects/{project_id}/jobs/{job_id}` | A job's status and progress |
+| `POST` | `/api/v1/projects/{project_id}/jobs/{job_id}/retry` | Queue a failed job again |
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
@@ -151,6 +155,39 @@ Only chunks without an embedding are sent, in batches of `EMBEDDING_BATCH_SIZE`,
 | No such project or file | `404` | `{"signal": "project_not_found"}` / `{"signal": "file_not_found"}` |
 | The embedding provider failed | `502` | `{"signal": "embedding_failed"}` |
 | No API key and no `EMBEDDING_BASE_URL` | `503` | `{"signal": "embedding_not_configured"}` |
+
+## Background jobs
+
+Processing and indexing a large file can take minutes, longer than a request should wait. A job does both in the background: queue it with the same options as processing, then follow it.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/demo1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"file_id": "a16q20nzrtvj_notes.txt", "chunk_size": 1000, "overlap_size": 200}'
+curl http://localhost:8000/api/v1/projects/demo1/jobs/0b6f3c1e-8a52-4d47-9a0e-2f5d7c1b9e44
+```
+
+```json
+{
+  "id": "0b6f3c1e-8a52-4d47-9a0e-2f5d7c1b9e44", "file_id": "a16q20nzrtvj_notes.txt",
+  "status": "running", "stage": "indexing", "progress": 0.5, "chunks_count": null,
+  "attempts": 1, "max_attempts": 3, "chunk_size": 1000, "overlap_size": 200, "error": null,
+  "created_at": "2026-10-18T05:44:07Z", "started_at": "2026-10-18T05:44:07Z", "finished_at": null
+}
+```
+
+A job is `queued`, then `running` (`stage` is `processing`, then `indexing`, while `progress` goes from 0 to 1 as chunks are indexed), then `succeeded` with its `chunks_count`, or `failed` with the signal of what went wrong in `error`.
+
+- **Retries.** When the embedding provider fails (`embedding_failed`), or something unexpected happens (`job_failed`), the job is queued again after 10 seconds, then 1 minute, then 5 minutes, until `max_attempts` (`JOB_MAX_ATTEMPTS`). Meanwhile it is `queued` with an `error`. A failure caused by the file, such as `file_has_no_text`, fails the job at once. So does `embedding_not_configured`: the chunks are stored, and indexing later finishes the work.
+- **Retrying by hand.** `POST .../jobs/{job_id}/retry` queues a failed job again with all its attempts (`202`). For a job that has not failed, it returns `409` `{"signal": "job_not_failed"}`.
+- **Workers.** The API runs `JOB_WORKERS` jobs at once (default 1). `mini-rag worker` runs more in a process of its own, on any machine with the same database and `FILES_DIR`. Each job runs once, whatever the number of workers: a worker holds a job for 5 minutes and extends that as it goes. If a worker stops, its job is taken up again once that time runs out, which uses up an attempt; a worker that is shut down puts its job back at once. A job whose worker stopped on every attempt fails with `job_abandoned`.
+- **Deletion.** Deleting the file or the project deletes its jobs.
+
+| Case | Status | Response |
+|---|---|---|
+| Queued | `202` | The job |
+| No such project, file or job | `404` | `{"signal": "project_not_found"}` / `{"signal": "file_not_found"}` / `{"signal": "job_not_found"}` |
+| Options not valid, such as `overlap_size` not smaller than `chunk_size` | `422` | Validation error details |
 
 ## Search
 

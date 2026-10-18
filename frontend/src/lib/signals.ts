@@ -18,6 +18,10 @@ const MESSAGES: Record<string, string> = {
     "No language model is configured. Set OPENAI_API_KEY or LLM_BASE_URL on the server.",
   llm_failed:
     "The language model failed: it was unreachable, rejected the request or sent an unexpected reply. The API's log says which.",
+  job_failed: "Processing the file failed unexpectedly. The API's log says why.",
+  job_abandoned: "The worker processing the file stopped, on every attempt.",
+  job_not_found: "That job does not exist in this project.",
+  job_not_failed: "Only a failed job can be retried.",
   validation_error: "The request was not valid.",
   network_error: "The server could not be reached. Is the API running?",
 };

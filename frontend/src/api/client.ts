@@ -12,6 +12,7 @@ import type {
   FileInfo,
   Health,
   IndexResult,
+  Job,
   Page,
   ProcessOptions,
   ProcessResult,
@@ -166,6 +167,10 @@ export const api = {
 
   process: (name: string, fileId: string, options: ProcessOptions) =>
     post<ProcessResult>(`/data/process/${project(name)}`, { file_id: fileId, ...options }),
+  /** Processes and indexes the file in the background; follow it with `job`. */
+  createJob: (name: string, fileId: string, options: ProcessOptions) =>
+    post<Job>(`/projects/${project(name)}/jobs`, { file_id: fileId, ...options }),
+  job: (name: string, jobId: string) => get<Job>(`/projects/${project(name)}/jobs/${encodeURIComponent(jobId)}`),
   index: (name: string, fileId?: string) =>
     post<IndexResult>(`/index/${project(name)}`, fileId ? { file_id: fileId } : undefined),
   search: (name: string, query: string, options: SearchOptions) =>

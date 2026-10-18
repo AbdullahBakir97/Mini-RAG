@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
@@ -6,8 +7,18 @@ from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncEngine
 
+from mini_rag.api.dependencies import get_loader_registry
 from mini_rag.api.error_handlers import register_error_handlers
-from mini_rag.api.routes import ask, base, conversations, data, index, projects, search
+from mini_rag.api.routes import (
+    ask,
+    base,
+    conversations,
+    data,
+    index,
+    jobs,
+    projects,
+    search,
+)
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
@@ -17,7 +28,10 @@ from mini_rag.persistence.database import (
     create_session_factory,
     match_embedding_dimensions,
 )
+from mini_rag.persistence.repositories import unit_of_work_factory
 from mini_rag.rerankers.factory import create_reranker
+from mini_rag.services.job_runner import JobRunner
+from mini_rag.storage.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +61,20 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         app.state.embedder = embedder = create_embedder(settings)
         app.state.llm = llm = create_llm(settings)
         app.state.reranker = reranker = create_reranker(settings)
+        workers: list[asyncio.Task] = []
         try:
             await _check_embedding_dimensions(engine, settings)
+            runner = JobRunner(unit_of_work_factory(app.state.session_factory),
+                               FileStorage(root=settings.FILES_DIR), get_loader_registry(),
+                               embedder, settings.EMBEDDING_BATCH_SIZE)
+            workers = [asyncio.create_task(runner.run(), name=f"job-worker-{n}")
+                       for n in range(settings.JOB_WORKERS)]
             yield
         finally:
+            for worker in workers:
+                worker.cancel()
+            # A running job goes back to the queue for the next start.
+            await asyncio.gather(*workers, return_exceptions=True)
             if embedder is not None:
                 await embedder.aclose()
             if llm is not None:
@@ -73,6 +97,7 @@ def create_app() -> FastAPI:
     app.include_router(data.router)
     app.include_router(projects.router)
     app.include_router(index.router)
+    app.include_router(jobs.router)
     app.include_router(search.router)
     app.include_router(ask.router)
     app.include_router(conversations.router)

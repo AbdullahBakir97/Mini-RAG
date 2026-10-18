@@ -56,7 +56,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 4: Ingestion and automation
 
-- [ ] Background jobs for processing and indexing, with status, retries and progress.
+- [x] Background jobs for processing and indexing, with status, retries and progress.
 - [x] Deleting files and projects everywhere at once; duplicate detection by content hash.
 - [x] More formats: DOCX, Markdown and HTML, split by section.
 - [ ] OCR for scanned PDFs.

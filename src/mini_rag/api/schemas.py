@@ -362,3 +362,41 @@ class FeedbackListResponse(BaseModel):
 
 class ConversationDetailResponse(ConversationResponse):
     messages: list[MessageResponse] = Field(description="Questions and answers, oldest first.")
+
+
+JobIdPath = Annotated[UUID, Path(description="The job's id.")]
+
+
+class JobRequest(ProcessRequest):
+    """The file to process and index, and how to split it."""
+
+
+class JobResponse(BaseModel):
+    id: str
+    file_id: str
+    status: Literal["queued", "running", "succeeded", "failed"] = Field(
+        description="queued, then running, then succeeded or failed. A failure that may pass "
+                    "(the embedding provider failing) queues the job again, until "
+                    "`max_attempts`.")
+    stage: Literal["processing", "indexing"] | None = Field(
+        description="The step a running job is at; the last one it reached otherwise.")
+    progress: float = Field(ge=0, le=1, description="Share of the chunks indexed, from 0 to 1.")
+    chunks_count: int | None = Field(description="Chunks made, once the job succeeded.")
+    attempts: int
+    max_attempts: int
+    chunk_size: int
+    overlap_size: int
+    error: str | None = Field(
+        description="The signal of the last failure, e.g. `embedding_failed`; null after "
+                    "success. A queued job with an error waits to try again.")
+    created_at: datetime
+    started_at: datetime | None
+    finished_at: datetime | None
+
+
+class JobListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[JobResponse]
+

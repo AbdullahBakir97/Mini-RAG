@@ -78,6 +78,27 @@ export interface ProcessResult {
   chunks_count: number;
 }
 
+export type JobStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface Job {
+  id: string;
+  file_id: string;
+  status: JobStatus;
+  stage: "processing" | "indexing" | null;
+  /** Share of the chunks indexed, from 0 to 1. */
+  progress: number;
+  chunks_count: number | null;
+  attempts: number;
+  max_attempts: number;
+  chunk_size: number;
+  overlap_size: number;
+  /** The signal of the last failure; a queued job with one waits to try again. */
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
 export interface IndexResult {
   signal: string;
   embedded_count: number;

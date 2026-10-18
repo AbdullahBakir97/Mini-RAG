@@ -12,6 +12,7 @@ from pathlib import Path
 
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.errors import AppError
+from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
 from mini_rag.evaluation.dataset import Dataset, DatasetError, load_dataset
 from mini_rag.evaluation.report import (
@@ -31,7 +32,7 @@ from mini_rag.persistence.database import (
     resize_embeddings,
     stored_embedding_dimensions,
 )
-from mini_rag.persistence.repositories import SqlUnitOfWork
+from mini_rag.persistence.repositories import SqlUnitOfWork, unit_of_work_factory
 from mini_rag.rerankers.factory import create_reranker
 from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.evaluation_service import (
@@ -41,6 +42,7 @@ from mini_rag.services.evaluation_service import (
 )
 from mini_rag.services.feedback_export_service import FeedbackExportService
 from mini_rag.services.indexing_service import IndexingService
+from mini_rag.services.job_runner import JobRunner
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
@@ -374,6 +376,24 @@ async def _export_feedback(args: argparse.Namespace) -> int:
     return PASSED
 
 
+async def _work(workers: int) -> int:
+    settings = get_settings()
+    configure_logging(settings.LOG_LEVEL)
+    engine = create_engine(settings.DATABASE_URL)
+    embedder = create_embedder(settings)
+    runner = JobRunner(unit_of_work_factory(create_session_factory(engine)),
+                       FileStorage(root=settings.FILES_DIR), default_loader_registry(), embedder,
+                       settings.EMBEDDING_BATCH_SIZE)
+    print(f"Running jobs with {workers} workers; stop with Ctrl+C.", flush=True)
+    try:
+        await asyncio.gather(*(runner.run() for _ in range(workers)))
+    finally:
+        if embedder is not None:
+            await embedder.aclose()
+        await engine.dispose()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mini-rag", description="Mini RAG maintenance commands.")
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
@@ -426,7 +446,23 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("project", help="the project whose feedback to export")
     export.add_argument("output", type=Path, help="a new folder for the dataset")
     export.add_argument("--name", help="the dataset's name (default: <project>-feedback)")
+    worker = commands.add_parser(
+        "worker",
+        help="run background jobs (processing and indexing files) until stopped",
+        description="Take queued jobs and run them, as the API's own workers do (JOB_WORKERS). "
+                    "Run as many as you like, on any machine with the same database and "
+                    "FILES_DIR: each job runs once. Set JOB_WORKERS=0 for an API that only "
+                    "queues jobs.")
+    worker.add_argument("--workers", type=_positive,
+                        help="jobs to run at once (default JOB_WORKERS, or 1 when it is 0)")
     args = parser.parse_args(argv)
+    if args.command == "worker":
+        workers = args.workers or get_settings().JOB_WORKERS or 1
+        try:
+            return asyncio.run(_work(workers))
+        except KeyboardInterrupt:
+            # Running jobs went back to the queue as the workers stopped.
+            return 0
     if args.command == "feedback-export":
         return asyncio.run(_export_feedback(args))
     if args.command == "eval":

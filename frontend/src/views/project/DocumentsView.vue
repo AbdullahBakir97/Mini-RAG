@@ -130,6 +130,7 @@ async function reprocess(file: FileInfo) {
 const stageLabel: Record<Stage, string> = {
   queued: "Waiting",
   uploading: "Uploading",
+  waiting: "Waiting for a worker",
   processing: "Splitting into chunks",
   indexing: "Indexing",
   done: "Ready",
@@ -138,7 +139,7 @@ const stageLabel: Record<Stage, string> = {
   failed: "Failed",
 };
 
-const busyStages: Stage[] = ["uploading", "processing", "indexing"];
+const busyStages: Stage[] = ["uploading", "waiting", "processing", "indexing"];
 const finished = computed(() => jobs.value.some((job) => FINISHED.includes(job.stage)));
 
 // The file whose deletion waits for confirmation, and the one being deleted.
@@ -239,7 +240,7 @@ onMounted(() => load(0));
               <span class="job-name">{{ job.name }}</span>
               <span class="subtle small">{{ formatBytes(job.size) }}</span>
             </div>
-            <div v-if="job.stage === 'uploading'" class="progress" role="progressbar" :aria-valuenow="Math.round(job.progress * 100)" aria-valuemin="0" aria-valuemax="100">
+            <div v-if="job.stage === 'uploading' || job.stage === 'indexing'" class="progress" role="progressbar" :aria-valuenow="Math.round(job.progress * 100)" aria-valuemin="0" aria-valuemax="100">
               <span :style="{ width: `${job.progress * 100}%` }" />
             </div>
             <p class="small" :class="job.error ? 'job-error' : 'subtle'">
