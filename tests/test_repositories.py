@@ -364,3 +364,57 @@ async def test_deleting_a_conversation_deletes_its_messages(uow):
     assert await uow.conversations.delete(project.id, conversation.id) is True
     await uow.commit()
     assert await uow.session.scalar(text("SELECT count(*) FROM conversation_messages")) == 0
+
+
+async def test_answers_keep_their_feedback_and_are_listed_by_rating(uow):
+    from mini_rag.domain.models import ConversationMessage, Feedback, FeedbackCounts
+
+    project = await uow.projects.get_or_create("demo")
+    other = await uow.projects.get_or_create("other")
+    conversation = await uow.conversations.create(project.id, None)
+    first = await uow.conversations.add_messages(conversation.id, [
+        ConversationMessage(role="user", content="Do cats purr?"),
+        ConversationMessage(role="assistant", content="Yes [1]."),
+    ])
+    second = await uow.conversations.add_messages(conversation.id, [
+        ConversationMessage(role="user", content="And dogs?"),
+        ConversationMessage(role="assistant", content=None),
+    ])
+    elsewhere = await uow.conversations.create(other.id, None)
+    foreign = await uow.conversations.add_messages(elsewhere.id, [
+        ConversationMessage(role="user", content="Hm?"),
+        ConversationMessage(role="assistant", content="No."),
+    ])
+    assert first[0] < first[1] < second[0] < second[1]
+
+    await uow.conversations.set_feedback(first[1], Feedback("up"))
+    await uow.commit()
+    await uow.conversations.set_feedback(second[1], Feedback("down", "Dogs do not purr."))
+    await uow.conversations.set_feedback(foreign[1], Feedback("down"))
+    await uow.commit()
+
+    rated = await uow.conversations.rated_answers(project.id, rating=None, offset=0, limit=10)
+    assert [(r.message_id, r.question, r.answer, r.feedback.rating, r.feedback.comment)
+            for r in rated] == [(second[1], "And dogs?", None, "down", "Dogs do not purr."),
+                                (first[1], "Do cats purr?", "Yes [1].", "up", None)]
+    down = await uow.conversations.rated_answers(project.id, rating="down", offset=0, limit=10)
+    assert [r.message_id for r in down] == [second[1]]
+    assert await uow.conversations.count_feedback(project.id) == FeedbackCounts(up=1, down=1)
+
+    await uow.conversations.set_feedback(first[1], None)
+    message = await uow.conversations.get_message(conversation.id, first[1])
+    assert (message.id, message.feedback) == (first[1], None)
+    assert await uow.conversations.get_message(elsewhere.id, first[1]) is None
+    assert await uow.conversations.count_feedback(project.id) == FeedbackCounts(up=0, down=1)
+
+
+async def test_a_rating_must_be_up_or_down(uow):
+    from mini_rag.domain.models import ConversationMessage, Feedback
+
+    project = await uow.projects.get_or_create("demo")
+    conversation = await uow.conversations.create(project.id, None)
+    [message_id] = await uow.conversations.add_messages(
+        conversation.id, [ConversationMessage(role="assistant", content="Yes.")])
+
+    with pytest.raises(IntegrityError):
+        await uow.conversations.set_feedback(message_id, Feedback("sideways"))

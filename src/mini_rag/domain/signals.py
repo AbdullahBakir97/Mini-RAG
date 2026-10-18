@@ -17,6 +17,7 @@ class ResponseSignal(Enum):
     ANSWER_SUCCESS = "answer_success"
     NO_ANSWER = "no_answer"
     CONVERSATION_NOT_FOUND = "conversation_not_found"
+    MESSAGE_NOT_FOUND = "message_not_found"
     EMBEDDING_NOT_CONFIGURED = "embedding_not_configured"
     EMBEDDING_FAILED = "embedding_failed"
     LLM_NOT_CONFIGURED = "llm_not_configured"

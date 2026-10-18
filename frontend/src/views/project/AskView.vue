@@ -12,13 +12,15 @@ import {
   SlidersHorizontal,
   Square,
   SquarePen,
+  ThumbsDown,
+  ThumbsUp,
   TriangleAlert,
 } from "@lucide/vue";
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import { ApiError } from "@/api/client";
-import type { Citation } from "@/api/types";
+import type { Citation, Rating } from "@/api/types";
 import AnswerText from "@/components/AnswerText.vue";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
 import ConversationList from "@/components/ConversationList.vue";
@@ -46,7 +48,7 @@ function show(id: string | null) {
 }
 
 const settings = ref<AskSettings>({ top_k: 5, min_score: null, stream: true });
-const { turns, busy, loading, ask, stop, retry } = useAsk(name, conversationId, settings, {
+const { turns, busy, loading, ask, stop, retry, rate } = useAsk(name, conversationId, settings, {
   // The new conversation gets its own address, without a new history entry.
   onStarted: (id) => {
     void router.replace({ name: "ask", params: { project: name.value, conversation: id } });
@@ -163,6 +165,40 @@ async function copy(turn: Turn) {
   } catch {
     // Clipboard access can be denied; the text stays selectable.
   }
+}
+
+// The answer whose thumbs down is waiting for an optional comment.
+const commenting = ref<number | null>(null);
+const comment = ref("");
+
+async function setRating(turn: Turn, rating: Rating | null, note?: string) {
+  try {
+    await rate(turn, rating, note);
+  } catch (caught) {
+    toasts.error("The rating could not be saved", caught instanceof ApiError ? caught.message : undefined);
+  }
+}
+
+function thumbsUp(turn: Turn) {
+  commenting.value = null;
+  void setRating(turn, turn.feedback?.rating === "up" ? null : "up");
+}
+
+function thumbsDown(turn: Turn) {
+  if (turn.feedback?.rating === "down") {
+    commenting.value = null;
+    void setRating(turn, null);
+    return;
+  }
+  void setRating(turn, "down");
+  comment.value = "";
+  commenting.value = turn.id;
+}
+
+function saveComment(turn: Turn) {
+  const note = comment.value.trim();
+  commenting.value = null;
+  if (note) void setRating(turn, "down", note);
 }
 
 function tokens(turn: Turn) {
@@ -319,6 +355,28 @@ watch(
             <span v-if="turn.seconds !== null" class="meta-item">{{ turn.seconds.toFixed(1) }} s</span>
             <span class="meta-item mono" title="Prompt version">{{ turn.answer.prompt_version }}</span>
             <span class="grow" />
+            <template v-if="turn.answer.message_id != null">
+              <button
+                class="btn btn-ghost btn-icon btn-sm rating"
+                :class="{ on: turn.feedback?.rating === 'up' }"
+                :aria-pressed="turn.feedback?.rating === 'up'"
+                title="Good answer"
+                aria-label="Good answer"
+                @click="thumbsUp(turn)"
+              >
+                <ThumbsUp :size="14" />
+              </button>
+              <button
+                class="btn btn-ghost btn-icon btn-sm rating"
+                :class="{ on: turn.feedback?.rating === 'down' }"
+                :aria-pressed="turn.feedback?.rating === 'down'"
+                title="Bad answer"
+                aria-label="Bad answer"
+                @click="thumbsDown(turn)"
+              >
+                <ThumbsDown :size="14" />
+              </button>
+            </template>
             <button
               v-if="turn.text"
               class="btn btn-ghost btn-sm"
@@ -330,6 +388,21 @@ watch(
               {{ copied === turn.id ? "Copied" : "Copy" }}
             </button>
           </footer>
+          <form v-if="commenting === turn.id" class="comment" @submit.prevent="saveComment(turn)">
+            <label class="small muted" :for="`comment-${turn.id}`">What was wrong? (optional)</label>
+            <div class="comment-row">
+              <input
+                :id="`comment-${turn.id}`"
+                v-model="comment"
+                class="input"
+                maxlength="1000"
+                placeholder="For example: it missed the Friday rule"
+                @keydown.escape="commenting = null"
+              />
+              <button type="submit" class="btn btn-sm" :disabled="!comment.trim()">Send</button>
+              <button type="button" class="btn btn-ghost btn-sm" @click="commenting = null">Skip</button>
+            </div>
+          </form>
         </div>
       </li>
     </ol>
@@ -508,6 +581,28 @@ watch(
 
 .turn-skeleton {
   height: 150px;
+}
+
+.rating.on {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.comment {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.comment-row {
+  display: flex;
+  gap: 6px;
+}
+
+.comment-row .input {
+  flex: 1;
+  min-width: 0;
 }
 
 .searched {

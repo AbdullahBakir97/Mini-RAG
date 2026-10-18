@@ -3,8 +3,11 @@
 import argparse
 import asyncio
 import json
+import re
+import shutil
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 
 from mini_rag.core.config import Settings, get_settings
@@ -35,6 +38,7 @@ from mini_rag.services.evaluation_service import (
     EvaluationService,
     Usage,
 )
+from mini_rag.services.feedback_export_service import FeedbackExportService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.search_service import SearchService
@@ -310,6 +314,51 @@ async def _evaluate(args: argparse.Namespace) -> int:
         return FAILED
 
 
+async def _export_feedback(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    output: Path = args.output
+    if output.exists() and any(output.iterdir()):
+        print(f"{output} is not empty; choose a new folder for the dataset.", file=sys.stderr)
+        return FAILED
+    engine = create_engine(settings.DATABASE_URL)
+    try:
+        async with create_session_factory(engine)() as session:
+            service = FeedbackExportService(uow=SqlUnitOfWork(session),
+                                            storage=FileStorage(root=settings.FILES_DIR))
+            export = await service.export(args.project)
+    except AppError as exc:
+        print(f"The feedback could not be exported: {exc}", file=sys.stderr)
+        return FAILED
+    except OSError as exc:
+        print(f"The database is unreachable ({exc}).", file=sys.stderr)
+        return FAILED
+    finally:
+        await engine.dispose()
+
+    (output / "documents").mkdir(parents=True, exist_ok=True)
+    for document in export.documents:
+        shutil.copyfile(document.path, output / "documents" / document.name)
+    # Its own name, so it is never mistaken for a released dataset or compared with its baseline.
+    project = re.sub(r"[^a-z0-9-]+", "-", args.project.lower()).strip("-")
+    name = args.name or f"{project}-feedback".lstrip("-")
+    manifest = {"name": name, "version": "v1",
+                "description": f"Questions rated in the project {args.project}, with its "
+                               f"documents, exported on {date.today().isoformat()}.",
+                "documents": [document.name for document in export.documents]}
+    (output / "dataset.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    for file_name, rows in (("cases.jsonl", export.cases),
+                            ("cases-to-review.jsonl", export.to_review)):
+        (output / file_name).write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows),
+            encoding="utf-8")
+    print(f"Exported {len(export.documents)} documents, {len(export.cases)} cases from answers "
+          f"rated thumbs up, and {len(export.to_review)} rated answers to review, to {output}.")
+    print("Check the cases, write reference answers and expected sources for the ones in "
+          "cases-to-review.jsonl and move them into cases.jsonl, then run "
+          f"`mini-rag eval {output}`.")
+    return PASSED
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="mini-rag", description="Mini RAG maintenance commands.")
     commands = parser.add_subparsers(dest="command", required=True, metavar="command")
@@ -350,7 +399,19 @@ def main(argv: list[str] | None = None) -> int:
                           help="how much lower a metric may be than the baseline (default 0.02)")
     evaluate.add_argument("--save-baseline", type=Path,
                           help="write this run's parameters and metrics as a baseline")
+    export = commands.add_parser(
+        "feedback-export",
+        help="turn a project's rated answers into an evaluation dataset",
+        description="Write a dataset folder with the project's documents and its rated answers: "
+                    "answers rated thumbs up become cases, with the passages they cited as "
+                    "expected sources; answers rated thumbs down go to cases-to-review.jsonl, "
+                    "to be completed by hand.")
+    export.add_argument("project", help="the project whose feedback to export")
+    export.add_argument("output", type=Path, help="a new folder for the dataset")
+    export.add_argument("--name", help="the dataset's name (default: <project>-feedback)")
     args = parser.parse_args(argv)
+    if args.command == "feedback-export":
+        return asyncio.run(_export_feedback(args))
     if args.command == "eval":
         if args.overlap_size >= args.chunk_size:
             parser.error("--overlap-size must be smaller than --chunk-size")

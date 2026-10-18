@@ -1,5 +1,5 @@
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from mini_rag.core.errors import ConversationNotFound, ProjectNotFound
 from mini_rag.domain.llm import LLM, Message, TokenPrices, TokenUsage
@@ -49,7 +49,8 @@ class Answer:
     ``usage`` is None when the provider did not report it; ``cost_usd`` is
     None when the usage or the model's prices are unknown. In a
     conversation, ``search_question`` is the standalone question the answer
-    was searched with, when it differs from the question asked.
+    was searched with, when it differs from the question asked, and
+    ``message_id`` is the answer's message, which feedback refers to.
     """
 
     text: str | None
@@ -59,6 +60,7 @@ class Answer:
     cost_usd: float | None
     conversation_id: str | None = None
     search_question: str | None = None
+    message_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -115,8 +117,7 @@ class AnswerService:
         else:
             completion = await self.llm.complete(self._answer_messages(prepared))
             answer = self._finish(prepared, completion.text, completion.usage)
-        await self._record(prepared, answer, streamed=False)
-        return answer
+        return await self._record(prepared, answer, streamed=False)
 
     async def prepare(self, project_name: str, question: str, top_k: int,
                       min_score: float | None = None,
@@ -175,8 +176,7 @@ class AnswerService:
                 yield AnswerDelta(reply if holding else piece)
                 holding = False
             answer = self._finish(prepared, reply, usage)
-        await self._record(prepared, answer, streamed=True)
-        yield answer
+        yield await self._record(prepared, answer, streamed=True)
 
     def _answer_messages(self, prepared: Prepared) -> list[Message]:
         return self.prompt.messages(prepared.search_question, prepared.sources, prepared.history)
@@ -211,7 +211,7 @@ class AnswerService:
             return None
         return self.prices.cost(usage)
 
-    async def _record(self, prepared: Prepared, answer: Answer, *, streamed: bool) -> None:
+    async def _record(self, prepared: Prepared, answer: Answer, *, streamed: bool) -> Answer:
         model_called = answer.usage != NOT_CALLED
         await self.uow.answers.add(AnswerRecord(
             project_id=prepared.project.id, prompt_version=answer.prompt_version,
@@ -222,7 +222,7 @@ class AnswerService:
             cost_usd=answer.cost_usd))
         conversation = prepared.conversation
         if conversation is not None:
-            await self.uow.conversations.add_messages(conversation.id, [
+            _, message_id = await self.uow.conversations.add_messages(conversation.id, [
                 ConversationMessage(role="user", content=prepared.question),
                 ConversationMessage(
                     role="assistant", content=answer.text,
@@ -230,7 +230,9 @@ class AnswerService:
                     prompt_version=answer.prompt_version,
                     search_question=answer.search_question),
             ], title=None if conversation.title else _title(prepared.question))
+            answer = replace(answer, message_id=message_id)
         await self.uow.commit()
+        return answer
 
 
 def _add(first: TokenUsage | None, second: TokenUsage | None) -> TokenUsage | None:

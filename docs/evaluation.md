@@ -122,6 +122,21 @@ A question the documents do not answer has no expected sources and a `null` refe
 
 A released version never changes, so its results stay comparable over time: `tests/test_eval_dataset.py` pins a hash of each, and also checks that every evidence phrase fits inside one chunk at the default and at a small chunk size. Changes go into a new version (`v2`), with a new baseline.
 
+## Growing the test set from feedback
+
+People rate answers with the thumbs on the Ask page (or [the API](api.md#feedback)). Those ratings become a dataset with:
+
+```bash
+mini-rag feedback-export my-project evals/my-project/v1
+```
+
+The new folder has the project's documents, `dataset.json` (named `my-project-feedback`, so it is never mistaken for another dataset) and two files of cases:
+
+- `cases.jsonl`: one case per answer rated thumbs up, with the question, the passages the answer cited as expected sources (their evidence is the start of the sentence closest to the answer), and the answer, without its markers, as reference answer.
+- `cases-to-review.jsonl`: the answers rated thumbs down, and those that cited nothing, with the comment and the passages they cited. Write the right reference answer and expected sources for each, then move it into `cases.jsonl`.
+
+Check the cases, then `mini-rag eval evals/my-project/v1` measures the project on the questions its users actually asked. Once it is right, treat it like any released version: freeze it, and give changes a new version.
+
 ## Baselines and CI
 
 `evals/baselines/handbook-v1.json` holds the parameters and metrics of the last accepted run with `nomic-embed-text:v1.5`, the model of the [Ollama setup](configuration.md#model-providers). The `eval` job in CI starts Ollama with that model next to PostgreSQL and runs:

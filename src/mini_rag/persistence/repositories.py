@@ -7,14 +7,18 @@ from dataclasses import asdict
 from sqlalchemy import bindparam, delete, func, insert, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from mini_rag.domain.models import (
     AnswerRecord,
     Chunk,
     Conversation,
     ConversationMessage,
+    Feedback,
+    FeedbackCounts,
     FileRecord,
     Project,
+    RatedAnswer,
     ScoredChunk,
     StoredCitation,
     UnembeddedChunk,
@@ -230,12 +234,19 @@ def _conversation(row: ConversationRow) -> Conversation:
                         created_at=row.created_at, updated_at=row.updated_at)
 
 
+def _feedback(row: ConversationMessageRow) -> Feedback | None:
+    if row.feedback_rating is None:
+        return None
+    return Feedback(rating=row.feedback_rating, comment=row.feedback_comment,
+                    created_at=row.feedback_at)
+
+
 def _message(row: ConversationMessageRow) -> ConversationMessage:
     return ConversationMessage(
         role=row.role, content=row.content,
         citations=[StoredCitation(**citation) for citation in row.citations],
         prompt_version=row.prompt_version, search_question=row.search_question,
-        created_at=row.created_at)
+        created_at=row.created_at, id=row.id, feedback=_feedback(row))
 
 
 class SqlConversationRepository:
@@ -286,20 +297,77 @@ class SqlConversationRepository:
         return [_message(row) for row in reversed(rows)]
 
     async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
-                           *, title: str | None = None) -> None:
-        if messages:
-            await self.session.execute(insert(ConversationMessageRow), [
-                {"conversation_id": conversation_id, "role": message.role,
-                 "content": message.content,
-                 "citations": [asdict(citation) for citation in message.citations],
-                 "prompt_version": message.prompt_version,
-                 "search_question": message.search_question}
-                for message in messages])
+                           *, title: str | None = None) -> list[int]:
+        ids = []
+        # One insert per message keeps their ids in order.
+        for message in messages:
+            ids.append(await self.session.scalar(
+                insert(ConversationMessageRow).values(
+                    conversation_id=conversation_id, role=message.role, content=message.content,
+                    citations=[asdict(citation) for citation in message.citations],
+                    prompt_version=message.prompt_version,
+                    search_question=message.search_question)
+                .returning(ConversationMessageRow.id)))
         values: dict = {"updated_at": func.now()}
         if title is not None:
             values["title"] = title
         await self.session.execute(
             update(ConversationRow).where(ConversationRow.id == conversation_id).values(**values))
+        return ids
+
+    async def get_message(self, conversation_id: str,
+                          message_id: int) -> ConversationMessage | None:
+        row = await self.session.scalar(
+            select(ConversationMessageRow).where(
+                ConversationMessageRow.id == message_id,
+                ConversationMessageRow.conversation_id == conversation_id))
+        return _message(row) if row else None
+
+    async def set_feedback(self, message_id: int, feedback: Feedback | None) -> None:
+        await self.session.execute(
+            update(ConversationMessageRow).where(ConversationMessageRow.id == message_id).values(
+                feedback_rating=feedback.rating if feedback else None,
+                feedback_comment=feedback.comment if feedback else None,
+                feedback_at=func.now() if feedback else None))
+
+    async def rated_answers(self, project_id: int, *, rating: str | None, offset: int,
+                            limit: int) -> list[RatedAnswer]:
+        answer = ConversationMessageRow
+        question = aliased(ConversationMessageRow)
+        # The question an answer answers: the conversation's last question before it.
+        asked = (select(question.content)
+                 .where(question.conversation_id == answer.conversation_id,
+                        question.role == "user", question.id < answer.id)
+                 .order_by(question.id.desc()).limit(1)
+                 .correlate(answer).scalar_subquery())
+        query = (select(answer, asked)
+                 .join(ConversationRow, ConversationRow.id == answer.conversation_id)
+                 .where(*self._rated(project_id, rating))
+                 .order_by(answer.feedback_at.desc(), answer.id.desc())
+                 .offset(offset).limit(limit))
+        rows = await self.session.execute(query)
+        return [RatedAnswer(conversation_id=row.conversation_id, message_id=row.id,
+                            question=asked_text or "", answer=row.content,
+                            citations=[StoredCitation(**c) for c in row.citations],
+                            feedback=_feedback(row))
+                for row, asked_text in rows]
+
+    async def count_feedback(self, project_id: int) -> FeedbackCounts:
+        rows = await self.session.execute(
+            select(ConversationMessageRow.feedback_rating, func.count())
+            .join(ConversationRow, ConversationRow.id == ConversationMessageRow.conversation_id)
+            .where(*self._rated(project_id, None))
+            .group_by(ConversationMessageRow.feedback_rating))
+        counts = dict(rows.all())
+        return FeedbackCounts(up=counts.get("up", 0), down=counts.get("down", 0))
+
+    @staticmethod
+    def _rated(project_id: int, rating: str | None) -> list:
+        conditions = [ConversationRow.project_id == project_id,
+                      ConversationMessageRow.feedback_rating.is_not(None)]
+        if rating is not None:
+            conditions.append(ConversationMessageRow.feedback_rating == rating)
+        return conditions
 
 
 class SqlUnitOfWork:

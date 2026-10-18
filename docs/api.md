@@ -26,6 +26,9 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `GET` | `/api/v1/projects/{project_id}/conversations` | List conversations, most recent first (paged) |
 | `GET` | `/api/v1/projects/{project_id}/conversations/{conversation_id}` | A conversation with its questions and answers |
 | `DELETE` | `/api/v1/projects/{project_id}/conversations/{conversation_id}` | Delete a conversation and its messages |
+| `PUT` | `/api/v1/projects/{project_id}/conversations/{conversation_id}/messages/{message_id}/feedback` | Rate an answer thumbs up or down |
+| `DELETE` | `/api/v1/projects/{project_id}/conversations/{conversation_id}/messages/{message_id}/feedback` | Remove an answer's rating |
+| `GET` | `/api/v1/projects/{project_id}/feedback` | Rated answers, most recently rated first (paged) |
 
 ## Upload a file
 
@@ -286,9 +289,33 @@ Each answered question is added to the conversation with its answer, citations a
 ```json
 {"id": "6a69d3de-...", "title": "When do production deploys happen?", "created_at": "...", "updated_at": "...",
  "messages": [
-   {"role": "user", "content": "When do production deploys happen?", "citations": [], "prompt_version": null, "search_question": null, "created_at": "..."},
-   {"role": "assistant", "content": "On weekdays between 9:00 and 16:00 [1].", "citations": [{"number": 1, "file_id": "...", ...}], "prompt_version": "answer-v1", "search_question": null, "created_at": "..."}
+   {"id": 41, "role": "user", "content": "When do production deploys happen?", "citations": [], "prompt_version": null, "search_question": null, "created_at": "..."},
+   {"id": 42, "role": "assistant", "content": "On weekdays between 9:00 and 16:00 [1].", "citations": [{"number": 1, "file_id": "...", ...}], "prompt_version": "answer-v1", "search_question": null, "created_at": "...", "feedback": null}
  ]}
 ```
 
 `DELETE .../conversations/{conversation_id}` removes a conversation and its messages (`204`). A conversation belongs to one project: using its id with another project, or an id that does not exist, returns `404` `{"signal": "conversation_not_found"}`; an id that is not a UUID returns `422`.
+
+### Feedback
+
+An answer in a conversation can be rated thumbs up or down, with an optional comment of up to 1000 characters. The answer's `message_id` is in the response to the question, and every message of `GET .../conversations/{conversation_id}` has its `id` and its `feedback`.
+
+```bash
+curl -X PUT http://localhost:8000/api/v1/projects/demo1/conversations/6a69d3de-2e61-455f-a678-428c8c520d70/messages/42/feedback \
+  -H "Content-Type: application/json" \
+  -d '{"rating": "down", "comment": "It should mention Friday mornings."}'
+```
+
+The response is the message with its new `feedback`; rating again replaces it, and `DELETE` on the same path removes it (`204`). Only answers take feedback: a question's id, or an id from another conversation, returns `404` `{"signal": "message_not_found"}`.
+
+`GET /api/v1/projects/{project_id}/feedback` lists the rated answers with the question each one answered, most recently rated first, and how many of each rating the project has; `rating=up` or `rating=down` filters, `offset` and `limit` page:
+
+```json
+{"up": 12, "down": 3, "total": 15, "offset": 0, "limit": 20,
+ "items": [{"conversation_id": "6a69d3de-...", "message_id": 42,
+            "question": "And on a Friday afternoon?", "answer": "Not after noon [1].",
+            "citations": [...],
+            "feedback": {"rating": "down", "comment": "It should mention Friday mornings.", "created_at": "..."}}]}
+```
+
+`mini-rag feedback-export` turns these into evaluation cases; see [Evaluation](evaluation.md#growing-the-test-set-from-feedback).

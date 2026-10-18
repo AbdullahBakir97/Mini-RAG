@@ -1,7 +1,7 @@
 import { ref, watch, type Ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
-import type { Answer, ConversationMessage, SearchOptions } from "@/api/types";
+import type { Answer, ConversationMessage, Feedback, Rating, SearchOptions } from "@/api/types";
 
 export interface Turn {
   id: number;
@@ -14,6 +14,8 @@ export interface Turn {
   seconds: number | null;
   /** Loaded from the server: its tokens and cost were not kept with it. */
   stored: boolean;
+  /** The answer's rating, once rated. */
+  feedback: Feedback | null;
 }
 
 export interface AskSettings extends SearchOptions {
@@ -43,6 +45,7 @@ export function turnsFrom(messages: ConversationMessage[], conversationId: strin
         error: null,
         seconds: null,
         stored: true,
+        feedback: null,
       });
       continue;
     }
@@ -50,6 +53,7 @@ export function turnsFrom(messages: ConversationMessage[], conversationId: strin
     if (!turn || turn.answer) continue;
     turn.status = "done";
     turn.text = message.content ?? "";
+    turn.feedback = message.feedback;
     turn.answer = {
       signal: message.content === null ? "no_answer" : "answer_success",
       answer: message.content,
@@ -58,6 +62,7 @@ export function turnsFrom(messages: ConversationMessage[], conversationId: strin
       usage: { input_tokens: null, output_tokens: null, cost_usd: null },
       conversation_id: conversationId,
       search_question: message.search_question,
+      message_id: message.id,
     };
   }
   return turns;
@@ -140,6 +145,7 @@ export function useAsk(
         error: null,
         seconds: null,
         stored: false,
+        feedback: null,
       },
     ];
     busy.value = true;
@@ -197,11 +203,28 @@ export function useAsk(
     controller?.abort();
   }
 
+  /** Rates an answer, or removes its rating with null; the change shows at once. */
+  async function rate(turn: Turn, rating: Rating | null, comment?: string) {
+    const messageId = turn.answer?.message_id;
+    if (!current || messageId == null) return;
+    const before = turn.feedback;
+    update(turn.id, {
+      feedback: rating ? { rating, comment: comment?.trim() || null, created_at: new Date().toISOString() } : null,
+    });
+    try {
+      if (rating) await api.rate(project.value, current, messageId, rating, comment);
+      else await api.unrate(project.value, current, messageId);
+    } catch (caught) {
+      update(turn.id, { feedback: before });
+      throw caught;
+    }
+  }
+
   // A failed or stopped question was not added to the conversation, so it is asked again.
   function retry(turn: Turn) {
     turns.value = turns.value.filter((candidate) => candidate.id !== turn.id);
     void ask(turn.question);
   }
 
-  return { turns, busy, loading, ask, stop, retry };
+  return { turns, busy, loading, ask, stop, retry, rate };
 }

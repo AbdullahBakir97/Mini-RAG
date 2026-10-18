@@ -21,8 +21,11 @@ from mini_rag.domain.models import (
     Chunk,
     Conversation,
     ConversationMessage,
+    Feedback,
+    FeedbackCounts,
     FileRecord,
     Project,
+    RatedAnswer,
     ScoredChunk,
     UnembeddedChunk,
     UsageTotals,
@@ -165,6 +168,7 @@ class FakeConversations:
     def __init__(self):
         self.by_id: dict[str, Conversation] = {}
         self.stored: dict[str, list[ConversationMessage]] = {}
+        self._ids = count(1)
 
     async def create(self, project_id: int, title: str | None) -> Conversation:
         now = datetime.now(UTC)
@@ -200,12 +204,51 @@ class FakeConversations:
         return list(messages[-last:] if last else messages)
 
     async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
-                           *, title: str | None = None) -> None:
-        self.stored[conversation_id].extend(messages)
+                           *, title: str | None = None) -> list[int]:
+        stored = [replace(message, id=next(self._ids), created_at=datetime.now(UTC))
+                  for message in messages]
+        self.stored[conversation_id].extend(stored)
         conversation = self.by_id[conversation_id]
         self.by_id[conversation_id] = replace(
             conversation, updated_at=datetime.now(UTC),
             title=title if title is not None else conversation.title)
+        return [message.id for message in stored]
+
+    async def get_message(self, conversation_id: str,
+                          message_id: int) -> ConversationMessage | None:
+        return next((m for m in self.stored.get(conversation_id, []) if m.id == message_id), None)
+
+    async def set_feedback(self, message_id: int, feedback: Feedback | None) -> None:
+        if feedback is not None:
+            feedback = replace(feedback, created_at=datetime.now(UTC))
+        for messages in self.stored.values():
+            for index, message in enumerate(messages):
+                if message.id == message_id:
+                    messages[index] = replace(message, feedback=feedback)
+
+    async def rated_answers(self, project_id: int, *, rating: str | None, offset: int,
+                            limit: int) -> list[RatedAnswer]:
+        rated = []
+        for conversation_id, messages in self.stored.items():
+            if self.by_id[conversation_id].project_id != project_id:
+                continue
+            question = ""
+            for message in messages:
+                if message.role == "user":
+                    question = message.content or ""
+                elif message.feedback and rating in (None, message.feedback.rating):
+                    rated.append(RatedAnswer(conversation_id=conversation_id,
+                                             message_id=message.id, question=question,
+                                             answer=message.content,
+                                             citations=message.citations,
+                                             feedback=message.feedback))
+        rated.sort(key=lambda r: (r.feedback.created_at, r.message_id), reverse=True)
+        return rated[offset:offset + limit]
+
+    async def count_feedback(self, project_id: int) -> FeedbackCounts:
+        rated = await self.rated_answers(project_id, rating=None, offset=0, limit=10**9)
+        return FeedbackCounts(up=sum(r.feedback.rating == "up" for r in rated),
+                              down=sum(r.feedback.rating == "down" for r in rated))
 
 
 class FakeUnitOfWork:

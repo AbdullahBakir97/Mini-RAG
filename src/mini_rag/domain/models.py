@@ -119,6 +119,15 @@ class StoredCitation:
 
 
 @dataclass(frozen=True)
+class Feedback:
+    """What someone thought of an answer: thumbs up or down, and why."""
+
+    rating: Literal["up", "down"]
+    comment: str | None = None
+    created_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class ConversationMessage:
     """A question (user) or an answer (assistant) in a conversation.
 
@@ -133,3 +142,24 @@ class ConversationMessage:
     prompt_version: str | None = None
     search_question: str | None = None
     created_at: datetime | None = None
+    # Set once stored.
+    id: int | None = None
+    feedback: Feedback | None = None
+
+
+@dataclass(frozen=True)
+class RatedAnswer:
+    """An answer someone rated, with the question it answered."""
+
+    conversation_id: str
+    message_id: int
+    question: str
+    answer: str | None
+    citations: list[StoredCitation]
+    feedback: Feedback
+
+
+@dataclass(frozen=True)
+class FeedbackCounts:
+    up: int = 0
+    down: int = 0

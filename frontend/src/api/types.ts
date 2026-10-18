@@ -125,6 +125,30 @@ export interface Answer {
   conversation_id: string | null;
   /** The standalone question a follow-up was searched with, when it was rewritten. */
   search_question: string | null;
+  /** In a conversation: the answer's message, which feedback refers to. */
+  message_id: number | null;
+}
+
+export type Rating = "up" | "down";
+
+export interface Feedback {
+  rating: Rating;
+  comment: string | null;
+  created_at: string;
+}
+
+export interface RatedAnswer {
+  conversation_id: string;
+  message_id: number;
+  question: string;
+  answer: string | null;
+  citations: Citation[];
+  feedback: Feedback;
+}
+
+export interface FeedbackList extends Page<RatedAnswer> {
+  up: number;
+  down: number;
 }
 
 export interface AskOptions extends SearchOptions {
@@ -140,6 +164,7 @@ export interface Conversation {
 }
 
 export interface ConversationMessage {
+  id: number;
   role: "user" | "assistant";
   /** Null for an answer when the documents did not answer. */
   content: string | null;
@@ -147,6 +172,7 @@ export interface ConversationMessage {
   prompt_version: string | null;
   search_question: string | null;
   created_at: string;
+  feedback: Feedback | null;
 }
 
 export interface ConversationDetail extends Conversation {

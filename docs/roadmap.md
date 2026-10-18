@@ -42,7 +42,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] Answer metrics: answered and abstained, citation precision, and groundedness and correctness graded by a judge model (`mini-rag eval --answers`).
 - [x] A `mini-rag eval` command with JSON reports.
 - [x] Retrieval metrics checked on every pull request; changes that lower them fail CI.
-- [ ] Thumbs up/down feedback stored to grow the test set.
+- [x] Thumbs up/down feedback stored to grow the test set (`mini-rag feedback-export`).
 
 ### Phase 3: Platform and white-label
 
@@ -100,7 +100,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 ### Phase 10: Web app
 
 - [x] A first web app: projects, document upload with progress, streamed answers with clickable citations, search and usage ([Web app](web.md)).
-- [ ] A chat interface with citations, conversation history and feedback.
+- [x] A chat interface with citations, conversation history and feedback.
 - [ ] Document management with upload, job status and connectors.
 - [ ] An admin dashboard for keys, usage, cost and evaluation scores.
 - [ ] Accessible, responsive, tested end to end with Playwright.

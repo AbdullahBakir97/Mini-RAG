@@ -101,3 +101,51 @@ def test_conversation_endpoints_are_documented(client):
     assert "conversation_not_found" in one["get"]["responses"]["404"]["description"]
     ask_errors = paths["/api/v1/ask/{project_id}"]["post"]["responses"]["404"]["description"]
     assert "conversation_not_found" in ask_errors
+
+
+def feedback_url(conversation_id, message_id, project="demo"):
+    return (f"/api/v1/projects/{project}/conversations/{conversation_id}"
+            f"/messages/{message_id}/feedback")
+
+
+def test_answers_are_rated_reviewed_and_unrated(client, embedder, llm):
+    upload_process_and_index(client)
+    conversation_id = start(client).json()["id"]
+    answer = ask(client, question="Where is the embedding vector stored?",
+                 conversation_id=conversation_id).json()
+    message_id = answer["message_id"]
+    messages = client.get(f"/api/v1/projects/demo/conversations/{conversation_id}").json()["messages"]
+    assert [m["id"] for m in messages][1] == message_id
+    assert messages[1]["feedback"] is None
+
+    rated = client.put(feedback_url(conversation_id, message_id),
+                       json={"rating": "down", "comment": "Too short."})
+
+    assert rated.status_code == 200
+    assert rated.json()["feedback"]["rating"] == "down"
+    listed = client.get("/api/v1/projects/demo/feedback").json()
+    assert (listed["up"], listed["down"], listed["total"]) == (0, 1, 1)
+    [item] = listed["items"]
+    assert (item["question"], item["answer"], item["feedback"]["comment"]) == (
+        "Where is the embedding vector stored?", "Each chunk gets an embedding vector [1].",
+        "Too short.")
+    assert item["citations"][0]["number"] == 1
+    assert client.get("/api/v1/projects/demo/feedback", params={"rating": "up"}).json()["total"] == 0
+
+    assert client.delete(feedback_url(conversation_id, message_id)).status_code == 204
+    assert client.get("/api/v1/projects/demo/feedback").json()["total"] == 0
+
+
+def test_only_answers_can_be_rated(client, embedder, llm):
+    upload_process_and_index(client)
+    conversation_id = start(client).json()["id"]
+    message_id = ask(client, question="Where is the embedding vector stored?",
+                     conversation_id=conversation_id).json()["message_id"]
+
+    question = client.put(feedback_url(conversation_id, message_id - 1), json={"rating": "up"})
+    unknown = client.put(feedback_url(uuid.uuid4(), message_id), json={"rating": "up"})
+
+    assert (question.status_code, question.json()) == (404, {"signal": "message_not_found"})
+    assert (unknown.status_code, unknown.json()) == (404, {"signal": "conversation_not_found"})
+    for body in ({"rating": "sideways"}, {"rating": "up", "comment": "x" * 1001}):
+        assert client.put(feedback_url(conversation_id, message_id), json=body).status_code == 422

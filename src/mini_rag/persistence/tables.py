@@ -11,6 +11,7 @@ from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Identity,
@@ -23,6 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -149,3 +151,13 @@ class ConversationMessageRow(Base):
     prompt_version: Mapped[str | None] = mapped_column(String(64))
     search_question: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = _created_at()
+    # Thumbs up or down on an answer, with an optional comment.
+    feedback_rating: Mapped[str | None] = mapped_column(String(8))
+    feedback_comment: Mapped[str | None] = mapped_column(Text)
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        CheckConstraint("feedback_rating IN ('up', 'down')", name="feedback_rating"),
+        Index("ix_conversation_messages_feedback_at", "feedback_at",
+              postgresql_where=text("feedback_at IS NOT NULL")),
+    )
