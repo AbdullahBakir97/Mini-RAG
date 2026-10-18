@@ -152,7 +152,8 @@ def suggest_min_score(results: Iterable[CaseResult]) -> MinScoreSuggestion | Non
 
     Both shares count equally. Among equally good values, the middle one is
     taken, as far from both kinds of question as the data allows. None
-    without both kinds of question.
+    without both kinds of question, or when no value does better than
+    answering all of them or none.
     """
     results = list(results)
     answerable = [result for result in results if result.case.answerable]
@@ -170,6 +171,8 @@ def suggest_min_score(results: Iterable[CaseResult]) -> MinScoreSuggestion | Non
     candidates = sorted(scores | {round(score + 0.001, 3) for score in scores})
     balanced = {candidate: sum(shares(candidate)) / 2 for candidate in candidates}
     best = max(balanced.values())
+    if best <= 0.5:
+        return None
     tied = [candidate for candidate, value in balanced.items() if value == best]
     middle = round((tied[0] + tied[-1]) / 2, 3)
     chosen = middle if sum(shares(middle)) / 2 == best else tied[0]

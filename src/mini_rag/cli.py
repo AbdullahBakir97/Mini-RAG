@@ -144,6 +144,9 @@ def _print_summary(report: dict) -> None:
         print(f"\n  A min score of {suggestion['min_score']} would answer "
               f"{suggestion['above_min_score']:.0%} of the answerable questions and reject "
               f"{suggestion['rejected']:.0%} of the others.")
+    elif metrics["answerable"] and metrics["unanswerable"]:
+        print("\n  No min score separates the answerable questions from the others: the "
+              "unanswerable ones score as high as the relevant results.")
     if report["metrics_by_tag"]:
         print(f"\n  {'tag':<14}{'questions':>10}{'hit rate':>10}{'MRR':>8}")
         for tag, values in report["metrics_by_tag"].items():

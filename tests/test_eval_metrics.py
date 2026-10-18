@@ -93,6 +93,15 @@ def test_suggests_the_min_score_between_both_kinds_of_question():
     assert suggest_min_score(results[:2]) is None
 
 
+def test_suggests_no_min_score_when_none_separates_the_questions():
+    results = [
+        judge(case("a", ("a.txt", "alpha")), [hit("a.txt", "alpha", 0.50)]),
+        judge(case("b"), [hit("a.txt", "alpha", 0.80)]),
+    ]
+
+    assert suggest_min_score(results) is None
+
+
 def report_for(results, **parameters):
     dataset = Dataset(name="tiny", version="v1", description="", documents=(),
                       cases=tuple(result.case for result in results))

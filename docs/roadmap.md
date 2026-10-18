@@ -37,10 +37,11 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 2: Evaluation
 
-- [ ] A versioned test set of questions, expected sources and reference answers.
-- [ ] Retrieval metrics (recall@k, MRR) and answer metrics (groundedness, relevance, citation accuracy).
-- [ ] A `mini-rag eval` command with JSON reports.
-- [ ] Retrieval metrics checked on every pull request; changes that lower them fail CI.
+- [x] A versioned test set of questions, expected sources and reference answers.
+- [x] Retrieval metrics (hit rate, recall@k, MRR, and how the minimum score keeps answerable questions and rejects the others).
+- [ ] Answer metrics (groundedness, relevance, citation accuracy).
+- [x] A `mini-rag eval` command with JSON reports.
+- [x] Retrieval metrics checked on every pull request; changes that lower them fail CI.
 - [ ] Thumbs up/down feedback stored to grow the test set.
 
 ### Phase 3: Platform and white-label

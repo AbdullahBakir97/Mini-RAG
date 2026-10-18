@@ -1,0 +1,18 @@
+{
+  "parameters": {
+    "dataset": "handbook/v1",
+    "embedding_model": "nomic-embed-text:v1.5",
+    "embedding_dimensions": 768,
+    "top_k": 5,
+    "chunk_size": 1000,
+    "overlap_size": 200,
+    "min_score": 0.3
+  },
+  "metrics": {
+    "hit_rate": 0.9565,
+    "recall": 0.9565,
+    "mrr": 0.9022,
+    "above_min_score": 0.9565,
+    "rejected": 0.0
+  }
+}
