@@ -251,6 +251,7 @@ def _stored(citation: Citation) -> StoredCitation:
     source = citation.source
     return StoredCitation(number=citation.number, file_key=source.file_key,
                           chunk_index=source.chunk.index, page=source.chunk.metadata.get("page"),
+                          section=source.chunk.metadata.get("section"),
                           score=source.score, text=source.chunk.text)
 
 

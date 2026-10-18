@@ -67,6 +67,14 @@ def test_rejects_unsupported_type_before_touching_disk(service, storage):
     assert not storage.root.exists()
 
 
+@pytest.mark.parametrize("declared", [None, "", "application/octet-stream", "text/plain; charset=utf-8"])
+def test_a_missing_or_generic_type_is_taken_from_the_extension(service, uow, declared):
+    save(service, content_type=declared)
+
+    [record] = uow.files.records
+    assert record.content_type == "text/plain"
+
+
 def test_rejects_declared_size_over_limit(service, storage):
     with pytest.raises(FileTooLarge):
         save(service, declared_size=101)

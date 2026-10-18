@@ -51,6 +51,8 @@ export interface FileInfo {
 export interface ChunkMetadata {
   source?: string;
   page?: number;
+  /** The headings above the chunk in Markdown, HTML and Word files: "Setup > Install". */
+  section?: string;
   [key: string]: unknown;
 }
 
@@ -116,6 +118,8 @@ export interface Citation {
   file_id: string;
   chunk_index: number;
   page: number | null;
+  /** Missing in answers stored before sections were read. */
+  section?: string | null;
   score: number;
   text: string;
 }

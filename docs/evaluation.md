@@ -105,7 +105,7 @@ A dataset is a folder:
 ```text
 evals/handbook/v1/
 ├── dataset.json      # name, version, description and the documents
-├── documents/        # .txt and .pdf files, as they would be uploaded
+├── documents/        # Files of any supported type, as they would be uploaded
 └── cases.jsonl       # one question per line
 ```
 

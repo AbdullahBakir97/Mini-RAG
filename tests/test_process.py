@@ -86,6 +86,44 @@ def test_file_on_disk_without_a_record_is_not_found(client, files_dir):
     assert process(client, "p1", "abc_stray.txt").status_code == 404
 
 
+def test_process_markdown_by_section_even_without_a_content_type(client, query):
+    text = "# Guide\n\n## Install\nRun `pip install`.\n\n## Use\nAsk a question."
+    file_id = upload(client, "p1", "guide.md", text.encode(), "application/octet-stream")
+
+    assert process(client, "p1", file_id).json()["chunks_count"] == 2
+    assert [(text, meta.get("section")) for _, text, meta in query(CHUNKS_SQL)] == [
+        ("## Install\n\nRun `pip install`.", "Guide > Install"),
+        ("## Use\n\nAsk a question.", "Guide > Use"),
+    ]
+    assert query("SELECT content_type FROM files") == [("text/markdown",)]
+
+
+def test_process_html_and_word_documents(client, query, make_docx):
+    html = b"<html><head><title>FAQ</title></head><body><p>Cats purr.</p><script>x()</script>"
+    docx = make_docx('<w:p><w:r><w:t>Dogs bark.</w:t></w:r></w:p>')
+    for name, content, content_type in [
+        ("faq.html", html, "text/html"),
+        ("notes.docx", docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ]:
+        process(client, "p1", upload(client, "p1", name, content, content_type))
+
+    assert [(text, meta.get("title")) for _, text, meta in query(
+        "SELECT chunk_index, text, metadata FROM chunks ORDER BY text")] == [
+        ("Cats purr.", "FAQ"),
+        ("Dogs bark.", None),
+    ]
+
+
+def test_process_a_broken_word_document(client):
+    file_id = upload(client, "p1", "broken.docx", b"not a zip",
+                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    response = process(client, "p1", file_id)
+
+    assert response.status_code == 422
+    assert response.json() == {"signal": "processing_failed"}
+
+
 def test_process_pdf_without_text(client, make_pdf):
     file_id = upload(client, "p1", "scan.pdf", make_pdf([""]), "application/pdf")
 
@@ -105,7 +143,7 @@ def test_process_corrupt_pdf(client):
 
 
 def test_process_unsupported_extension(client):
-    file_id = upload(client, "p1", "notes.md", b"# heading", "text/plain")
+    file_id = upload(client, "p1", "notes.rtf", b"{\\rtf1 text}", "text/plain")
 
     response = process(client, "p1", file_id)
 

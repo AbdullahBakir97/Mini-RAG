@@ -119,6 +119,7 @@ class StoredCitation:
     page: int | None
     score: float
     text: str
+    section: str | None = None  # Answers stored before sections were read have none.
 
 
 @dataclass(frozen=True)

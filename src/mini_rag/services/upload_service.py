@@ -11,6 +11,7 @@ from mini_rag.core.errors import (
     UnsupportedFileType,
     UploadFailed,
 )
+from mini_rag.domain.file_types import content_type_for
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.storage.file_storage import FileStorage
 
@@ -49,8 +50,10 @@ class UploadService:
         anything fails, the file is removed, so storage and database never
         disagree and a failed upload leaves nothing behind. Content the
         project already has is not stored again: the existing file is
-        returned, marked as a duplicate.
+        returned, marked as a duplicate. A missing or generic content type
+        is taken from the file's extension.
         """
+        content_type = content_type_for(filename, content_type)
         if content_type not in self.allowed_types:
             raise UnsupportedFileType()
         if declared_size is not None and declared_size > self.max_bytes:

@@ -1,5 +1,7 @@
 import asyncio
+import io
 import os
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -29,7 +31,7 @@ TEST_ENV = {
     "APP_NAME": "mini-RAG-test",
     "APP_VERSION": "0.0.1",
     "OPENAI_API_KEY": "test-key",
-    "FILE_ALLOWED_TYPES": '["text/plain", "application/pdf"]',
+    "FILE_ALLOWED_TYPES": '["text/plain", "text/markdown", "text/html", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]',
     "FILE_MAX_SIZE": "1",
     "FILE_DEFAULT_CHUNK_SIZE": "1024",
     "DATABASE_URL": TEST_DATABASE_URL,
@@ -155,6 +157,28 @@ def build_pdf(pages: list[str]) -> bytes:
 @pytest.fixture
 def make_pdf():
     return build_pdf
+
+
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def build_docx(body: str, styles: str = "") -> bytes:
+    """Build a minimal Word document from ``w:body`` XML (and ``w:styles`` XML)."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("[Content_Types].xml", (
+            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            '<Default Extension="xml" ContentType="application/xml"/></Types>'))
+        archive.writestr("word/document.xml",
+                         f'<w:document xmlns:w="{_W}"><w:body>{body}</w:body></w:document>')
+        if styles:
+            archive.writestr("word/styles.xml", f'<w:styles xmlns:w="{_W}">{styles}</w:styles>')
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def make_docx():
+    return build_docx
 
 
 async def _fetch(url: str, sql: str) -> list[tuple]:

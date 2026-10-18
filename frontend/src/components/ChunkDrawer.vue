@@ -105,6 +105,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
             <div class="chunk-meta">
               <span class="badge mono">#{{ chunk.chunk_index }}</span>
               <span v-if="chunk.metadata.page" class="badge">Page {{ chunk.metadata.page }}</span>
+              <span v-if="chunk.metadata.section" class="badge section" :title="chunk.metadata.section">
+                {{ chunk.metadata.section }}
+              </span>
               <span class="subtle small">{{ formatNumber(chunk.text.length) }} characters</span>
             </div>
             <p class="chunk-text">{{ reflow(chunk.text) }}</p>
@@ -120,6 +123,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
 </template>
 
 <style scoped>
+.section {
+  overflow: hidden;
+  max-width: 260px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .overlay {
   position: fixed;
   inset: 0;
