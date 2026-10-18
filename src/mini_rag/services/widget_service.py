@@ -13,6 +13,7 @@ from mini_rag.core.errors import (
 from mini_rag.domain.models import Conversation, Project, Widget
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.services.audit import record
+from mini_rag.services.tag_service import clean_tags
 
 WIDGET_PREFIX = "wgt_"
 DEFAULT_ACCENT = "#2563eb"
@@ -75,15 +76,16 @@ class WidgetService:
         self.uow = uow
 
     async def create(self, project_name: str, name: str, welcome: str | None, accent: str | None,
-                     allowed_origins: Sequence[str]) -> Widget:
+                     allowed_origins: Sequence[str], tags: Sequence[str] = ()) -> Widget:
+        """``tags``, when given, limit its answers to files with any of them."""
         project = await self._project(project_name)
         widget = await self.uow.widgets.create(
             widget_id=generate_widget_id(), project_id=project.id, name=name.strip(),
             welcome=_text(welcome), accent=_accent(accent or DEFAULT_ACCENT),
-            allowed_origins=_origins(allowed_origins))
+            allowed_origins=_origins(allowed_origins), tags=clean_tags(tags))
         await record(self.uow, project.tenant_id, "widget.created", widget.id,
                      project=project.name, name=widget.name,
-                     allowed_origins=list(widget.allowed_origins))
+                     allowed_origins=list(widget.allowed_origins), tags=list(widget.tags))
         await self.uow.commit()
         return widget
 
@@ -111,6 +113,8 @@ class WidgetService:
             cleaned["accent"] = _accent(cleaned["accent"] or DEFAULT_ACCENT)
         if "allowed_origins" in cleaned:
             cleaned["allowed_origins"] = _origins(cleaned["allowed_origins"])
+        if "tags" in cleaned:
+            cleaned["tags"] = list(clean_tags(cleaned["tags"] or ()))
         widget = await self.uow.widgets.update(project.id, widget_id, cleaned)
         if widget is None:
             raise WidgetNotFound()

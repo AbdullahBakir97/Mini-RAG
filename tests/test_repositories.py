@@ -95,6 +95,32 @@ async def test_files_are_listed_in_upload_order_with_paging(uow):
     assert await uow.files.count_for_project(project.id) == 5
 
 
+async def test_files_keep_their_tags_and_can_be_listed_by_tag(uow):
+    project = await uow.projects.get_or_create("demo")
+    other = await uow.projects.get_or_create("other")
+    tagged = await uow.files.add(project_id=project.id, key="a_guide.txt", original_name="guide.txt",
+                                 content_type="text/plain", size_bytes=1, tags=["guides", "v2"])
+    assert tagged.tags == ("guides", "v2")
+    await add_file(uow, project, key="b_notes.txt")
+    await uow.files.add(project_id=other.id, key="c_x.txt", original_name="x.txt",
+                        content_type="text/plain", size_bytes=1, tags=["guides"])
+
+    untagged = await add_file(uow, project, key="d_more.txt")
+    assert untagged.tags == ()
+    updated = await uow.files.set_tags(project.id, "d_more.txt", ["guides"])
+    assert updated.tags == ("guides",)
+    assert await uow.files.set_tags(project.id, "missing.txt", ["x"]) is None
+
+    listed = await uow.files.list_for_project(project.id, offset=0, limit=10, tag="guides")
+    assert [f.key for f in listed] == ["a_guide.txt", "d_more.txt"]
+    assert await uow.files.count_for_project(project.id, tag="guides") == 2
+    assert await uow.files.count_for_project(project.id, tag="v3") == 0
+    assert await uow.files.count_for_project(project.id) == 3
+    assert [(t.tag, t.files) for t in await uow.files.tag_counts(project.id)] == [
+        ("guides", 2), ("v2", 1)]
+    assert await uow.files.tag_counts(other.id) != await uow.files.tag_counts(project.id)
+
+
 async def test_replace_chunks_for_file(uow):
     project = await uow.projects.get_or_create("demo")
     file = await add_file(uow, project)
@@ -514,6 +540,10 @@ async def test_search_filters_narrow_the_chunks_searched(uow, query):
     assert len(await search(max_per_file=1)) == 2
     assert await search(file_keys=("g_guide.pdf",), metadata={"lang": "en"}, page_to=1) == [
         ("g_guide.pdf", 0)]
+    await uow.files.set_tags(project.id, "n_notes.txt", ["notes", "internal"])
+    assert await search(tags=("internal", "missing")) == [("n_notes.txt", 0)]
+    assert await search(tags=("missing",)) == []
+    assert await search(tags=("notes",), file_keys=("g_guide.pdf",)) == []
 
 
 async def test_search_filters_by_upload_date(uow):

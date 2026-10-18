@@ -142,6 +142,13 @@ class WidgetOriginInvalid(AppError):
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY
 
 
+class TagInvalid(AppError):
+    """A tag that is not letters, digits and hyphens, or too many tags."""
+
+    signal = ResponseSignal.TAG_INVALID
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
 class OriginNotAllowed(AppError):
     """The page asking is not on a website the widget allows."""
 

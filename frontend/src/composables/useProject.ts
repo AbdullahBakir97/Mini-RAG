@@ -1,7 +1,7 @@
 import { inject, provide, ref, watch, type InjectionKey, type Ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
-import type { Project } from "@/api/types";
+import type { Project, TagCount } from "@/api/types";
 import { displayName } from "@/lib/format";
 
 export interface ProjectContext {
@@ -15,6 +15,8 @@ export interface ProjectContext {
   fileName: (fileId: string) => string;
   /** The project's first 100 files, for choosing what to search. */
   files: Ref<{ file_id: string; original_name: string }[]>;
+  /** The project's tags by name, with how many files have each. */
+  tags: Ref<TagCount[]>;
 }
 
 const KEY: InjectionKey<ProjectContext> = Symbol("project");
@@ -26,6 +28,7 @@ export function provideProject(name: Ref<string>): ProjectContext {
   const error = ref<ApiError | null>(null);
   const names = ref<Record<string, string>>({});
   const files = ref<{ file_id: string; original_name: string }[]>([]);
+  const tags = ref<TagCount[]>([]);
 
   // Sources only carry file ids; the upload's own name reads better. Large
   // projects fall back to the name kept in the id.
@@ -41,6 +44,15 @@ export function provideProject(name: Ref<string>): ProjectContext {
     }
   }
 
+  async function loadTags(requested: string) {
+    try {
+      const loaded = (await api.tags(requested)).items;
+      if (requested === name.value) tags.value = loaded;
+    } catch {
+      // Without them, nothing can be narrowed by tag.
+    }
+  }
+
   function fileName(fileId: string) {
     return names.value[fileId] ?? displayName(fileId);
   }
@@ -53,6 +65,7 @@ export function provideProject(name: Ref<string>): ProjectContext {
         project.value = loaded;
         error.value = null;
         void loadNames(requested);
+        void loadTags(requested);
       }
     } catch (caught) {
       if (requested !== name.value) return;
@@ -71,13 +84,14 @@ export function provideProject(name: Ref<string>): ProjectContext {
       project.value = null;
       names.value = {};
       files.value = [];
+      tags.value = [];
       loading.value = true;
       void refresh();
     },
     { immediate: true },
   );
 
-  const context = { name, project, loading, error, refresh, fileName, files };
+  const context = { name, project, loading, error, refresh, fileName, files, tags };
   provide(KEY, context);
   return context;
 }

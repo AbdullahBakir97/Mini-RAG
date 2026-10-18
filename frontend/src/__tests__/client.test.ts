@@ -162,6 +162,24 @@ describe("api", () => {
     expect([projectInit.method, projectUrl]).toEqual(["DELETE", "/api/v1/projects/my%20docs"]);
   });
 
+  it("lists files by tag, retags them and lists the tags", async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ items: [] })));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.files("demo", { limit: 10 }, "release notes");
+    await api.setFileTags("demo", "a_guide.txt", ["guides"]);
+    await api.tags("demo");
+
+    expect(fetch.mock.calls[0]![0]).toBe("/api/v1/projects/demo/files?offset=0&limit=10&tag=release+notes");
+    const [tagsUrl, tagsInit] = fetch.mock.calls[1]!;
+    expect([tagsInit.method, tagsUrl, JSON.parse(tagsInit.body)]).toEqual([
+      "PUT",
+      "/api/v1/projects/demo/files/a_guide.txt/tags",
+      { tags: ["guides"] },
+    ]);
+    expect(fetch.mock.calls[2]![0]).toBe("/api/v1/projects/demo/tags");
+  });
+
   it("queues and follows jobs", async () => {
     const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ id: "j 1" })));
     vi.stubGlobal("fetch", fetch);

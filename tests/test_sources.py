@@ -235,6 +235,19 @@ def test_a_sync_stores_new_pages_and_queues_them(client, sync):
     assert sync(ScriptedCrawler()) == [False]
 
 
+def test_a_sources_pages_get_its_tags(client, sync):
+    source = add_source(client, tags=["Docs", "v2"])
+    assert source["tags"] == ["docs", "v2"]
+
+    sync(ScriptedCrawler([page("/guide/", "Welcome"), page("/guide/setup", "Install it")]))
+
+    tagged = client.get("/api/v1/projects/docs/files", params={"tag": "docs"}).json()
+    assert tagged["total"] == 2
+    assert {tuple(f["tags"]) for f in tagged["items"]} == {("docs", "v2")}
+    assert client.post("/api/v1/projects/docs/sources",
+                       json={"url": f"{SITE}/x/", "tags": ["a b/c"]}).status_code == 422
+
+
 def test_later_syncs_add_replace_and_remove_pages(client, sync):
     source = add_source(client, sync_interval_hours=0)
     sync(ScriptedCrawler([page("/guide/", "Welcome"), page("/guide/old", "Old page"),

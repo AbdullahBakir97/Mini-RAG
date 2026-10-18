@@ -14,6 +14,7 @@ const SOURCE = {
   last_synced_at: "2026-10-18T10:00:00Z",
   next_sync_at: "2999-01-01T00:00:00Z",
   last_error: null,
+  tags: ["docs"],
   created_at: "2026-10-18T09:00:00Z",
 };
 
@@ -38,9 +39,10 @@ describe("WebsiteSources", () => {
     expect(wrapper.find(".url").text()).toBe(SOURCE.url);
     expect(wrapper.text()).toContain("3 of at most 50 pages · Every day · Synced");
     expect(wrapper.find(".error").text()).toContain("docs.example.com could not be resolved. Its pages are kept.");
+    expect(wrapper.find(".tags").text()).toBe("docs");
   });
 
-  it("adds a website with its limits and schedule", async () => {
+  it("adds a website with its limits, schedule and tags", async () => {
     const fetch = respond({ items: [] }, SOURCE, { items: [SOURCE] });
     const wrapper = mount(WebsiteSources, { props: { project: "demo" } });
     await flushPromises();
@@ -48,12 +50,18 @@ describe("WebsiteSources", () => {
     await wrapper.find("input[type=url]").setValue("https://docs.example.com/guide/");
     await wrapper.find("input[type=number]").setValue(20);
     await wrapper.find("select").setValue(0);
+    await wrapper.find('input[aria-label="Tags for its pages"]').setValue("Guides, v2");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
     const [url, init] = fetch.mock.calls[1]!;
     expect(url).toBe("/api/v1/projects/demo/sources");
-    expect(JSON.parse(init.body)).toEqual({ url: "https://docs.example.com/guide/", max_pages: 20, sync_interval_hours: 0 });
+    expect(JSON.parse(init.body)).toEqual({
+      url: "https://docs.example.com/guide/",
+      max_pages: 20,
+      sync_interval_hours: 0,
+      tags: ["guides", "v2"],
+    });
     expect(wrapper.emitted("synced")).toHaveLength(1);
     expect(wrapper.findAll(".item")).toHaveLength(1);
   });

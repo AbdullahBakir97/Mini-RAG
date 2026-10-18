@@ -12,6 +12,7 @@ from mini_rag.domain.models import Project, Source, SourcePage
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.services.audit import record
 from mini_rag.services.deletion_service import DeletionService
+from mini_rag.services.tag_service import clean_tags
 from mini_rag.storage.file_storage import FileStorage
 
 
@@ -24,18 +25,22 @@ class SourceService:
         self.allow_private_urls = allow_private_urls
 
     async def create(self, project_name: str, url: str, max_pages: int,
-                     sync_interval_hours: int) -> Source:
-        """Add a website, synced at once; the project is created if it has no files yet."""
+                     sync_interval_hours: int, tags: Sequence[str] = ()) -> Source:
+        """Add a website, synced at once; the project is created if it has no files yet.
+
+        Its pages get ``tags``.
+        """
         host = urlsplit(url).hostname or ""
         if not self.allow_private_urls and is_local_host(host):
             raise SourceUrlNotAllowed()
         project = await self.uow.projects.get_or_create(project_name)
         source = await self.uow.sources.create(project_id=project.id, kind="website", url=url,
                                                max_pages=max_pages,
-                                               sync_interval_hours=sync_interval_hours)
+                                               sync_interval_hours=sync_interval_hours,
+                                               tags=clean_tags(tags))
         await record(self.uow, project.tenant_id, "source.created", source.id,
                      project=project.name, url=url, max_pages=max_pages,
-                     sync_interval_hours=sync_interval_hours)
+                     sync_interval_hours=sync_interval_hours, tags=list(source.tags))
         await self.uow.commit()
         return source
 

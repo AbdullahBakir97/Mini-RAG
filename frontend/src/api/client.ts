@@ -29,6 +29,7 @@ import type {
   Rating,
   SearchOptions,
   SearchResult,
+  TagCount,
   TenantUsage,
   UploadResult,
   Webhook,
@@ -129,6 +130,8 @@ export interface PageParams {
 }
 
 export interface UploadOptions {
+  /** Given to the file; a file the project already has gains those it did not have. */
+  tags?: string[];
   onProgress?: (fraction: number) => void;
   signal?: AbortSignal;
 }
@@ -157,8 +160,16 @@ export const api = {
   /** Deletes the project with all its files, chunks, answers and conversations. */
   deleteProject: (name: string) => remove(`/projects/${project(name)}`),
   deleteFile: (name: string, fileId: string) => remove(`/projects/${project(name)}/files/${encodeURIComponent(fileId)}`),
-  files: (name: string, page: PageParams = {}) =>
-    get<Page<FileInfo>>(`/projects/${project(name)}/files`, { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
+  files: (name: string, page: PageParams = {}, tag?: string) =>
+    get<Page<FileInfo>>(`/projects/${project(name)}/files`, {
+      offset: page.offset ?? 0,
+      limit: page.limit ?? 100,
+      ...(tag ? { tag } : {}),
+    }),
+  /** Replaces the file's tags. */
+  setFileTags: (name: string, fileId: string, tags: string[]) =>
+    put<FileInfo>(`/projects/${project(name)}/files/${encodeURIComponent(fileId)}/tags`, { tags }),
+  tags: (name: string) => get<{ items: TagCount[] }>(`/projects/${project(name)}/tags`),
   chunks: (name: string, fileId: string, page: PageParams = {}) =>
     get<Page<Chunk>>(`/projects/${project(name)}/files/${encodeURIComponent(fileId)}/chunks`, {
       offset: page.offset ?? 0,
@@ -188,6 +199,7 @@ export const api = {
       options.signal?.addEventListener("abort", () => request.abort());
       const form = new FormData();
       form.append("file", file, file.name);
+      if (options.tags?.length) form.append("tags", options.tags.join(","));
       request.send(form);
     });
   },
@@ -214,7 +226,7 @@ export const api = {
       limit: page.limit ?? 10,
     }),
   sources: (name: string) => get<{ items: WebsiteSource[] }>(`/projects/${project(name)}/sources`),
-  createSource: (name: string, body: { url: string; max_pages: number; sync_interval_hours: number }) =>
+  createSource: (name: string, body: { url: string; max_pages: number; sync_interval_hours: number; tags: string[] }) =>
     post<WebsiteSource>(`/projects/${project(name)}/sources`, body),
   syncSource: (name: string, sourceId: string) =>
     post<WebsiteSource>(`/projects/${project(name)}/sources/${encodeURIComponent(sourceId)}/sync`),

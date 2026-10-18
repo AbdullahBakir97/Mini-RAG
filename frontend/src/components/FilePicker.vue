@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { Check, ChevronDown, Files } from "@lucide/vue";
+import { Check, ChevronDown, Files, Tags } from "@lucide/vue";
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 
-const props = defineProps<{
-  files: { file_id: string; original_name: string }[];
-  /** The chosen files; none means all of them. */
-  modelValue: string[];
-}>();
+const props = withDefaults(
+  defineProps<{
+    files: { file_id: string; original_name: string }[];
+    /** The chosen files; none means all of them. */
+    modelValue: string[];
+    /** Picks tags instead: `files` are then the tags, by name. */
+    tags?: boolean;
+  }>(),
+  { tags: false },
+);
 const emit = defineEmits<{ "update:modelValue": [string[]] }>();
 
 const open = ref(false);
@@ -14,8 +19,9 @@ const root = ref<HTMLElement | null>(null);
 
 const label = computed(() => {
   const chosen = props.files.filter((file) => props.modelValue.includes(file.file_id));
-  if (!chosen.length) return "All documents";
-  return chosen.length === 1 ? chosen[0]!.original_name : `${chosen.length} documents`;
+  if (!chosen.length) return props.tags ? "Any tag" : "All documents";
+  if (chosen.length === 1) return chosen[0]!.original_name;
+  return `${chosen.length} ${props.tags ? "tags" : "documents"}`;
 });
 
 function toggle(fileId: string) {
@@ -60,14 +66,15 @@ onBeforeUnmount(() => {
       :disabled="!files.length"
       @click="open = !open"
     >
-      <Files :size="14" />
+      <Tags v-if="tags" :size="14" />
+      <Files v-else :size="14" />
       <span class="label">{{ label }}</span>
       <ChevronDown :size="14" />
     </button>
-    <div v-if="open" class="menu card" role="group" aria-label="Documents to use">
+    <div v-if="open" class="menu card" role="group" :aria-label="tags ? 'Tags of the documents to use' : 'Documents to use'">
       <button type="button" class="option" :aria-pressed="!modelValue.length" @click="emit('update:modelValue', [])">
         <span class="box"><Check v-if="!modelValue.length" :size="12" /></span>
-        All documents
+        {{ tags ? "Any tag" : "All documents" }}
       </button>
       <hr />
       <button

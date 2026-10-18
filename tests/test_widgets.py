@@ -202,6 +202,31 @@ def test_visitors_get_streamed_answers_naming_their_documents(client, widget):
     assert set(answer) == {"signal", "answer", "citations", "conversation_id", "message_id"}
 
 
+def test_a_widget_with_tags_answers_only_from_files_with_them(client, widget, llm):
+    other = upload_process_and_index(client, name="other.txt",
+                                     text="Embedding vectors are stored elsewhere entirely.")
+    client.put(f"/api/v1/projects/demo/files/{other}/tags", json={"tags": ["public"]})
+    changed = client.patch(f"/api/v1/projects/demo/widgets/{widget['id']}",
+                           json={"tags": ["Public"]})
+    assert changed.json()["tags"] == ["public"]
+
+    status, events = ask(client, widget["id"])
+
+    assert status == 200
+    assert "other.txt" in llm.calls[-1][-1].content
+    assert "guide.txt" not in llm.calls[-1][-1].content
+    answer = events[-1][1]
+    assert {c["file_name"] for c in answer["citations"]} <= {"other.txt"}
+    cleared = client.patch(f"/api/v1/projects/demo/widgets/{widget['id']}", json={"tags": None})
+    assert cleared.json()["tags"] == []
+
+
+def test_widget_tags_are_validated(client, widget):
+    assert create_widget(client, tags=["no/slash"]).status_code == 422
+    created = create_widget(client, tags=["Help Center"])
+    assert created.json()["tags"] == ["help-center"]
+
+
 def test_visitors_follow_up_in_their_conversation(client, widget, llm):
     _, first = ask(client, widget["id"])
     conversation_id = first[-1][1]["conversation_id"]

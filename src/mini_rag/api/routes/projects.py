@@ -2,23 +2,34 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Response, status
 
-from mini_rag.api.dependencies import READ, WRITE, DeletionServiceDep, ProjectServiceDep
+from mini_rag.api.dependencies import (
+    READ,
+    WRITE,
+    DeletionServiceDep,
+    ProjectServiceDep,
+    TagServiceDep,
+)
 from mini_rag.api.schemas import (
     ChunkListResponse,
     ChunkResponse,
     FileIdPath,
     FileListResponse,
     FileResponse,
+    FileTagsRequest,
     Pagination,
     ProjectId,
     ProjectListItem,
     ProjectListResponse,
     ProjectResponse,
     ProjectUsageResponse,
+    TagListResponse,
+    TagQuery,
+    TagResponse,
     error_responses,
 )
-from mini_rag.core.errors import FileNotFound, ProjectNotFound
+from mini_rag.core.errors import FileNotFound, ProjectNotFound, TagInvalid
 from mini_rag.domain.models import FileRecord
+from mini_rag.services.tag_service import clean_tags
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
@@ -28,7 +39,7 @@ PaginationDep = Annotated[Pagination, Depends()]
 def _file_response(record: FileRecord) -> FileResponse:
     return FileResponse(file_id=record.key, original_name=record.original_name,
                         content_type=record.content_type, size_bytes=record.size_bytes,
-                        created_at=record.created_at)
+                        created_at=record.created_at, tags=list(record.tags))
 
 
 @router.get("", dependencies=[READ], summary="List projects in name order")
@@ -63,12 +74,31 @@ async def get_usage(project_id: ProjectId, service: ProjectServiceDep) -> Projec
 
 @router.get("/{project_id}/files", dependencies=[READ],
             summary="List a project's files in upload order",
-            responses=error_responses(ProjectNotFound))
+            responses=error_responses(ProjectNotFound, TagInvalid))
 async def list_files(project_id: ProjectId, page: PaginationDep,
-                     service: ProjectServiceDep) -> FileListResponse:
-    result = await service.list_files(project_id, offset=page.offset, limit=page.limit)
+                     service: ProjectServiceDep, tag: TagQuery = None) -> FileListResponse:
+    tag = clean_tags([tag])[0] if tag is not None else None
+    result = await service.list_files(project_id, offset=page.offset, limit=page.limit, tag=tag)
     return FileListResponse(total=result.total, offset=result.offset, limit=result.limit,
                             items=[_file_response(record) for record in result.items])
+
+
+@router.put("/{project_id}/files/{file_id}/tags", dependencies=[WRITE],
+            summary="Replace a file's tags",
+            description="Tags group files into collections: searches, answers and widgets "
+                        "can be limited to files with some tags.",
+            responses=error_responses(ProjectNotFound, FileNotFound))
+async def set_file_tags(project_id: ProjectId, file_id: FileIdPath, request: FileTagsRequest,
+                        service: TagServiceDep) -> FileResponse:
+    return _file_response(await service.set_file_tags(project_id, file_id, request.tags))
+
+
+@router.get("/{project_id}/tags", dependencies=[READ],
+            summary="List a project's tags by name, with how many files have each",
+            responses=error_responses(ProjectNotFound))
+async def list_tags(project_id: ProjectId, service: TagServiceDep) -> TagListResponse:
+    return TagListResponse(items=[TagResponse(tag=count.tag, files=count.files)
+                                  for count in await service.list_tags(project_id)])
 
 
 @router.get("/{project_id}/files/{file_id}/chunks", dependencies=[READ],

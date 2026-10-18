@@ -56,7 +56,7 @@ from mini_rag.core.errors import (
     WidgetNotFound,
     WidgetOriginInvalid,
 )
-from mini_rag.domain.models import Widget
+from mini_rag.domain.models import SearchFilters, Widget
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.domain.signals import ResponseSignal
 from mini_rag.persistence.repositories import SqlUnitOfWork
@@ -78,7 +78,7 @@ def _widget(widget: Widget) -> WidgetResponse:
     return WidgetResponse(id=widget.id, project=widget.project_name, name=widget.name,
                           welcome=widget.welcome, accent=widget.accent,
                           allowed_origins=list(widget.allowed_origins),
-                          created_at=widget.created_at)
+                          tags=list(widget.tags), created_at=widget.created_at)
 
 
 @router.post("/{project_id}/widgets", status_code=status.HTTP_201_CREATED,
@@ -90,7 +90,7 @@ def _widget(widget: Widget) -> WidgetResponse:
 async def create_widget(project_id: ProjectId, request: WidgetRequest,
                         service: WidgetServiceDep) -> WidgetResponse:
     return _widget(await service.create(project_id, request.name, request.welcome,
-                                        request.accent, request.allowed_origins))
+                                        request.accent, request.allowed_origins, request.tags))
 
 
 @router.get("/{project_id}/widgets", summary="List a project's chat widgets",
@@ -186,8 +186,10 @@ async def widget_ask(widget: WidgetDep, body: WidgetAskRequest, uow: WidgetUnitO
     await limits.check_answers(widget.tenant_id)
     conversation = await WidgetService(uow).conversation(
         widget, str(body.conversation_id) if body.conversation_id else None)
+    # A widget with tags answers only from the files that have them.
+    filters = SearchFilters(tags=widget.tags) if widget.tags else None
     prepared = await answers.prepare(widget.project_name, body.question, top_k=WIDGET_TOP_K,
-                                     conversation_id=conversation.id)
+                                     conversation_id=conversation.id, filters=filters)
     # Visitors see documents' names, not their ids.
     names = {}
     for source in prepared.sources:

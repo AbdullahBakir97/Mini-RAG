@@ -145,6 +145,16 @@ class FileRecord:
     created_at: datetime
     # Hex SHA-256 of the content; None for files uploaded before it was kept.
     content_sha256: str | None = None
+    # Labels grouping files into collections (normalized; see domain.tags).
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class TagCount:
+    """A tag and how many of a project's files have it."""
+
+    tag: str
+    files: int
 
 
 @dataclass(frozen=True)
@@ -254,13 +264,15 @@ class FeedbackCounts:
 class SearchFilters:
     """Narrows a search to some of a project's chunks; empty fields do not narrow it.
 
-    ``file_keys`` limits it to those files; the page range applies to chunks
+    ``file_keys`` limits it to those files and ``tags`` to files with any of
+    those tags; the page range applies to chunks
     with a page (PDFs), so it leaves out all others; the upload dates are
     the files'; ``metadata`` keeps chunks whose metadata contains it.
     ``max_per_file`` keeps results from crowding into one file.
     """
 
     file_keys: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
     page_from: int | None = None
     page_to: int | None = None
     uploaded_after: datetime | None = None
@@ -340,6 +352,8 @@ class Widget:
     allowed_origins: tuple[str, ...]
     created_at: datetime
     tenant_name: str = ""
+    # When set, the widget answers only from files with any of these tags.
+    tags: tuple[str, ...] = ()
 
 
 SourceKind = Literal["website"]
@@ -367,6 +381,8 @@ class Source:
     last_synced_at: datetime | None = None
     next_sync_at: datetime | None = None
     last_error: str | None = None
+    # Given to the pages it stores.
+    tags: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -46,6 +46,14 @@ export interface FileInfo {
   content_type: string;
   size_bytes: number;
   created_at: string;
+  /** Lowercase letters, digits and hyphens; they group files into collections. */
+  tags: string[];
+}
+
+export interface TagCount {
+  tag: string;
+  /** How many of the project's files have it. */
+  files: number;
 }
 
 export interface ChunkMetadata {
@@ -130,6 +138,8 @@ export interface IndexResult {
 
 export interface SearchFilters {
   file_ids?: string[];
+  /** Only files with at least one of these tags. */
+  tags?: string[];
   page_from?: number | null;
   page_to?: number | null;
   uploaded_after?: string | null;
@@ -278,6 +288,8 @@ export interface ChatWidget {
   welcome: string | null;
   accent: string;
   allowed_origins: string[];
+  /** Its answers come only from files with any of these; [] for all files. */
+  tags: string[];
   created_at: string;
 }
 
@@ -286,6 +298,7 @@ export interface ChatWidgetSettings {
   welcome: string | null;
   accent: string;
   allowed_origins: string[];
+  tags: string[];
 }
 
 export interface WebsiteSource {
@@ -301,6 +314,8 @@ export interface WebsiteSource {
   next_sync_at: string | null;
   /** Why the last sync could not crawl the site; its pages are kept meanwhile. */
   last_error: string | null;
+  /** Given to the pages it stores. */
+  tags: string[];
   created_at: string;
 }
 

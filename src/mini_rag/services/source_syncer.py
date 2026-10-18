@@ -167,7 +167,8 @@ class SourceSyncer:
             storage_left=await LimitService(uow, self.limits).storage_left(source.tenant_id))
         try:
             upload = await uploads.save(source.project_name, url, content_type,
-                                        BytesStream(body), stored_as=page_file_name(url, content_type))
+                                        BytesStream(body), stored_as=page_file_name(url, content_type),
+                                        tags=source.tags)
         except AppError as exc:
             # The page stays as it was; the next sync tries again.
             logger.warning("Page %s was not stored: %s", url, exc.signal.value)

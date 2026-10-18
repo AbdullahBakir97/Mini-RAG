@@ -48,11 +48,14 @@ class ProjectService:
             embedded_chunks_count=await self.uow.chunks.count_embedded_for_project(project.id),
         )
 
-    async def list_files(self, project_name: str, offset: int, limit: int) -> Page[FileRecord]:
+    async def list_files(self, project_name: str, offset: int, limit: int,
+                         tag: str | None = None) -> Page[FileRecord]:
+        """Files in upload order; ``tag`` keeps those that have it."""
         project = await self._project(project_name)
         return Page(
-            items=await self.uow.files.list_for_project(project.id, offset=offset, limit=limit),
-            total=await self.uow.files.count_for_project(project.id),
+            items=await self.uow.files.list_for_project(project.id, offset=offset, limit=limit,
+                                                        tag=tag),
+            total=await self.uow.files.count_for_project(project.id, tag=tag),
             offset=offset, limit=limit,
         )
 

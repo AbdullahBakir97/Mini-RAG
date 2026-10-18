@@ -51,7 +51,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [ ] TypeScript and Python SDKs generated from the OpenAPI schema.
 - [x] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations; a name, colour, welcome text and allowed website origins per widget.
 - [ ] **White-label:** a logo for the widget; an assistant persona and instructions per project; custom domains.
-- [ ] **Collections and categories:** group documents within a project and filter search and answers by collection or tag.
+- [x] **Collections and tags:** tag files (at upload, by hand, or per website source), list them by tag, and limit search, answers, chat widgets and the MCP tools to some tags.
 - [ ] A versioning policy for `/api/v1`.
 
 ### Phase 4: Ingestion and automation

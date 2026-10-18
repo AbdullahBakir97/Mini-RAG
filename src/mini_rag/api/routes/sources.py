@@ -26,7 +26,8 @@ def _source(source: Source) -> SourceResponse:
                           sync_interval_hours=source.sync_interval_hours,
                           pages_count=source.pages_count, syncing=source.syncing,
                           last_synced_at=source.last_synced_at, next_sync_at=source.next_sync_at,
-                          last_error=source.last_error, created_at=source.created_at)
+                          last_error=source.last_error, tags=list(source.tags),
+                          created_at=source.created_at)
 
 
 @router.post(
@@ -41,7 +42,7 @@ def _source(source: Source) -> SourceResponse:
 async def create_source(project_id: ProjectId, request: SourceRequest,
                         service: SourceServiceDep) -> SourceResponse:
     return _source(await service.create(project_id, str(request.url), request.max_pages,
-                                        request.sync_interval_hours))
+                                        request.sync_interval_hours, request.tags))
 
 
 @router.get("/{project_id}/sources", dependencies=[READ], summary="List a project's sources",

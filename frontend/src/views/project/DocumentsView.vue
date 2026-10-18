@@ -10,6 +10,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Settings2,
+  Tag,
   Trash2,
 } from "@lucide/vue";
 import { computed, onMounted, ref, watch } from "vue";
@@ -20,6 +21,7 @@ import type { FileInfo, ProcessOptions } from "@/api/types";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
 import FileDropzone from "@/components/FileDropzone.vue";
 import PagerControls from "@/components/PagerControls.vue";
+import TagInput from "@/components/TagInput.vue";
 import WebsiteSources from "@/components/WebsiteSources.vue";
 import { FINISHED, type Stage, useIngest } from "@/composables/useIngest";
 import { useProject } from "@/composables/useProject";
@@ -29,7 +31,8 @@ import { fileKind } from "@/lib/fileTypes";
 import { formatBytes, formatNumber, formatRelative } from "@/lib/format";
 
 const LIMIT = 20;
-const { name, project, refresh: refreshProject } = useProject();
+const { name, project, refresh: refreshProject, tags: projectTags } = useProject();
+const tagSuggestions = computed(() => projectTags.value.map((t) => t.tag));
 const { refresh: refreshProjects } = useProjects();
 const toasts = useToasts();
 const router = useRouter();
@@ -41,6 +44,11 @@ const loading = ref(true);
 const chunkCounts = ref<Record<string, number>>({});
 const reprocessing = ref<string | null>(null);
 const viewing = ref<FileInfo | null>(null);
+// Only files with this tag are listed; empty lists them all.
+const tagFilter = ref("");
+// Tags given to the next uploads.
+const uploadTags = ref<string[]>([]);
+const uploadTagInput = ref<InstanceType<typeof TagInput> | null>(null);
 
 const showOptions = ref(false);
 const options = ref<ProcessOptions>({ chunk_size: 1000, overlap_size: 200 });
@@ -59,7 +67,7 @@ async function onSourcesSynced() {
 
 async function load(at = offset.value) {
   try {
-    const page = await api.files(name.value, { offset: at, limit: LIMIT });
+    const page = await api.files(name.value, { offset: at, limit: LIMIT }, tagFilter.value || undefined);
     files.value = page.items;
     total.value = page.total;
     offset.value = at;
@@ -107,7 +115,41 @@ function addFiles(selected: File[]) {
     toasts.error("Check the chunking options", optionsProblem.value);
     return;
   }
-  add(selected);
+  if (uploadTagInput.value && !uploadTagInput.value.commit()) return;
+  add(selected, [...uploadTags.value]);
+}
+
+// The file whose tags are being edited, and its tags meanwhile.
+const tagging = ref<string | null>(null);
+const editedTags = ref<string[]>([]);
+// In the table's v-for, so Vue keeps it in an array; one row is edited at a time.
+const editTagInput = ref<InstanceType<typeof TagInput>[]>([]);
+const savingTags = ref(false);
+
+function editTags(file: FileInfo) {
+  tagging.value = file.file_id;
+  editedTags.value = [...file.tags];
+}
+
+async function saveTags(file: FileInfo) {
+  if (editTagInput.value[0] && !editTagInput.value[0].commit()) return;
+  savingTags.value = true;
+  try {
+    const saved = await api.setFileTags(name.value, file.file_id, editedTags.value);
+    tagging.value = null;
+    // A file that lost the tag shown leaves the list.
+    if (tagFilter.value && !saved.tags.includes(tagFilter.value)) await load();
+    else files.value = files.value.map((f) => (f.file_id === saved.file_id ? saved : f));
+    await refreshProject();
+  } catch (caught) {
+    toasts.error("The tags could not be saved", caught instanceof ApiError ? caught.message : undefined);
+  } finally {
+    savingTags.value = false;
+  }
+}
+
+function filterBy(tag: string) {
+  tagFilter.value = tagFilter.value === tag ? "" : tag;
 }
 
 async function reprocess(file: FileInfo) {
@@ -192,7 +234,14 @@ const kind = (file: FileInfo) => fileKind(file);
 watch(name, () => {
   loading.value = true;
   chunkCounts.value = {};
+  tagFilter.value = "";
+  uploadTags.value = [];
   void load(0);
+});
+watch(tagFilter, () => void load(0));
+// A filter whose last file lost the tag shows all files again.
+watch(projectTags, (tags) => {
+  if (tagFilter.value && !tags.some((t) => t.tag === tagFilter.value)) tagFilter.value = "";
 });
 onMounted(() => load(0));
 </script>
@@ -227,6 +276,16 @@ onMounted(() => load(0));
     </div>
 
     <FileDropzone :large="isEmpty" @files="addFiles" />
+    <div class="upload-tags">
+      <span class="small muted">Tag new uploads</span>
+      <TagInput
+        ref="uploadTagInput"
+        v-model="uploadTags"
+        :suggestions="tagSuggestions"
+        label="Tags for new uploads"
+        placeholder="Optional, e.g. handbook, release-notes"
+      />
+    </div>
 
     <div v-if="jobs.length" class="jobs card">
       <div class="jobs-head">
@@ -264,6 +323,24 @@ onMounted(() => load(0));
       </ul>
     </div>
 
+    <div v-if="projectTags.length" class="tag-filter" role="group" aria-label="Show documents tagged">
+      <Tag :size="14" class="subtle" aria-hidden="true" />
+      <button type="button" class="badge filter" :class="{ on: !tagFilter }" :aria-pressed="!tagFilter" @click="tagFilter = ''">
+        All
+      </button>
+      <button
+        v-for="t in projectTags"
+        :key="t.tag"
+        type="button"
+        class="badge filter"
+        :class="{ on: tagFilter === t.tag }"
+        :aria-pressed="tagFilter === t.tag"
+        @click="filterBy(t.tag)"
+      >
+        {{ t.tag }} <span class="count">{{ formatNumber(t.files) }}</span>
+      </button>
+    </div>
+
     <div v-if="loading" class="card table-card">
       <div v-for="i in 3" :key="i" class="skeleton row-skeleton" />
     </div>
@@ -291,6 +368,32 @@ onMounted(() => load(0));
                 <div class="file-text">
                   <button class="link-button" @click="viewing = file">{{ file.original_name }}</button>
                   <span class="subtle small mono file-id" :title="file.file_id">{{ file.file_id }}</span>
+                  <form v-if="tagging === file.file_id" class="tag-editor" @submit.prevent="saveTags(file)">
+                    <TagInput
+                      ref="editTagInput"
+                      v-model="editedTags"
+                      :suggestions="tagSuggestions"
+                      :label="`Tags of ${file.original_name}`"
+                      placeholder="No tags"
+                    />
+                    <button class="btn btn-primary btn-sm" type="submit" :disabled="savingTags">
+                      <LoaderCircle v-if="savingTags" :size="14" class="spin" />
+                      Save
+                    </button>
+                    <button class="btn btn-ghost btn-sm" type="button" @click="tagging = null">Cancel</button>
+                  </form>
+                  <span v-else-if="file.tags.length" class="file-tags">
+                    <button
+                      v-for="tag in file.tags"
+                      :key="tag"
+                      type="button"
+                      class="chip"
+                      :title="`Show only documents tagged ${tag}`"
+                      @click="filterBy(tag)"
+                    >
+                      {{ tag }}
+                    </button>
+                  </span>
                 </div>
               </div>
             </td>
@@ -312,6 +415,14 @@ onMounted(() => load(0));
             <td v-else class="actions-col">
               <button class="btn btn-ghost btn-sm btn-icon" title="View chunks" aria-label="View chunks" @click="viewing = file">
                 <Eye :size="15" />
+              </button>
+              <button
+                class="btn btn-ghost btn-sm btn-icon"
+                title="Edit tags"
+                :aria-label="`Edit the tags of ${file.original_name}`"
+                @click="editTags(file)"
+              >
+                <Tag :size="15" />
               </button>
               <button
                 class="btn btn-ghost btn-sm btn-icon"
@@ -344,7 +455,7 @@ onMounted(() => load(0));
       Upload a document to start. The project is saved with its first file.
     </p>
 
-    <WebsiteSources :project="name" @synced="onSourcesSynced" />
+    <WebsiteSources :project="name" :tag-suggestions="tagSuggestions" @synced="onSourcesSynced" />
 
     <section v-if="project" class="danger card" aria-labelledby="delete-project">
       <div>
@@ -376,6 +487,77 @@ onMounted(() => load(0));
 <style scoped>
 .confirm-col {
   white-space: nowrap;
+}
+
+.upload-tags {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: -4px;
+}
+
+.upload-tags .tag-input {
+  flex: 1;
+}
+
+@media (max-width: 560px) {
+  .upload-tags {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+}
+
+.tag-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter {
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.filter.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.filter .count {
+  opacity: 0.7;
+}
+
+.file-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.file-tags .chip {
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.tag-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.tag-editor .tag-input {
+  flex: 1 1 220px;
 }
 
 .confirm-col .small {

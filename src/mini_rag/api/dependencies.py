@@ -28,6 +28,7 @@ from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
 from mini_rag.services.search_service import SearchService
 from mini_rag.services.source_service import SourceService
+from mini_rag.services.tag_service import TagService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.services.webhook_service import WebhookService
 from mini_rag.services.widget_service import WidgetService
@@ -189,6 +190,13 @@ def get_project_service(uow: UnitOfWorkDep) -> ProjectService:
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
+
+
+def get_tag_service(uow: UnitOfWorkDep) -> TagService:
+    return TagService(uow=uow)
+
+
+TagServiceDep = Annotated[TagService, Depends(get_tag_service)]
 
 
 def get_deletion_service(uow: UnitOfWorkDep, storage: FileStorageDep) -> DeletionService:

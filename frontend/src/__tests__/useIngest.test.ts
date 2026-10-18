@@ -69,6 +69,18 @@ describe("useIngest", () => {
     expect(onFileReady).toHaveBeenCalledTimes(2);
   });
 
+  it("uploads with the tags the files were added with", async () => {
+    const upload = vi
+      .spyOn(api, "upload")
+      .mockResolvedValue({ signal: "file_already_uploaded", file_id: "a_cats.txt" } as never);
+    const { add } = setUp();
+
+    add([cats()], ["pets"]);
+    await settle();
+
+    expect(upload.mock.calls[0]![2]).toMatchObject({ tags: ["pets"] });
+  });
+
   it("uploads the next file while the server works on the last one", async () => {
     const calls: string[] = [];
     vi.spyOn(api, "upload").mockImplementation(async (_project, file) => {

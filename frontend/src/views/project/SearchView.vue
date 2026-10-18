@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LoaderCircle, Search, SearchX } from "@lucide/vue";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 
 import { ApiError, api } from "@/api/client";
 import type { SearchFilters, SearchHit } from "@/api/types";
@@ -9,12 +9,14 @@ import FilePicker from "@/components/FilePicker.vue";
 import SourceCard from "@/components/SourceCard.vue";
 import { useProject } from "@/composables/useProject";
 
-const { name, project, fileName, files } = useProject();
+const { name, project, fileName, files, tags } = useProject();
+const tagOptions = computed(() => tags.value.map((t) => ({ file_id: t.tag, original_name: `${t.tag} (${t.files})` })));
 
 const query = ref("");
 const topK = ref(10);
 const minScore = ref<number | "">("");
 const chosenFiles = ref<string[]>([]);
+const chosenTags = ref<string[]>([]);
 const pageFrom = ref<number | "">("");
 const pageTo = ref<number | "">("");
 const onePerFile = ref(false);
@@ -22,11 +24,12 @@ const onePerFile = ref(false);
 function filters(): SearchFilters | null {
   const chosen: SearchFilters = {
     file_ids: chosenFiles.value,
+    tags: chosenTags.value,
     page_from: pageFrom.value === "" ? null : pageFrom.value,
     page_to: pageTo.value === "" ? null : pageTo.value,
     max_per_file: onePerFile.value ? 1 : null,
   };
-  const any = chosen.file_ids!.length || chosen.page_from || chosen.page_to || chosen.max_per_file;
+  const any = chosen.file_ids!.length || chosen.tags!.length || chosen.page_from || chosen.page_to || chosen.max_per_file;
   return any ? chosen : null;
 }
 const results = ref<SearchHit[] | null>(null);
@@ -87,6 +90,7 @@ async function search() {
           <input v-model.number="minScore" class="input small-input" type="number" min="-1" max="1" step="0.05" placeholder="Any" />
         </label>
         <FilePicker v-model="chosenFiles" :files="files" class="below" />
+        <FilePicker v-if="tags.length" v-model="chosenTags" :files="tagOptions" tags class="below" />
         <label class="inline-field">
           <span>Pages</span>
           <input v-model.number="pageFrom" class="input small-input" type="number" min="1" placeholder="From" aria-label="From page" />
