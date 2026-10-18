@@ -6,6 +6,7 @@ class ResponseSignal(Enum):
     FILE_TYPES_NOT_SUPPORTED = "file_type_not_supported"
     FILE_SIZE_EXCEEDED = "file_size_exceeded"
     FILE_UPLOAD_SUCCESS = "file_uploaded_successfully"
+    FILE_ALREADY_UPLOADED = "file_already_uploaded"
     FILE_UPLOAD_FAILED = "file_upload_failed"
     FILE_NOT_FOUND = "file_not_found"
     PROJECT_NOT_FOUND = "project_not_found"

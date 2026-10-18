@@ -1,8 +1,8 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response, status
 
-from mini_rag.api.dependencies import ProjectServiceDep
+from mini_rag.api.dependencies import DeletionServiceDep, ProjectServiceDep
 from mini_rag.api.schemas import (
     ChunkListResponse,
     ChunkResponse,
@@ -77,3 +77,21 @@ async def list_chunks(project_id: ProjectId, file_id: FileIdPath, page: Paginati
         total=result.total, offset=result.offset, limit=result.limit,
         items=[ChunkResponse(chunk_index=chunk.index, text=chunk.text, metadata=chunk.metadata)
                for chunk in result.items])
+
+
+@router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT,
+               summary="Delete a project with all its files, chunks, answers and conversations",
+               responses=error_responses(ProjectNotFound))
+async def delete_project(project_id: ProjectId, service: DeletionServiceDep) -> Response:
+    await service.delete_project(project_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete("/{project_id}/files/{file_id}", status_code=status.HTTP_204_NO_CONTENT,
+               summary="Delete a file with its chunks",
+               description="Answers that cited the file keep their copy of the cited text.",
+               responses=error_responses(ProjectNotFound, FileNotFound))
+async def delete_file(project_id: ProjectId, file_id: FileIdPath,
+                      service: DeletionServiceDep) -> Response:
+    await service.delete_file(project_id, file_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

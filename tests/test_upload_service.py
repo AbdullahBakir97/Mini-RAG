@@ -45,7 +45,7 @@ def save(service, data=b"hello", content_type="text/plain", declared_size=None,
          **stream_options):
     stream = FakeStream(data, **stream_options)
     return asyncio.run(service.save("p1", "notes.txt", content_type, stream,
-                                    declared_size=declared_size))
+                                    declared_size=declared_size)).file_id
 
 
 def stored_files(storage):
@@ -134,3 +134,24 @@ def test_database_failure_removes_the_stored_file(service, uow, storage, failure
 
     assert raised.value.__cause__ is error
     assert stored_files(storage) == []
+
+
+def test_the_same_content_is_stored_once(service, storage, uow):
+    import hashlib
+
+    first = asyncio.run(service.save("p1", "notes.txt", "text/plain", FakeStream(b"hello")))
+    again = asyncio.run(service.save("p1", "copy.txt", "text/plain", FakeStream(b"hello")))
+    other = asyncio.run(service.save("p1", "other.txt", "text/plain", FakeStream(b"world")))
+
+    assert (first.duplicate, again.duplicate, other.duplicate) == (False, True, False)
+    assert again.file_id == first.file_id
+    assert len(stored_files(storage)) == 2
+    assert uow.files.records[0].content_sha256 == hashlib.sha256(b"hello").hexdigest()
+
+
+def test_the_same_content_in_another_project_is_stored(service, storage):
+    first = asyncio.run(service.save("p1", "notes.txt", "text/plain", FakeStream(b"hello")))
+    second = asyncio.run(service.save("p2", "notes.txt", "text/plain", FakeStream(b"hello")))
+
+    assert not second.duplicate
+    assert second.file_id != first.file_id

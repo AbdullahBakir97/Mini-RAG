@@ -65,14 +65,28 @@ class FakeFiles:
         self._ids = count(1)
         self.fail_with: Exception | None = None
 
-    async def add(self, *, project_id, key, original_name, content_type, size_bytes) -> FileRecord:
+    async def add(self, *, project_id, key, original_name, content_type, size_bytes,
+                  content_sha256=None) -> FileRecord | None:
         if self.fail_with:
             raise self.fail_with
+        if content_sha256 and await self.get_by_content(project_id, content_sha256):
+            return None
         record = FileRecord(id=next(self._ids), project_id=project_id, key=key,
                             original_name=original_name, content_type=content_type,
-                            size_bytes=size_bytes, created_at=datetime.now(UTC))
+                            size_bytes=size_bytes, created_at=datetime.now(UTC),
+                            content_sha256=content_sha256)
         self.records.append(record)
         return record
+
+    async def get_by_content(self, project_id: int, content_sha256: str) -> FileRecord | None:
+        return next((r for r in self.records
+                     if r.project_id == project_id and r.content_sha256 == content_sha256), None)
+
+    async def delete(self, project_id: int, key: str) -> bool:
+        record = await self.get_by_key(project_id, key)
+        if record is not None:
+            self.records.remove(record)
+        return record is not None
 
     async def get_by_key(self, project_id: int, key: str) -> FileRecord | None:
         return next((r for r in self.records if r.project_id == project_id and r.key == key), None)

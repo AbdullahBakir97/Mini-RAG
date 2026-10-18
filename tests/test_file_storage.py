@@ -53,3 +53,21 @@ def test_get_file_path_rejects_symlink_out_of_project(storage, tmp_path):
 def test_project_id_cannot_escape_root(storage, project_id):
     with pytest.raises(ValueError):
         storage.reserve_file(project_id, "a.txt")
+
+
+def test_files_and_project_folders_are_deleted_inside_the_root(tmp_path):
+    storage = FileStorage(root=tmp_path / "files")
+    file_id, path = storage.reserve_file("p1", "notes.txt")
+
+    storage.delete_file("p1", file_id)
+    storage.delete_file("p1", file_id)  # already gone: nothing happens
+    assert not path.exists()
+
+    with pytest.raises(FileNotFound):
+        storage.delete_file("p1", "../../outside.txt")
+    with pytest.raises(ValueError):
+        storage.delete_project("..")
+
+    storage.delete_project("p1")
+    storage.delete_project("p1")  # already gone: nothing happens
+    assert not (tmp_path / "files" / "p1").exists()

@@ -131,6 +131,9 @@ export const api = {
     get<Page<ProjectListItem>>("/projects", { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
   project: (name: string) => get<Project>(`/projects/${project(name)}`),
   usage: (name: string) => get<ProjectUsage>(`/projects/${project(name)}/usage`),
+  /** Deletes the project with all its files, chunks, answers and conversations. */
+  deleteProject: (name: string) => remove(`/projects/${project(name)}`),
+  deleteFile: (name: string, fileId: string) => remove(`/projects/${project(name)}/files/${encodeURIComponent(fileId)}`),
   files: (name: string, page: PageParams = {}) =>
     get<Page<FileInfo>>(`/projects/${project(name)}/files`, { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
   chunks: (name: string, fileId: string, page: PageParams = {}) =>

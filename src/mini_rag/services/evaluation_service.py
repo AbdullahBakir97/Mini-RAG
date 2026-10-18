@@ -104,8 +104,8 @@ class EvaluationService:
             names: dict[str, str] = {}
             chunks = 0
             for document in dataset.documents:
-                key = await self.upload.save(project, document.name, document.content_type,
-                                             _Bytes(document.path.read_bytes()))
+                key = (await self.upload.save(project, document.name, document.content_type,
+                                              _Bytes(document.path.read_bytes()))).file_id
                 names[key] = document.name
                 chunks += await self.processing.process(project, key, chunk_size=chunk_size,
                                                         overlap_size=overlap_size)

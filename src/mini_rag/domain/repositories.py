@@ -46,9 +46,18 @@ class ProjectRepository(Protocol):
 class FileRepository(Protocol):
 
     async def add(self, *, project_id: int, key: str, original_name: str,
-                  content_type: str, size_bytes: int) -> FileRecord: ...
+                  content_type: str, size_bytes: int,
+                  content_sha256: str | None = None) -> FileRecord | None:
+        """Record a file; None when the project already has a file with this content."""
+        ...
 
     async def get_by_key(self, project_id: int, key: str) -> FileRecord | None: ...
+
+    async def get_by_content(self, project_id: int, content_sha256: str) -> FileRecord | None: ...
+
+    async def delete(self, project_id: int, key: str) -> bool:
+        """Delete the file's record and its chunks; False if there was none."""
+        ...
 
     async def list_for_project(self, project_id: int, *, offset: int,
                                limit: int) -> list[FileRecord]:

@@ -148,4 +148,17 @@ describe("api", () => {
     expect([del.method, deleteUrl]).toEqual(["DELETE", "/api/v1/projects/demo/conversations/c-1/messages/7/feedback"]);
     expect(listUrl).toBe("/api/v1/projects/demo/feedback?offset=0&limit=20&rating=up");
   });
+
+  it("deletes files and projects", async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(new Response(null, { status: 204 })));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.deleteFile("my docs", "a_guide.txt");
+    await api.deleteProject("my docs");
+
+    const [fileUrl, fileInit] = fetch.mock.calls[0]!;
+    const [projectUrl, projectInit] = fetch.mock.calls[1]!;
+    expect([fileInit.method, fileUrl]).toEqual(["DELETE", "/api/v1/projects/my%20docs/files/a_guide.txt"]);
+    expect([projectInit.method, projectUrl]).toEqual(["DELETE", "/api/v1/projects/my%20docs"]);
+  });
 });

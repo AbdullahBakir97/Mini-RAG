@@ -6,6 +6,7 @@ inside the storage root, so no other layer builds file paths itself.
 
 import re
 import secrets
+import shutil
 import string
 from pathlib import Path
 
@@ -61,6 +62,20 @@ class FileStorage:
         if path.parent != directory or not path.is_file():
             raise FileNotFound()
         return path
+
+    def delete_file(self, project_id: str, file_id: str) -> None:
+        """Remove a stored file; nothing happens if it is already gone."""
+        directory = self._project_dir(project_id)
+        path = (directory / file_id).resolve()
+        if path.parent != directory:
+            raise FileNotFound()
+        path.unlink(missing_ok=True)
+
+    def delete_project(self, project_id: str) -> None:
+        """Remove a project's folder with all its files; nothing happens if there is none."""
+        directory = self._project_dir(project_id)
+        if directory.is_dir():
+            shutil.rmtree(directory)
 
     def _project_dir(self, project_id: str) -> Path:
         directory = (self.root / project_id).resolve()

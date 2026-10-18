@@ -48,7 +48,8 @@ def _project(row: ProjectRow) -> Project:
 def _file(row: FileRow) -> FileRecord:
     return FileRecord(id=row.id, project_id=row.project_id, key=row.key,
                       original_name=row.original_name, content_type=row.content_type,
-                      size_bytes=row.size_bytes, created_at=row.created_at)
+                      size_bytes=row.size_bytes, created_at=row.created_at,
+                      content_sha256=row.content_sha256)
 
 
 def _chunk(row: ChunkRow) -> Chunk:
@@ -102,13 +103,30 @@ class SqlFileRepository:
         self.session = session
 
     async def add(self, *, project_id: int, key: str, original_name: str,
-                  content_type: str, size_bytes: int) -> FileRecord:
+                  content_type: str, size_bytes: int,
+                  content_sha256: str | None = None) -> FileRecord | None:
+        # Two uploads of the same content at once: one is recorded, the other gets None.
         row = await self.session.scalar(
-            insert(FileRow)
+            pg_insert(FileRow)
             .values(project_id=project_id, key=key, original_name=original_name,
-                    content_type=content_type, size_bytes=size_bytes)
+                    content_type=content_type, size_bytes=size_bytes,
+                    content_sha256=content_sha256)
+            .on_conflict_do_nothing(index_elements=["project_id", "content_sha256"],
+                                    index_where=FileRow.content_sha256.is_not(None))
             .returning(FileRow))
-        return _file(row)
+        return _file(row) if row else None
+
+    async def get_by_content(self, project_id: int, content_sha256: str) -> FileRecord | None:
+        row = await self.session.scalar(
+            select(FileRow).where(FileRow.project_id == project_id,
+                                  FileRow.content_sha256 == content_sha256))
+        return _file(row) if row else None
+
+    async def delete(self, project_id: int, key: str) -> bool:
+        # Its chunks go with it (ON DELETE CASCADE).
+        result = await self.session.execute(
+            delete(FileRow).where(FileRow.project_id == project_id, FileRow.key == key))
+        return result.rowcount > 0
 
     async def get_by_key(self, project_id: int, key: str) -> FileRecord | None:
         row = await self.session.scalar(

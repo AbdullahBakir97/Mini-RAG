@@ -57,7 +57,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 ### Phase 4: Ingestion and automation
 
 - [ ] Background jobs for processing and indexing, with status, retries and progress.
-- [ ] Deleting files and projects everywhere at once; duplicate detection by content hash.
+- [x] Deleting files and projects everywhere at once; duplicate detection by content hash.
 - [ ] More formats: DOCX, Markdown, HTML, and OCR for scanned PDFs.
 - [ ] Connectors: website crawler, GitHub, Notion, Google Drive, RSS, with scheduled incremental sync.
 - [ ] Signed outgoing webhooks for automation tools such as n8n, Make and Zapier.

@@ -63,6 +63,8 @@ class FileRecord:
     content_type: str
     size_bytes: int
     created_at: datetime
+    # Hex SHA-256 of the content; None for files uploaded before it was kept.
+    content_sha256: str | None = None
 
 
 @dataclass(frozen=True)

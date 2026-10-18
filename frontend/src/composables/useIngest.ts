@@ -3,7 +3,15 @@ import { ref, type Ref } from "vue";
 import { ApiError, api } from "@/api/client";
 import type { ProcessOptions } from "@/api/types";
 
-export type Stage = "queued" | "uploading" | "processing" | "indexing" | "done" | "not-indexed" | "failed";
+export type Stage =
+  | "queued"
+  | "uploading"
+  | "processing"
+  | "indexing"
+  | "done"
+  | "duplicate"
+  | "not-indexed"
+  | "failed";
 
 export interface IngestJob {
   id: number;
@@ -18,6 +26,7 @@ export interface IngestJob {
 }
 
 const ACCEPTED = /\.(pdf|txt)$/i;
+export const FINISHED: Stage[] = ["done", "duplicate", "failed", "not-indexed"];
 let nextId = 1;
 
 /**
@@ -61,6 +70,11 @@ export function useIngest(project: Ref<string>, options: Ref<ProcessOptions>, on
     const upload = await api.upload(project.value, file, {
       onProgress: (progress) => update(job.id, { progress }),
     });
+    // The project has this content already: nothing more to do.
+    if (upload.signal === "file_already_uploaded") {
+      update(job.id, { stage: "duplicate", progress: 1, fileId: upload.file_id });
+      return;
+    }
     update(job.id, { stage: "processing", progress: 1, fileId: upload.file_id });
     const processed = await api.process(project.value, upload.file_id, options.value);
     update(job.id, { stage: "indexing", chunks: processed.chunks_count });
@@ -105,7 +119,7 @@ export function useIngest(project: Ref<string>, options: Ref<ProcessOptions>, on
   }
 
   function clearFinished() {
-    jobs.value = jobs.value.filter((job) => !["done", "failed", "not-indexed"].includes(job.stage));
+    jobs.value = jobs.value.filter((job) => !FINISHED.includes(job.stage));
   }
 
   return { jobs, running, add, clearFinished };

@@ -1,3 +1,5 @@
+import hashlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
@@ -19,6 +21,14 @@ class AsyncReadable(Protocol):
     async def read(self, size: int = -1) -> bytes: ...
 
 
+@dataclass(frozen=True)
+class Upload:
+    """``file_id`` of the stored file; ``duplicate`` when the project already had its content."""
+
+    file_id: str
+    duplicate: bool = False
+
+
 class UploadService:
 
     def __init__(self, storage: FileStorage, uow: UnitOfWork, allowed_types: list[str],
@@ -30,14 +40,16 @@ class UploadService:
         self.read_size = read_size
 
     async def save(self, project_name: str, filename: str, content_type: str | None,
-                   stream: AsyncReadable, declared_size: int | None = None) -> str:
-        """Validate, store and record an upload, returning its file ID.
+                   stream: AsyncReadable, declared_size: int | None = None) -> Upload:
+        """Validate, store and record an upload.
 
         The project is created on its first upload. The size limit is
         enforced on the bytes actually read, not only on the size the
         client declared. The file is written first and recorded second; if
         anything fails, the file is removed, so storage and database never
-        disagree and a failed upload leaves nothing behind.
+        disagree and a failed upload leaves nothing behind. Content the
+        project already has is not stored again: the existing file is
+        returned, marked as a duplicate.
         """
         if content_type not in self.allowed_types:
             raise UnsupportedFileType()
@@ -48,11 +60,18 @@ class UploadService:
         file_id, path = self.storage.reserve_file(project_name, filename)
         completed = False
         try:
-            size = await self._copy(stream, path)
-            await self.uow.files.add(project_id=project.id, key=file_id, original_name=filename,
-                                     content_type=content_type, size_bytes=size)
+            size, digest = await self._copy(stream, path)
+            existing = await self.uow.files.get_by_content(project.id, digest)
+            if existing is None and await self.uow.files.add(
+                    project_id=project.id, key=file_id, original_name=filename,
+                    content_type=content_type, size_bytes=size, content_sha256=digest):
+                await self.uow.commit()
+                completed = True
+                return Upload(file_id=file_id)
+            # Already there, or recorded by another upload of it a moment ago.
+            existing = existing or await self.uow.files.get_by_content(project.id, digest)
             await self.uow.commit()
-            completed = True
+            return Upload(file_id=existing.key, duplicate=True)
         except AppError:
             raise
         except Exception as exc:
@@ -60,15 +79,16 @@ class UploadService:
         finally:
             if not completed:
                 path.unlink(missing_ok=True)
-        return file_id
 
-    async def _copy(self, stream: AsyncReadable, path: Path) -> int:
-        """Stream into ``path`` and return the number of bytes written."""
+    async def _copy(self, stream: AsyncReadable, path: Path) -> tuple[int, str]:
+        """Stream into ``path``; returns the number of bytes written and their SHA-256."""
         written = 0
+        digest = hashlib.sha256()
         async with aiofiles.open(path, "wb") as out:
             while chunk := await stream.read(self.read_size):
                 written += len(chunk)
                 if written > self.max_bytes:
                     raise FileTooLarge()
+                digest.update(chunk)
                 await out.write(chunk)
-        return written
+        return written, digest.hexdigest()
