@@ -8,7 +8,7 @@ to verify the service committed its work.
 import math
 import re
 import zlib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
@@ -177,14 +177,19 @@ class FakeEmbedder:
 class FakeLLM:
     """Replies with ``reply``, or raises LLMFailed when ``fail`` is set.
 
-    ``calls`` records the messages of every request.
+    Streams the reply in pieces of ``piece_size`` characters; ``fail_after``
+    makes a stream raise LLMFailed after that many pieces. ``calls`` records
+    the messages of every request.
     """
 
     model = "fake-llm"
 
-    def __init__(self, reply: str = "A fake answer.", fail: bool = False):
+    def __init__(self, reply: str = "A fake answer.", fail: bool = False, piece_size: int = 4,
+                 fail_after: int | None = None):
         self.reply = reply
         self.fail = fail
+        self.piece_size = piece_size
+        self.fail_after = fail_after
         self.calls: list[list[Message]] = []
 
     async def complete(self, messages: Sequence[Message]) -> str:
@@ -192,3 +197,12 @@ class FakeLLM:
         if self.fail:
             raise LLMFailed("fake failure")
         return self.reply
+
+    async def stream(self, messages: Sequence[Message]) -> AsyncIterator[str]:
+        self.calls.append(list(messages))
+        if self.fail:
+            raise LLMFailed("fake failure")
+        for sent, start in enumerate(range(0, len(self.reply), self.piece_size)):
+            if sent == self.fail_after:
+                raise LLMFailed("fake failure mid-stream")
+            yield self.reply[start:start + self.piece_size]

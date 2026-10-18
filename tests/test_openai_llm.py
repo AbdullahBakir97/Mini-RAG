@@ -17,22 +17,39 @@ MESSAGES = [Message("system", "Be brief."), Message("user", "Hello?")]
 class FakeChatServer:
     """Answers POST /chat/completions like the OpenAI API and records the requests."""
 
-    def __init__(self, content="Hi there.", status_code=200, choices=True):
+    def __init__(self, content="Hi there.", status_code=200, choices=True, pieces=None):
         self.content = content
         self.status_code = status_code
         self.choices = choices
+        # What a streamed reply is made of; defaults to two halves of content.
+        self.pieces = pieces
         self.requests: list[httpx2.Request] = []
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         self.requests.append(request)
         if self.status_code != 200:
             return httpx2.Response(self.status_code, json={"error": {"message": "boom"}})
+        if json.loads(request.content).get("stream"):
+            return self.stream_response()
         choices = [{"index": 0, "finish_reason": "stop",
                     "message": {"role": "assistant", "content": self.content}}]
         return httpx2.Response(200, json={
             "id": "chatcmpl-1", "object": "chat.completion", "created": 0, "model": "test-model",
             "choices": choices if self.choices else [],
             "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2}})
+
+    def stream_response(self) -> httpx2.Response:
+        pieces = self.pieces
+        if pieces is None:
+            half = len(self.content) // 2
+            pieces = [self.content[:half], self.content[half:]]
+        events = [{"id": "chatcmpl-1", "object": "chat.completion.chunk", "created": 0,
+                   "model": "test-model",
+                   "choices": [{"index": 0, "delta": {"content": piece}, "finish_reason": None}]}
+                  for piece in pieces]
+        body = "".join(f"data: {json.dumps(event)}\n\n" for event in events) + "data: [DONE]\n\n"
+        return httpx2.Response(200, headers={"content-type": "text/event-stream"},
+                               content=body.encode())
 
     @property
     def last_body(self):
@@ -105,6 +122,50 @@ async def test_unreachable_server_raises_llm_failed():
 
     with pytest.raises(LLMFailed):
         await make_llm(refuse).complete(MESSAGES)
+
+
+async def collect(llm):
+    return [piece async for piece in llm.stream(MESSAGES)]
+
+
+async def test_streams_the_reply_in_pieces():
+    server = FakeChatServer(pieces=["Hi", " there", "."])
+
+    pieces = await collect(make_llm(server))
+
+    assert pieces == ["Hi", " there", "."]
+    assert server.last_body["stream"] is True
+    assert server.last_body["max_tokens"] == 100
+
+
+@pytest.mark.parametrize("server", [
+    FakeChatServer(status_code=500),
+    FakeChatServer(status_code=401),
+    FakeChatServer(pieces=[]),
+    FakeChatServer(pieces=[" ", "\n"]),
+], ids=["server-error", "bad-key", "no-pieces", "blank-pieces"])
+async def test_stream_failures_raise_llm_failed(server):
+    with pytest.raises(LLMFailed):
+        await collect(make_llm(server))
+
+
+async def test_a_stream_cut_off_midway_raises_llm_failed():
+    class BrokenStream(httpx2.AsyncByteStream):
+        async def __aiter__(self):
+            chunk = {"id": "c", "object": "chat.completion.chunk", "created": 0, "model": "m",
+                     "choices": [{"index": 0, "delta": {"content": "Hi"}, "finish_reason": None}]}
+            yield f"data: {json.dumps(chunk)}\n\n".encode()
+            raise httpx2.ReadError("connection lost")
+
+    def cut_off(request):
+        return httpx2.Response(200, headers={"content-type": "text/event-stream"},
+                               stream=BrokenStream())
+
+    received = []
+    with pytest.raises(LLMFailed):
+        async for piece in make_llm(cut_off).stream(MESSAGES):
+            received.append(piece)
+    assert received == ["Hi"]
 
 
 def test_factory_returns_none_without_key_or_server(monkeypatch):

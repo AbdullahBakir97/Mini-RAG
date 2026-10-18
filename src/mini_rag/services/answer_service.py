@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from mini_rag.domain.llm import LLM
@@ -12,6 +13,13 @@ class Citation:
 
     number: int
     source: ScoredChunk
+
+
+@dataclass(frozen=True)
+class AnswerDelta:
+    """The next piece of an answer's text, while the model is still writing it."""
+
+    text: str
 
 
 @dataclass(frozen=True)
@@ -41,14 +49,41 @@ class AnswerService:
         are used. Without any, or when the model finds no answer in them,
         the answer has no text, and without any the model is not called.
         """
-        if min_score is None:
-            min_score = self.min_score
-        sources = await self.search.search(project_name, question, top_k=top_k,
-                                           min_score=min_score)
+        sources = await self.retrieve(project_name, question, top_k, min_score)
         if not sources:
             return self._no_answer()
-
         reply = await self.llm.complete(self.prompt.messages(question, sources))
+        return self._finish(reply, sources)
+
+    async def retrieve(self, project_name: str, question: str, top_k: int,
+                       min_score: float | None = None) -> list[ScoredChunk]:
+        """The chunks an answer may use: the best matches scoring at least ``min_score``."""
+        if min_score is None:
+            min_score = self.min_score
+        return await self.search.search(project_name, question, top_k=top_k,
+                                        min_score=min_score)
+
+    async def stream(self, question: str,
+                     sources: list[ScoredChunk]) -> AsyncIterator[AnswerDelta | Answer]:
+        """Like ``ask``, for sources from ``retrieve``: the text as it is written, then the Answer.
+
+        Text is held back while the reply may still be the model's no-answer
+        reply, so a client never shows it; that reply yields no deltas.
+        """
+        if not sources:
+            yield self._no_answer()
+            return
+        reply = ""
+        holding = True
+        async for piece in self.llm.stream(self.prompt.messages(question, sources)):
+            reply += piece
+            if holding and self.prompt.could_be_no_answer(reply):
+                continue
+            yield AnswerDelta(reply if holding else piece)
+            holding = False
+        yield self._finish(reply, sources)
+
+    def _finish(self, reply: str, sources: list[ScoredChunk]) -> Answer:
         if self.prompt.is_no_answer(reply):
             return self._no_answer()
         # The model may cite numbers that were never given; those are dropped.

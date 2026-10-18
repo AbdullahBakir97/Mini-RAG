@@ -88,3 +88,18 @@ def test_detects_no_answer(reply, no_answer):
 ])
 def test_finds_cited_numbers_in_order(reply, numbers):
     assert ANSWER_PROMPT_V1.cited_numbers(reply) == numbers
+
+
+@pytest.mark.parametrize(("partial", "possible"), [
+    ("", True),
+    ("NO", True),
+    ("  NO_ANS", True),
+    ("NO_ANSWER", True),
+    ("NO_ANSWER.", True),
+    ("NOT", False),
+    ("NO_ANSWER is", False),
+    ("Refunds", False),
+    ("NO ", False),
+])
+def test_tells_whether_a_partial_reply_may_still_be_no_answer(partial, possible):
+    assert ANSWER_PROMPT_V1.could_be_no_answer(partial) is possible

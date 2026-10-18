@@ -2,7 +2,7 @@ import pytest
 
 from mini_rag.core.errors import EmbeddingFailed, LLMFailed, ProjectNotFound
 from mini_rag.domain.models import Chunk
-from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.answer_service import Answer, AnswerDelta, AnswerService
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.search_service import SearchService
 
@@ -109,3 +109,55 @@ async def test_unknown_project(uow):
 async def test_provider_failures_propagate(uow, llm, embedder, error):
     with pytest.raises(error):
         await service(uow, llm, embedder=embedder).ask("p1", "cats?", top_k=5)
+
+
+async def stream(answers, question, top_k=5):
+    sources = await answers.retrieve("p1", question, top_k=top_k)
+    return [event async for event in answers.stream(question, sources)]
+
+
+async def test_stream_sends_the_text_as_written_then_the_answer(uow):
+    reply = "Dogs bark at cats [1], which purr [2]."
+    llm = FakeLLM(reply, piece_size=5)
+
+    events = await stream(service(uow, llm), "cats?")
+
+    *deltas, answer = events
+    assert all(isinstance(delta, AnswerDelta) for delta in deltas) and len(deltas) > 1
+    assert "".join(delta.text for delta in deltas) == reply
+    assert isinstance(answer, Answer) and answer.text == reply
+    assert [citation.number for citation in answer.citations] == [1, 2]
+
+
+async def test_stream_holds_back_a_no_answer_reply(uow):
+    events = await stream(service(uow, FakeLLM("NO_ANSWER", piece_size=2)), "cats?")
+
+    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1")]
+
+
+async def test_stream_releases_text_once_it_cannot_be_no_answer(uow):
+    events = await stream(service(uow, FakeLLM("NOTE: cats purr [1].", piece_size=2)), "cats?")
+
+    # "NO" is held back; with "NOTE" it is clearly an answer, sent as one delta.
+    assert events[0] == AnswerDelta("NOTE")
+    assert "".join(e.text for e in events[:-1]) == "NOTE: cats purr [1]."
+
+
+async def test_stream_without_sources_has_no_answer_and_skips_the_model(uow):
+    llm = FakeLLM()
+
+    events = await stream(service(uow, llm), "Where is Paris?")
+
+    assert events == [Answer(text=None, citations=[], prompt_version="answer-v1")]
+    assert llm.calls == []
+
+
+async def test_stream_failure_after_some_text_propagates(uow):
+    answers = service(uow, FakeLLM("Cats purr all day [1].", piece_size=4, fail_after=2))
+    sources = await answers.retrieve("p1", "cats?", top_k=5)
+    received = []
+
+    with pytest.raises(LLMFailed):
+        async for event in answers.stream("cats?", sources):
+            received.append(event)
+    assert received == [AnswerDelta("Cats"), AnswerDelta(" pur")]

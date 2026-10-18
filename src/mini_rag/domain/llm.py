@@ -3,7 +3,7 @@
 Implementations live in mini_rag.llm; tests use a scripted fake.
 """
 
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
@@ -22,4 +22,8 @@ class LLM(Protocol):
 
     async def complete(self, messages: Sequence[Message]) -> str:
         """The model's reply to the conversation in ``messages``."""
+        ...
+
+    def stream(self, messages: Sequence[Message]) -> AsyncIterator[str]:
+        """The same reply, in pieces as the model writes it."""
         ...

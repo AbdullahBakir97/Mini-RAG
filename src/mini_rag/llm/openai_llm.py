@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from typing import Any
 
 import httpx2
@@ -17,8 +17,9 @@ class OpenAILLM:
     Set ``base_url`` for another server, e.g. Ollama at
     http://localhost:11434/v1. ``temperature`` None leaves it to the model,
     which reasoning models require. Transient errors (rate limits, timeouts,
-    5xx) are retried by the SDK; anything that still fails, or a reply
-    without text, raises LLMFailed.
+    5xx) are retried by the SDK before a reply starts; anything that still
+    fails, or a reply without text, raises LLMFailed, also partway through
+    a stream.
     """
 
     def __init__(self, *, api_key: str, model: str, max_tokens: int,
@@ -36,21 +37,41 @@ class OpenAILLM:
                                    http_client=http_client)
 
     async def complete(self, messages: Sequence[Message]) -> str:
-        options: dict[str, Any] = {self._max_tokens_parameter: self.max_tokens}
-        if self.temperature is not None:
-            options["temperature"] = self.temperature
         try:
-            response = await self._client.chat.completions.create(
-                model=self.model,
-                messages=[{"role": message.role, "content": message.content}
-                          for message in messages],
-                **options)
+            response = await self._client.chat.completions.create(**self._request(messages))
         except OpenAIError as exc:
             raise LLMFailed(f"Chat request to {self.model} failed") from exc
 
         if not response.choices or not (response.choices[0].message.content or "").strip():
             raise LLMFailed(f"{self.model} returned no text")
         return response.choices[0].message.content
+
+    async def stream(self, messages: Sequence[Message]) -> AsyncIterator[str]:
+        received = ""
+        try:
+            chunks = await self._client.chat.completions.create(**self._request(messages),
+                                                                 stream=True)
+            async for chunk in chunks:
+                if chunk.choices and chunk.choices[0].delta.content:
+                    received += chunk.choices[0].delta.content
+                    yield chunk.choices[0].delta.content
+        # A connection that breaks mid-stream surfaces as an HTTP error,
+        # which the SDK does not wrap.
+        except (OpenAIError, httpx2.HTTPError) as exc:
+            raise LLMFailed(f"Chat stream from {self.model} failed") from exc
+        if not received.strip():
+            raise LLMFailed(f"{self.model} returned no text")
+
+    def _request(self, messages: Sequence[Message]) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": message.role, "content": message.content}
+                         for message in messages],
+            self._max_tokens_parameter: self.max_tokens,
+        }
+        if self.temperature is not None:
+            request["temperature"] = self.temperature
+        return request
 
     async def aclose(self) -> None:
         await self._client.close()
