@@ -130,7 +130,8 @@ class JobRunner:
     @staticmethod
     async def _emit(uow: UnitOfWork, job: Job, event: str, *, chunks_count: int | None,
                     error: str | None) -> None:
-        project = Project(id=job.project_id, name=job.project_name, created_at=job.created_at)
+        project = Project(id=job.project_id, name=job.project_name, created_at=job.created_at,
+                          tenant_id=job.tenant_id)
         await emit(uow, project, event, {
             "job_id": job.id, "file_id": job.file_key, "status": event.removeprefix("job."),
             "chunks_count": chunks_count, "error": error, "attempts": job.attempts})

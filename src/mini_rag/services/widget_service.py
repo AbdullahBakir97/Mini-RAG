@@ -12,6 +12,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.models import Conversation, Project, Widget
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.audit import record
 
 WIDGET_PREFIX = "wgt_"
 DEFAULT_ACCENT = "#2563eb"
@@ -80,6 +81,9 @@ class WidgetService:
             widget_id=generate_widget_id(), project_id=project.id, name=name.strip(),
             welcome=_text(welcome), accent=_accent(accent or DEFAULT_ACCENT),
             allowed_origins=_origins(allowed_origins))
+        await record(self.uow, project.tenant_id, "widget.created", widget.id,
+                     project=project.name, name=widget.name,
+                     allowed_origins=list(widget.allowed_origins))
         await self.uow.commit()
         return widget
 
@@ -110,6 +114,8 @@ class WidgetService:
         widget = await self.uow.widgets.update(project.id, widget_id, cleaned)
         if widget is None:
             raise WidgetNotFound()
+        await record(self.uow, project.tenant_id, "widget.updated", widget_id,
+                     project=project.name, changes=cleaned)
         await self.uow.commit()
         return widget
 
@@ -118,6 +124,8 @@ class WidgetService:
         project = await self._project(project_name)
         if not await self.uow.widgets.delete(project.id, widget_id):
             raise WidgetNotFound()
+        await record(self.uow, project.tenant_id, "widget.deleted", widget_id,
+                     project=project.name)
         await self.uow.commit()
 
     async def open(self, widget_id: str, origin: str | None, host: str | None = None) -> Widget:

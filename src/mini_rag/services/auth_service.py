@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from mini_rag.core.errors import ApiKeyInvalid, ApiKeyNotFound, ApiKeyRequired
 from mini_rag.domain.models import DEFAULT_TENANT, SCOPES, ApiKey, Principal, Tenant
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.audit import record
 
 KEY_PREFIX = "mrag_"
 # Enough of the key to tell keys apart in a list, far too little to guess the rest.
@@ -52,7 +53,10 @@ class AuthService:
         return Principal(tenant_id=tenant.id, tenant_name=tenant.name, scopes=frozenset(SCOPES))
 
     async def create_tenant(self, name: str) -> Tenant:
-        tenant = await self.uow.tenants.get_or_create(name)
+        existing = await self.uow.tenants.get_by_name(name)
+        tenant = existing or await self.uow.tenants.get_or_create(name)
+        if existing is None:
+            await record(self.uow, tenant.id, "tenant.created", tenant.name)
         await self.uow.commit()
         return tenant
 
@@ -60,11 +64,13 @@ class AuthService:
                          scopes: Sequence[str]) -> tuple[ApiKey, str]:
         """A new key for the tenant, and the key itself, which is not stored and shown once."""
         key = generate_key()
-        record = await self.uow.api_keys.create(
+        created = await self.uow.api_keys.create(
             tenant_id=tenant_id, name=name, prefix=key[:SHOWN_LENGTH], key_hash=hash_key(key),
             scopes=[scope for scope in SCOPES if scope in set(scopes)])
+        await record(self.uow, tenant_id, "api_key.created", created.id, name=created.name,
+                     prefix=created.prefix, scopes=list(created.scopes))
         await self.uow.commit()
-        return record, key
+        return created, key
 
     async def list_keys(self, tenant_id: int) -> list[ApiKey]:
         return await self.uow.api_keys.list_for_tenant(tenant_id)
@@ -72,4 +78,5 @@ class AuthService:
     async def revoke_key(self, tenant_id: int, key_id: str) -> None:
         if not await self.uow.api_keys.revoke(tenant_id, key_id):
             raise ApiKeyNotFound()
+        await record(self.uow, tenant_id, "api_key.revoked", key_id)
         await self.uow.commit()

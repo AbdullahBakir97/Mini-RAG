@@ -103,6 +103,24 @@ class ApiKeyRow(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class AuditEventRow(Base):
+    """An administrative action in a tenant, kept as long as the tenant."""
+
+    __tablename__ = "audit_events"
+    __table_args__ = (Index("ix_audit_events_tenant_id_created_at", "tenant_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    tenant_id: Mapped[int] = mapped_column(ForeignKey("tenants.id", ondelete="CASCADE"))
+    action: Mapped[str] = mapped_column(String(64))
+    target: Mapped[str | None] = mapped_column(Text)
+    details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default="{}")
+    # The API key that did it; NULL for the server's own operators.
+    actor_key_id: Mapped[str | None] = mapped_column(
+        ForeignKey("api_keys.id", ondelete="SET NULL"))
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = _created_at()
+
+
 class ProjectRow(Base):
     __tablename__ = "projects"
     __table_args__ = (UniqueConstraint("tenant_id", "name"),)

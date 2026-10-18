@@ -39,6 +39,7 @@ from mini_rag.domain.models import (
     DEFAULT_TENANT,
     AnswerRecord,
     ApiKey,
+    AuditEvent,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -67,6 +68,7 @@ from mini_rag.domain.models import (
 from mini_rag.domain.repositories import (
     AnswerRepository,
     ApiKeyRepository,
+    AuditRepository,
     ChunkRepository,
     ConversationRepository,
     FileRepository,
@@ -82,6 +84,7 @@ from .tables import (
     FULL_TEXT_CONFIG,
     AnswerRow,
     ApiKeyRow,
+    AuditEventRow,
     ChunkRow,
     ConversationMessageRow,
     ConversationRow,
@@ -1021,6 +1024,48 @@ class SqlWidgetRepository:
         return _affected(result) > 0
 
 
+def _audit_event(row: AuditEventRow, key_name: str | None) -> AuditEvent:
+    return AuditEvent(id=row.id, tenant_id=row.tenant_id, action=row.action, target=row.target,
+                      details=row.details, actor_key_id=row.actor_key_id,
+                      actor_key_name=key_name, request_id=row.request_id,
+                      created_at=row.created_at)
+
+
+class SqlAuditRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def add(self, *, tenant_id: int, action: str, target: str | None,
+                  details: Mapping[str, Any], actor_key_id: str | None,
+                  request_id: str | None) -> None:
+        await self.session.execute(
+            insert(AuditEventRow).values(tenant_id=tenant_id, action=action, target=target,
+                                         details=dict(details), actor_key_id=actor_key_id,
+                                         request_id=request_id))
+
+    @staticmethod
+    def _mine(tenant_id: int, action: str | None) -> list:
+        conditions = [AuditEventRow.tenant_id == tenant_id]
+        if action:
+            conditions.append(AuditEventRow.action.startswith(action, autoescape=True))
+        return conditions
+
+    async def list_for_tenant(self, tenant_id: int, *, action: str | None, offset: int,
+                              limit: int) -> list[AuditEvent]:
+        rows = await self.session.execute(
+            select(AuditEventRow, ApiKeyRow.name)
+            .outerjoin(ApiKeyRow, ApiKeyRow.id == AuditEventRow.actor_key_id)
+            .where(*self._mine(tenant_id, action))
+            .order_by(AuditEventRow.created_at.desc(), AuditEventRow.id.desc())
+            .offset(offset).limit(limit))
+        return [_audit_event(row, key_name) for row, key_name in rows]
+
+    async def count_for_tenant(self, tenant_id: int, *, action: str | None) -> int:
+        return await _number(self.session, select(func.count()).select_from(AuditEventRow)
+                             .where(*self._mine(tenant_id, action)))
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession, tenant_id: int | None = None):
@@ -1036,6 +1081,7 @@ class SqlUnitOfWork:
         self.jobs: JobRepository = SqlJobRepository(session)
         self.webhooks: WebhookRepository = SqlWebhookRepository(session)
         self.widgets: WidgetRepository = SqlWidgetRepository(session)
+        self.audit: AuditRepository = SqlAuditRepository(session)
         self.tenants: TenantRepository = SqlTenantRepository(session)
         self.api_keys: ApiKeyRepository = SqlApiKeyRepository(session)
         self.usage: UsageRepository = SqlUsageRepository(session)

@@ -56,7 +56,7 @@ class Project:
     id: int
     name: str
     created_at: datetime
-    tenant_id: int | None = None
+    tenant_id: int
     storage_name: str | None = None
 
     @property
@@ -294,14 +294,14 @@ class Job:
     attempts: int
     max_attempts: int
     created_at: datetime
+    # The tenant that owns its project; the worker acts for it.
+    tenant_id: int
     stage: JobStage | None = None
     progress: float = 0.0
     chunks_count: int | None = None
     error_signal: str | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    # The tenant that owns its project; the worker acts for it.
-    tenant_id: int | None = None
 
 
 # What webhooks can subscribe to; "ping" is sent on request, to any webhook.
@@ -339,6 +339,25 @@ class Widget:
     allowed_origins: tuple[str, ...]
     created_at: datetime
     tenant_name: str = ""
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    """An administrative action in a tenant: who did it, to what, and when.
+
+    ``actor_key_id`` is the API key that did it; None for the server's own
+    operators (the command line, or requests while authentication is off).
+    """
+
+    id: int
+    tenant_id: int
+    action: str
+    target: str | None
+    details: dict[str, Any]
+    actor_key_id: str | None
+    actor_key_name: str | None
+    request_id: str | None
+    created_at: datetime
 
 
 DeliveryStatus = Literal["pending", "delivered", "failed"]

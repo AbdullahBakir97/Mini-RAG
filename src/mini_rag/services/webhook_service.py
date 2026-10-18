@@ -9,6 +9,7 @@ from mini_rag.core.errors import ProjectNotFound, WebhookNotFound, WebhookUrlNot
 from mini_rag.core.network import is_local_host
 from mini_rag.domain.models import Project, Webhook, WebhookDelivery
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.audit import record
 
 
 async def emit(uow: UnitOfWork, project: Project, event: str, data: Mapping[str, Any]) -> None:
@@ -51,6 +52,8 @@ class WebhookService:
         webhook = await self.uow.webhooks.create(
             project_id=project.id, url=url, events=sorted(set(events)),
             secret="whsec_" + secrets.token_urlsafe(32), description=description)
+        await record(self.uow, project.tenant_id, "webhook.created", webhook.id,
+                     project=project.name, url=webhook.url, events=list(webhook.events))
         await self.uow.commit()
         return webhook
 
@@ -70,6 +73,8 @@ class WebhookService:
         project = await self._project(project_name)
         if not await self.uow.webhooks.delete(project.id, webhook_id):
             raise WebhookNotFound()
+        await record(self.uow, project.tenant_id, "webhook.deleted", webhook_id,
+                     project=project.name)
         await self.uow.commit()
 
     async def ping(self, project_name: str, webhook_id: str) -> WebhookDelivery:
