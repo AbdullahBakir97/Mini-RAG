@@ -5,7 +5,7 @@ import { nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ApiError, api } from "@/api/client";
 import type { Chunk, FileInfo } from "@/api/types";
 import PagerControls from "@/components/PagerControls.vue";
-import { formatNumber } from "@/lib/format";
+import { formatNumber, reflow } from "@/lib/format";
 
 const props = defineProps<{
   project: string;
@@ -107,7 +107,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", onKey));
               <span v-if="chunk.metadata.page" class="badge">Page {{ chunk.metadata.page }}</span>
               <span class="subtle small">{{ formatNumber(chunk.text.length) }} characters</span>
             </div>
-            <p class="chunk-text">{{ chunk.text }}</p>
+            <p class="chunk-text">{{ reflow(chunk.text) }}</p>
           </article>
         </div>
 

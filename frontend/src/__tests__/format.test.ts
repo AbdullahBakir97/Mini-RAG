@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayName, formatBytes, formatCost, formatPercent, formatRelative } from "@/lib/format";
+import { displayName, formatBytes, formatCost, formatPercent, formatRelative, reflow } from "@/lib/format";
 
 describe("format", () => {
   it("formats sizes", () => {
@@ -32,5 +32,17 @@ describe("format", () => {
   it("takes the name out of a file id", () => {
     expect(displayName("a16q20nzrtvj_notes.txt")).toBe("notes.txt");
     expect(displayName("plain")).toBe("plain");
+  });
+
+  it("joins the lines a PDF breaks inside paragraphs", () => {
+    expect(reflow("The annual report should\ninclude a list of the\nprojects.\n\nNext paragraph.")).toBe(
+      "The annual report should include a list of the projects.\n\nNext paragraph.",
+    );
+  });
+
+  it("keeps list lines and hyphenated words", () => {
+    expect(reflow("Steps:\n• Use of Proceeds\n• Reporting\n1. One\nwell-\nknown")).toBe(
+      "Steps:\n• Use of Proceeds\n• Reporting\n1. One well-known",
+    );
   });
 });
