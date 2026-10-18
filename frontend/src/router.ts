@@ -12,7 +12,13 @@ export const router = createRouter({
       props: true,
       children: [
         { path: "", redirect: (to) => ({ name: "ask", params: to.params }) },
-        { path: "ask", name: "ask", component: () => import("@/views/project/AskView.vue"), meta: { title: "Ask" } },
+        {
+          // Without a conversation, the first question starts one.
+          path: "ask/:conversation([0-9a-fA-F-]{36})?",
+          name: "ask",
+          component: () => import("@/views/project/AskView.vue"),
+          meta: { title: "Ask" },
+        },
         {
           path: "documents",
           name: "documents",

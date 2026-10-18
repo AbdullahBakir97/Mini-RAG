@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from mini_rag.api.error_handlers import register_error_handlers
-from mini_rag.api.routes import ask, base, data, index, projects, search
+from mini_rag.api.routes import ask, base, conversations, data, index, projects, search
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
 from mini_rag.embeddings.factory import create_embedder
@@ -84,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(index.router)
     app.include_router(search.router)
     app.include_router(ask.router)
+    app.include_router(conversations.router)
     register_error_handlers(app)
 
     @app.get("/", include_in_schema=False)

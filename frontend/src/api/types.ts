@@ -121,4 +121,34 @@ export interface Answer {
   citations: Citation[];
   prompt_version: string;
   usage: Usage;
+  /** The conversation the question was asked in, if any. */
+  conversation_id: string | null;
+  /** The standalone question a follow-up was searched with, when it was rewritten. */
+  search_question: string | null;
+}
+
+export interface AskOptions extends SearchOptions {
+  conversation_id?: string | null;
+}
+
+export interface Conversation {
+  id: string;
+  /** Null until the first question. */
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  /** Null for an answer when the documents did not answer. */
+  content: string | null;
+  citations: Citation[];
+  prompt_version: string | null;
+  search_question: string | null;
+  created_at: string;
+}
+
+export interface ConversationDetail extends Conversation {
+  messages: ConversationMessage[];
 }

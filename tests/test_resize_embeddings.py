@@ -77,7 +77,7 @@ def resize_db(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", RESIZE_DATABASE_URL)
     get_settings.cache_clear()
     yield RESIZE_DATABASE_URL
-    run("TRUNCATE projects, files, chunks, answers RESTART IDENTITY CASCADE")
+    run("TRUNCATE projects, files, chunks, answers, conversations, conversation_messages RESTART IDENTITY CASCADE")
     if stored_dimensions() != 1536:
         asyncio.run(_resize(1536))
 

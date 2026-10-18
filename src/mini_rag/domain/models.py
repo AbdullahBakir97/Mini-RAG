@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass(frozen=True)
@@ -93,3 +93,43 @@ class UsageTotals:
     output_tokens: int
     cost_usd: float
     unpriced_answers: int
+
+
+@dataclass(frozen=True)
+class Conversation:
+    """Questions and answers that follow on from each other. ``id`` is a UUID string."""
+
+    id: str
+    project_id: int
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass(frozen=True)
+class StoredCitation:
+    """A source an answer in a conversation cited, kept as it was then."""
+
+    number: int
+    file_key: str
+    chunk_index: int
+    page: int | None
+    score: float
+    text: str
+
+
+@dataclass(frozen=True)
+class ConversationMessage:
+    """A question (user) or an answer (assistant) in a conversation.
+
+    An answer's ``content`` is None when the documents did not answer.
+    ``search_question`` is the standalone question an answer was searched
+    with, when it differs from the question asked.
+    """
+
+    role: Literal["user", "assistant"]
+    content: str | None
+    citations: list[StoredCitation] = field(default_factory=list)
+    prompt_version: str | None = None
+    search_question: str | None = None
+    created_at: datetime | None = None

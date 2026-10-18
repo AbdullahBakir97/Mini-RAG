@@ -11,7 +11,7 @@ from mini_rag.persistence.tables import Base
 from .conftest import alembic_config
 
 # Synchronous tests: Alembic's env.py runs its own event loop, like the CLI.
-APP_TABLES = {"projects", "files", "chunks", "answers"}
+APP_TABLES = {"projects", "files", "chunks", "answers", "conversations", "conversation_messages"}
 
 
 def run_on_connection(url, function):

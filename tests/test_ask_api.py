@@ -2,10 +2,10 @@ import json
 
 import pytest
 
-from mini_rag.api.dependencies import get_embedder, get_llm
+from mini_rag.api.dependencies import get_llm
 from mini_rag.core.config import get_settings
 
-from .fakes import FakeEmbedder, FakeLLM
+from .fakes import FakeLLM
 
 # One chunk per paragraph at chunk_size 60.
 GUIDE = "\n\n".join([
@@ -18,20 +18,8 @@ GUIDE = "\n\n".join([
 
 # The model was not called, so the answer used no tokens and cost nothing.
 NOT_CALLED_USAGE = {"usage": {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}}
-
-
-@pytest.fixture
-def embedder(client):
-    fake = FakeEmbedder()
-    client.app.dependency_overrides[get_embedder] = lambda: fake
-    return fake
-
-
-@pytest.fixture
-def llm(client):
-    fake = FakeLLM("Each chunk gets an embedding vector [1].")
-    client.app.dependency_overrides[get_llm] = lambda: fake
-    return fake
+# A question asked on its own, outside a conversation.
+NO_CONVERSATION = {"conversation_id": None, "search_question": None}
 
 
 def upload_process_and_index(client, project="demo", name="guide.txt", text=GUIDE,
@@ -66,6 +54,7 @@ def test_answers_with_citations(client, embedder, llm):
         "prompt_version": "answer-v1",
         # FakeLLM's usage; no prices are configured, so the cost is unknown.
         "usage": {"input_tokens": 1200, "output_tokens": 40, "cost_usd": None},
+        **NO_CONVERSATION,
     }
     assert 0.2 <= score <= 1
     # The model saw the question and only the matching chunk, as data.
@@ -92,7 +81,8 @@ def test_no_matching_chunk_means_no_answer(client, embedder, llm):
 
     assert response.status_code == 200
     assert response.json() == {"signal": "no_answer", "answer": None, "citations": [],
-                               "prompt_version": "answer-v1", **NOT_CALLED_USAGE}
+                               "prompt_version": "answer-v1", **NOT_CALLED_USAGE,
+                               **NO_CONVERSATION}
     assert llm.calls == []
 
 
@@ -197,7 +187,7 @@ def test_stream_no_answer_sends_only_the_final_event(client, embedder, llm):
     assert (status, events) == (200, [("answer", {"signal": "no_answer", "answer": None,
                                                   "citations": [],
                                                   "prompt_version": "answer-v1",
-                                                  **NOT_CALLED_USAGE})])
+                                                  **NOT_CALLED_USAGE, **NO_CONVERSATION})])
     assert llm.calls == []
 
 

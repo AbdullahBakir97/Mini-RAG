@@ -8,17 +8,17 @@ The code is split into layers. Each layer only depends on the layers below it, a
 api          routes, request/response schemas, dependency wiring, error handler
  │
 services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService,
-             AnswerService
+             AnswerService, ConversationService
  │
 persistence · embeddings · llm · prompts · storage · loaders · text
              PostgreSQL + pgvector repositories · embedding client · chat model client ·
              versioned prompts · files on disk · one loader per file type · text splitter
  │
-domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, repository,
+domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, Conversation, repository,
              Embedder and LLM interfaces, response signals
 ```
 
-Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository`, `AnswerRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
+Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository`, `AnswerRepository`, `ConversationRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
 
 `core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, and `prompts` only on `domain`, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
 
@@ -31,13 +31,16 @@ Services depend on the repository **interfaces** in `domain/repositories.py` (`P
 | Transactions | One database session per request; services call `uow.commit()`, and anything uncommitted is rolled back |
 | Database schema | `persistence/tables.py`, changed only through Alembic migrations |
 | Usage and cost | `AnswerService` records every answer's tokens and cost in the `answers` table, never the question or answer text; `GET /api/v1/projects/{project_id}/usage` adds them up |
+| Conversations | `conversations` and `conversation_messages` keep the questions and answers asked in a conversation, with their citations (copied, so they still read the same after a file is re-processed); deleting a project's rows cascades to them. `AnswerService` rewrites a follow-up with the condense prompt before searching |
 | Vector search | `chunks.embedding vector(1536)` (another length after `mini-rag resize-embeddings`, for another embedding model) with an HNSW index for cosine distance; search uses pgvector's iterative scan so filtering by project still returns `top_k` results |
 
 ## Prompts
 
 Prompts live in `prompts/`, apart from the code that sends them, so they can be reviewed and versioned on their own. A released prompt never changes: new wording gets a new version (`answer-v2`), and `ANSWER_PROMPT` points to the one in use. `tests/test_answer_prompt.py` pins a hash of every released prompt, so editing one by accident fails CI, and each answer reports the `prompt_version` that produced it.
 
-Document text is data, not instructions. The system message holds the rules, including never following instructions found in a source; the user message holds the numbered sources in `<source>` tags and the question in `<question>` tags. Any text that would open or close one of these tags early is escaped, so a document cannot end its own source and pose as instructions.
+Two prompts are in use: `answer-v1` writes the answer, and `condense-v1` rewrites a follow-up in a conversation into a standalone question to search with ("And on Fridays?" becomes "Do production deploys happen on Fridays?"). Both are pinned the same way.
+
+Document text is data, not instructions. The system message holds the rules, including never following instructions found in a source; the user message holds the numbered sources in `<source>` tags and the question in `<question>` tags. Any text that would open or close one of these tags early is escaped, so a document cannot end its own source and pose as instructions. In a conversation, the earlier questions and answers go to the model as earlier messages, with their `[n]` markers removed because those numbered other sources; the condense prompt quotes them in `<conversation>` tags, escaped the same way.
 
 ## Adding a file type
 
@@ -61,7 +64,7 @@ Mini-RAG/
 │   ├── cli.py                # The mini-rag command: resize-embeddings
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
-│   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers
+│   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers, conversations
 │   ├── persistence/          # SQLAlchemy tables, engine, repositories (with pgvector)
 │   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs

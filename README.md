@@ -16,16 +16,17 @@
 - **Index** chunks as embeddings with OpenAI or any OpenAI-compatible server, such as Ollama.
 - **Search** by meaning with PostgreSQL and pgvector, best match first, with a similarity score.
 - **Ask** questions and get answers with citations to the file, page and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
+- **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept.
 - **Track** the tokens and cost of every answer, per answer and per project.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.
-- **Use it in the browser** with the web app: projects, drag-and-drop uploads, streamed answers with clickable sources, search and usage, in light and dark.
+- **Use it in the browser** with the web app: projects, drag-and-drop uploads, conversations with streamed answers and clickable sources, search and usage, in light and dark.
 
-Conversations with follow-up questions are next; see the [roadmap](docs/roadmap.md).
+Evaluation of retrieval and answers is next; see the [roadmap](docs/roadmap.md).
 
 ## Web app
 
 <p align="center">
-  <img src="docs/media/web-ask.png" width="880" alt="The Ask page of the web app: a question, its streamed answer with numbered citations, the cited sources with their similarity scores, and the answer's tokens and cost.">
+  <img src="docs/media/web-ask.png" width="880" alt="The Ask page of the web app: the project's conversations beside a question and a follow-up, each answered with numbered citations and its cited sources, the follow-up showing the standalone question it was searched with.">
 </p>
 
 Upload documents and ask questions in the browser: each file is uploaded, split and indexed as soon as it is dropped, answers stream in with their sources, and every source opens at its passage. It uses only the public API. See [Web app](docs/web.md).

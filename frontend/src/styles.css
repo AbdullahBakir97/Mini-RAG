@@ -244,6 +244,18 @@ code,
   color: var(--text);
 }
 
+.btn-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  /* Light on the light theme's red, dark on the dark theme's orange. */
+  color: var(--on-accent);
+}
+
+.btn-danger:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 85%, var(--text));
+}
+
 .btn-sm {
   height: 28px;
   padding: 0 10px;

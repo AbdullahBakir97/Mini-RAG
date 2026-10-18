@@ -7,9 +7,10 @@ to verify the service committed its work.
 
 import math
 import re
+import uuid
 import zlib
 from collections.abc import AsyncIterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from itertools import count
 
@@ -18,6 +19,8 @@ from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.domain.models import (
     AnswerRecord,
     Chunk,
+    Conversation,
+    ConversationMessage,
     FileRecord,
     Project,
     ScoredChunk,
@@ -154,6 +157,54 @@ class FakeAnswers:
             unpriced_answers=sum(r.model is not None and r.cost_usd is None for r in records))
 
 
+class FakeConversations:
+
+    def __init__(self):
+        self.by_id: dict[str, Conversation] = {}
+        self.stored: dict[str, list[ConversationMessage]] = {}
+
+    async def create(self, project_id: int, title: str | None) -> Conversation:
+        now = datetime.now(UTC)
+        conversation = Conversation(id=str(uuid.uuid4()), project_id=project_id, title=title,
+                                    created_at=now, updated_at=now)
+        self.by_id[conversation.id] = conversation
+        self.stored[conversation.id] = []
+        return conversation
+
+    async def get(self, project_id: int, conversation_id: str) -> Conversation | None:
+        conversation = self.by_id.get(conversation_id)
+        return conversation if conversation and conversation.project_id == project_id else None
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Conversation]:
+        mine = [c for c in self.by_id.values() if c.project_id == project_id]
+        mine.sort(key=lambda c: c.updated_at, reverse=True)
+        return mine[offset:offset + limit]
+
+    async def count_for_project(self, project_id: int) -> int:
+        return sum(c.project_id == project_id for c in self.by_id.values())
+
+    async def delete(self, project_id: int, conversation_id: str) -> bool:
+        if await self.get(project_id, conversation_id) is None:
+            return False
+        del self.by_id[conversation_id]
+        del self.stored[conversation_id]
+        return True
+
+    async def messages(self, conversation_id: str, *,
+                       last: int | None = None) -> list[ConversationMessage]:
+        messages = self.stored.get(conversation_id, [])
+        return list(messages[-last:] if last else messages)
+
+    async def add_messages(self, conversation_id: str, messages: Sequence[ConversationMessage],
+                           *, title: str | None = None) -> None:
+        self.stored[conversation_id].extend(messages)
+        conversation = self.by_id[conversation_id]
+        self.by_id[conversation_id] = replace(
+            conversation, updated_at=datetime.now(UTC),
+            title=title if title is not None else conversation.title)
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -161,6 +212,7 @@ class FakeUnitOfWork:
         self.files = FakeFiles()
         self.chunks = FakeChunks()
         self.answers = FakeAnswers()
+        self.conversations = FakeConversations()
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 
@@ -215,8 +267,11 @@ class FakeLLM:
     model = "fake-llm"
 
     def __init__(self, reply: str = "A fake answer.", fail: bool = False, piece_size: int = 4,
-                 fail_after: int | None = None, usage: TokenUsage | None = FAKE_USAGE):
+                 fail_after: int | None = None, usage: TokenUsage | None = FAKE_USAGE,
+                 replies: Sequence[str] = ()):
         self.reply = reply
+        # Replies for the first requests, in order; ``reply`` for the rest.
+        self.replies = list(replies)
         self.fail = fail
         self.piece_size = piece_size
         self.fail_after = fail_after
@@ -227,15 +282,19 @@ class FakeLLM:
         self.calls.append(list(messages))
         if self.fail:
             raise LLMFailed("fake failure")
-        return Completion(text=self.reply, usage=self.usage)
+        return Completion(text=self._next_reply(), usage=self.usage)
+
+    def _next_reply(self) -> str:
+        return self.replies.pop(0) if self.replies else self.reply
 
     async def stream(self, messages: Sequence[Message]) -> AsyncIterator[str | TokenUsage]:
         self.calls.append(list(messages))
         if self.fail:
             raise LLMFailed("fake failure")
-        for sent, start in enumerate(range(0, len(self.reply), self.piece_size)):
+        reply = self._next_reply()
+        for sent, start in enumerate(range(0, len(reply), self.piece_size)):
             if sent == self.fail_after:
                 raise LLMFailed("fake failure mid-stream")
-            yield self.reply[start:start + self.piece_size]
+            yield reply[start:start + self.piece_size]
         if self.usage is not None:
             yield self.usage

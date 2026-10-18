@@ -84,4 +84,47 @@ describe("api", () => {
 
     expect(fetch.mock.calls[0]![0]).toBe("/api/v1/projects/my_project/files/abc_notes.txt/chunks?offset=20&limit=20");
   });
+
+  it("asks in a conversation", async () => {
+    const fetch = vi.fn().mockResolvedValue(Response.json({ signal: "answer_success" }));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.ask("demo", "And why?", { top_k: 5, min_score: null, conversation_id: "c-1" });
+
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe("/api/v1/ask/demo");
+    expect(JSON.parse(init.body)).toEqual({ question: "And why?", top_k: 5, min_score: null, conversation_id: "c-1" });
+  });
+
+  it("starts, reads, lists and deletes conversations", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(Response.json({ id: "c-1", title: null }, { status: 201 }))
+      .mockResolvedValueOnce(Response.json({ id: "c-1", title: "Why?", messages: [] }))
+      .mockResolvedValueOnce(Response.json({ total: 0, offset: 0, limit: 50, items: [] }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetch);
+
+    expect((await api.createConversation("demo")).id).toBe("c-1");
+    expect((await api.conversation("demo", "c-1")).title).toBe("Why?");
+    expect((await api.conversations("demo")).total).toBe(0);
+    await expect(api.deleteConversation("demo", "c-1")).resolves.toBeUndefined();
+
+    const calls = fetch.mock.calls.map(([url, init]) => [init?.method ?? "GET", url]);
+    expect(calls).toEqual([
+      ["POST", "/api/v1/projects/demo/conversations"],
+      ["GET", "/api/v1/projects/demo/conversations/c-1"],
+      ["GET", "/api/v1/projects/demo/conversations?offset=0&limit=50"],
+      ["DELETE", "/api/v1/projects/demo/conversations/c-1"],
+    ]);
+  });
+
+  it("reports a conversation that no longer exists", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({ signal: "conversation_not_found" }, { status: 404 })));
+
+    await expect(api.conversation("demo", "c-1")).rejects.toMatchObject({
+      status: 404,
+      message: "This conversation no longer exists.",
+    });
+  });
 });
