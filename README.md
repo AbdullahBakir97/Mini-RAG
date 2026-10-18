@@ -18,6 +18,7 @@
 - **Ask** questions and get answers with citations to the file, page or section, and chunk, streamed as they are written if you like, or an explicit "no answer" when the documents don't say.
 - **Follow up** in conversations: a follow-up question is rewritten into a standalone one before searching, and the questions and answers are kept, with thumbs up or down on each answer.
 - **Track** the tokens and cost of every answer, per answer and per project.
+- **Connect agents** through a built-in MCP server (`/api/v1/mcp`) with `list_projects`, `search_knowledge` and `ask` tools, or the same tools as function-calling schemas.
 - **Automate** with signed webhooks: uploads, deletions and finished jobs are sent to n8n, Make, Zapier or any URL, retried for a day until received.
 - **Evaluate** retrieval with `mini-rag eval` on a versioned dataset: hit rate, recall and MRR, checked in CI with a real embedding model so a change that makes search worse fails. With `--answers`, answers are graded too: citation precision, groundedness and correctness. Rated answers become new test cases with `mini-rag feedback-export`.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.

@@ -66,8 +66,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 5: Agents
 
-- [ ] An MCP server with tools such as `search_knowledge`, `ask` and `list_projects`.
-- [ ] Tool-calling schemas for agent frameworks.
+- [x] An MCP server with tools such as `search_knowledge`, `ask` and `list_projects`.
+- [x] Tool-calling schemas for agent frameworks.
 - [ ] Agentic retrieval: multi-step search for complex questions, with step and cost limits.
 
 ### Phase 6: Retrieval quality

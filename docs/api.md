@@ -73,6 +73,8 @@ A `limit` of `null` is unlimited.
 | `GET` | `/api/v1/health` | `200` `{"status": "ok", "database": "ok"}`, or `503` when the database is unreachable |
 | `GET` | `/api/v1/me` | The tenant and scopes of the API key used |
 | `GET` | `/api/v1/usage` | The tenant's usage this month, against its limits |
+| `POST` | `/api/v1/mcp` | Model Context Protocol server: the tools below, for agents |
+| `GET` | `/api/v1/tools` | The same tools as function-calling schemas |
 | `GET` | `/api/v1/keys` | The tenant's API keys (`admin`) |
 | `POST` | `/api/v1/keys` | Create an API key; it is returned once (`admin`) |
 | `DELETE` | `/api/v1/keys/{key_id}` | Revoke an API key (`admin`) |
@@ -318,6 +320,27 @@ def verify(secret: str, header: str, body: bytes, tolerance: int = 300) -> bool:
 Events are queued in the same transaction as the change they report, so one is sent exactly when the change is saved. A delivery counts as delivered when the receiver answers `2xx` within `WEBHOOK_TIMEOUT_SECONDS`. Otherwise it is tried again after 10 seconds, 1 minute, 5 and 30 minutes, then 2, 6 and 12 hours: 8 attempts over about 20 hours. After that it is marked failed. Redirects are not followed. `GET .../deliveries` shows each delivery's `status` (`pending`, `delivered` or `failed`), `attempts`, the receiver's last `response_status`, and the last `error` in our words (`HTTP 500`, `timed out`, `could not connect`). Deliveries are sent by the API when `JOB_WORKERS` is above 0, and always by `mini-rag worker`.
 
 Webhooks reach only public addresses: an address on this server's network (`localhost`, private networks, the cloud metadata service at `169.254.169.254`) is refused, when the webhook is added (`422` `{"signal": "webhook_url_not_allowed"}`) and again whenever a delivery is sent, after resolving the host. For a receiver next to the API, such as n8n in the same compose stack, set `WEBHOOK_ALLOW_PRIVATE_URLS=true`.
+
+## Tools for agents (MCP)
+
+`POST /api/v1/mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server, so agents and assistants that speak MCP can use a tenant's projects as tools. It uses the Streamable HTTP transport without sessions: each POST carries one JSON-RPC message (`Content-Type: application/json`) and gets a JSON answer. Point an MCP client at `https://<your server>/api/v1/mcp`, with the API key in its headers (`Authorization: Bearer mrag_…`) when authentication is on.
+
+| Tool | Scope | Does |
+|---|---|---|
+| `list_projects` | `read` | Lists the tenant's projects, with files and indexed chunks |
+| `list_files` | `read` | Lists a project's files |
+| `search_knowledge` | `read` | The best matching passages, each with file, page or section, and score |
+| `ask` | `ask` | An answer from the documents with `[n]` citations and its sources; counts against the answer quota |
+
+`tools/list` shows only the tools the key may use. A tool that fails (an unknown project, no embedding model, the quota reached) answers with `isError: true` and the signal, so the agent can change course; bad arguments are a JSON-RPC error (`-32602`). Requests count against the tenant's rate limit like any other. Requests from a web page on another site (an `Origin` header for another host) are refused.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/mcp -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+       "params": {"name": "search_knowledge", "arguments": {"project": "demo1", "query": "overlap"}}}'
+```
+
+For agent frameworks that call functions instead, `GET /api/v1/tools` returns the same tools as `{"type": "function", "function": {"name", "description", "parameters"}}` schemas.
 
 ## Search
 
