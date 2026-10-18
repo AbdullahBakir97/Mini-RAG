@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import delete, text
 from sqlalchemy.exc import IntegrityError
 
-from mini_rag.domain.models import Chunk
+from mini_rag.domain.models import AnswerRecord, Chunk, UsageTotals
 from mini_rag.persistence.database import create_engine, create_session_factory
 from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS, ProjectRow
@@ -235,3 +235,46 @@ async def test_search_finds_top_k_even_when_most_neighbours_belong_to_other_proj
     hits = await uow.chunks.search(small.id, vector(1.0, 0.0), top_k=2, min_score=None)
 
     assert [hit.chunk.text for hit in hits] == ["mine 1", "mine 0"]
+
+
+def answer_record(project, **overrides):
+    values = {"project_id": project.id, "prompt_version": "answer-v1", "model": "m",
+              "streamed": False, "answered": True, "input_tokens": 1000, "output_tokens": 50,
+              "cost_usd": 0.00048}
+    return AnswerRecord(**{**values, **overrides})
+
+
+async def test_answer_totals_add_up_one_project(uow):
+    project = await uow.projects.get_or_create("demo")
+    other = await uow.projects.get_or_create("other")
+    await uow.answers.add(answer_record(project))
+    await uow.answers.add(answer_record(project, streamed=True, input_tokens=500,
+                                        output_tokens=20, cost_usd=0.00023))
+    # No source matched: the model was not called.
+    await uow.answers.add(answer_record(project, model=None, answered=False, input_tokens=0,
+                                        output_tokens=0, cost_usd=0))
+    # Called, but the provider reported no usage, so the cost is unknown.
+    await uow.answers.add(answer_record(project, answered=False, input_tokens=None,
+                                        output_tokens=None, cost_usd=None))
+    await uow.answers.add(answer_record(other))
+
+    totals = await uow.answers.totals_for_project(project.id)
+
+    assert totals == UsageTotals(answers=4, answered=2, input_tokens=1500, output_tokens=70,
+                                 cost_usd=pytest.approx(0.00071), unpriced_answers=1)
+
+
+async def test_answer_totals_of_a_project_without_answers_are_zero(uow):
+    project = await uow.projects.get_or_create("demo")
+
+    assert await uow.answers.totals_for_project(project.id) == UsageTotals(
+        answers=0, answered=0, input_tokens=0, output_tokens=0, cost_usd=0, unpriced_answers=0)
+
+
+async def test_deleting_a_project_deletes_its_answer_records(uow):
+    project = await uow.projects.get_or_create("demo")
+    await uow.answers.add(answer_record(project))
+
+    await uow.session.execute(delete(ProjectRow).where(ProjectRow.id == project.id))
+
+    assert (await uow.answers.totals_for_project(project.id)).answers == 0

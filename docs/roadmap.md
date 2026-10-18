@@ -33,7 +33,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [ ] Conversations with follow-up questions.
 - [x] An `LLM` interface: OpenAI by default, any OpenAI-compatible server as an option.
 - [x] Versioned prompts that treat document text as data, not instructions.
-- [ ] Token usage and cost recorded per request.
+- [x] Token usage and cost recorded per request.
 
 ### Phase 2: Evaluation
 

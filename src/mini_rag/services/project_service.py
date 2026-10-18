@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Generic, TypeVar
 
 from mini_rag.core.errors import FileNotFound, ProjectNotFound
-from mini_rag.domain.models import Chunk, FileRecord, Project
+from mini_rag.domain.models import Chunk, FileRecord, Project, UsageTotals
 from mini_rag.domain.repositories import UnitOfWork
 
 
@@ -59,6 +59,11 @@ class ProjectService:
             total=await self.uow.chunks.count_for_file(record.id),
             offset=offset, limit=limit,
         )
+
+    async def get_usage(self, project_name: str) -> UsageTotals:
+        """Token usage and cost of all the project's answers."""
+        project = await self._project(project_name)
+        return await self.uow.answers.totals_for_project(project.id)
 
     async def _project(self, name: str) -> Project:
         project = await self.uow.projects.get_by_name(name)

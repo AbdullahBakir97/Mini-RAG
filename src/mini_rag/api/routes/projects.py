@@ -12,6 +12,7 @@ from mini_rag.api.schemas import (
     Pagination,
     ProjectId,
     ProjectResponse,
+    ProjectUsageResponse,
     error_responses,
 )
 from mini_rag.core.errors import FileNotFound, ProjectNotFound
@@ -35,6 +36,16 @@ async def get_project(project_id: ProjectId, service: ProjectServiceDep) -> Proj
     return ProjectResponse(name=summary.project.name, created_at=summary.project.created_at,
                            files_count=summary.files_count, chunks_count=summary.chunks_count,
                            embedded_chunks_count=summary.embedded_chunks_count)
+
+
+@router.get("/{project_id}/usage", summary="Token usage and cost of the project's answers",
+            responses=error_responses(ProjectNotFound))
+async def get_usage(project_id: ProjectId, service: ProjectServiceDep) -> ProjectUsageResponse:
+    totals = await service.get_usage(project_id)
+    return ProjectUsageResponse(answers=totals.answers, answered=totals.answered,
+                                input_tokens=totals.input_tokens,
+                                output_tokens=totals.output_tokens, cost_usd=totals.cost_usd,
+                                unpriced_answers=totals.unpriced_answers)
 
 
 @router.get("/{project_id}/files", summary="List a project's files in upload order",

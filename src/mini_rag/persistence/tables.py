@@ -10,12 +10,14 @@ from typing import Any
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     DateTime,
     ForeignKey,
     Identity,
     Index,
     Integer,
     MetaData,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -91,4 +93,25 @@ class ChunkRow(Base):
         "metadata", JSONB, server_default="{}", default=dict)
     # NULL until the chunk is indexed; deleted together with the chunk.
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
+    created_at: Mapped[datetime] = _created_at()
+
+
+class AnswerRow(Base):
+    """One answer's usage and cost; the question and answer text are not stored."""
+
+    __tablename__ = "answers"
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    prompt_version: Mapped[str] = mapped_column(String(64))
+    # NULL when the model was not called (no source matched).
+    model: Mapped[str | None] = mapped_column(String(255))
+    streamed: Mapped[bool] = mapped_column(Boolean)
+    answered: Mapped[bool] = mapped_column(Boolean)
+    # NULL when the provider did not report them.
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    # US dollars; NULL when the tokens or the model's prices are unknown.
+    cost_usd: Mapped[float | None] = mapped_column(Numeric(14, 8, asdecimal=False))
     created_at: Mapped[datetime] = _created_at()

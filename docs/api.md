@@ -18,6 +18,7 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
 | `GET` | `/api/v1/projects/{project_id}` | Project details with file, chunk and index counts |
+| `GET` | `/api/v1/projects/{project_id}/usage` | Token usage and cost of the project's answers |
 | `GET` | `/api/v1/projects/{project_id}/files` | List a project's files (paged) |
 | `GET` | `/api/v1/projects/{project_id}/files/{file_id}/chunks` | List a file's chunks (paged) |
 
@@ -166,7 +167,8 @@ curl -X POST http://localhost:8000/api/v1/ask/demo1 \
     {"number": 1, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 2, "page": 1, "score": 0.83, "text": "..."},
     {"number": 2, "file_id": "a16q20nzrtvj_notes.txt", "chunk_index": 5, "page": 2, "score": 0.71, "text": "..."}
   ],
-  "prompt_version": "answer-v1"
+  "prompt_version": "answer-v1",
+  "usage": {"input_tokens": 1180, "output_tokens": 41, "cost_usd": 0.0005376}
 }
 ```
 
@@ -175,7 +177,8 @@ curl -X POST http://localhost:8000/api/v1/ask/demo1 \
 When the documents do not answer the question, the response is `200` with signal `no_answer`, `answer` `null` and no citations, rather than a guess:
 
 ```json
-{"signal": "no_answer", "answer": null, "citations": [], "prompt_version": "answer-v1"}
+{"signal": "no_answer", "answer": null, "citations": [], "prompt_version": "answer-v1",
+ "usage": {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}}
 ```
 
 That happens when no indexed chunk scores at least `min_score` (the model is then not called at all), or when the model finds no answer in the chunks it is given. Document text is passed to the model as quoted data, so instructions hidden in a document are not followed; see [Prompts](architecture.md#prompts).
@@ -223,3 +226,19 @@ data: {"signal": "answer_success", "answer": "Each chunk begins with up to overl
 | `error` | `{"signal": "llm_failed"}` | The language model failed partway; the stream ends |
 
 A `no_answer` reply sends no `delta` events, only the final `answer` event: text that might still be the model's no-answer reply is held back until it is clearly an answer. Errors found before streaming starts, such as an unknown project or a missing model configuration, are ordinary JSON responses with the status codes in the table above.
+
+### Token usage and cost
+
+Every answer reports what it used in `usage`: the prompt tokens the model read (`input_tokens`), the tokens it wrote (`output_tokens`) and the cost in US dollars (`cost_usd`). When no source matches, the model is not called and all three are `0`. Token counts are `null` when the provider does not report them, and `cost_usd` is `null` unless both `LLM_INPUT_PRICE_PER_MILLION` and `LLM_OUTPUT_PRICE_PER_MILLION` are set (see [Configuration](configuration.md)).
+
+Each answer, streamed or not, is also recorded in the database: its project, model, prompt version, whether it found an answer, its tokens and its cost. The question and the answer text are not stored. Answers that fail, or streams that end early, are not recorded.
+
+```bash
+curl http://localhost:8000/api/v1/projects/demo1/usage
+```
+
+```json
+{"answers": 12, "answered": 9, "input_tokens": 14160, "output_tokens": 492, "cost_usd": 0.0064512, "unpriced_answers": 0}
+```
+
+`answered` counts the answers that were not `no_answer`. `cost_usd` adds up the answers with a known cost; `unpriced_answers` counts the model calls whose cost is unknown, which are left out of it. An unknown project returns `404` `{"signal": "project_not_found"}`.

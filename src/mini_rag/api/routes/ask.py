@@ -11,6 +11,7 @@ from mini_rag.api.schemas import (
     AskResponse,
     CitationResponse,
     ProjectId,
+    UsageResponse,
     error_responses,
 )
 from mini_rag.core.errors import (
@@ -41,7 +42,11 @@ def ask_response(answer: Answer) -> AskResponse:
                                     page=citation.source.chunk.metadata.get("page"),
                                     score=citation.source.score, text=citation.source.chunk.text)
                    for citation in answer.citations],
-        prompt_version=answer.prompt_version)
+        prompt_version=answer.prompt_version,
+        usage=UsageResponse(
+            input_tokens=answer.usage.input_tokens if answer.usage else None,
+            output_tokens=answer.usage.output_tokens if answer.usage else None,
+            cost_usd=answer.cost_usd))
 
 
 @router.post(
@@ -86,7 +91,7 @@ async def ask_project_stream(project_id: ProjectId, request: AskRequest,
 
     async def events() -> AsyncIterator[str]:
         try:
-            async for event in service.stream(request.question, sources):
+            async for event in service.stream(project_id, request.question, sources):
                 if isinstance(event, AnswerDelta):
                     yield sse("delta", {"text": event.text})
                 else:

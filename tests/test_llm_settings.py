@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from mini_rag.core.config import Settings
+from mini_rag.domain.llm import TokenPrices, TokenUsage
 
 
 def test_defaults_use_openai():
@@ -12,9 +13,12 @@ def test_defaults_use_openai():
     assert settings.LLM_MAX_TOKENS == 1024
     assert settings.LLM_TEMPERATURE is None
     assert settings.ANSWER_MIN_SCORE == 0.3
+    assert settings.LLM_STREAM_USAGE is True
+    assert settings.llm_prices is None
 
 
-@pytest.mark.parametrize("name", ["LLM_BASE_URL", "LLM_TEMPERATURE"])
+@pytest.mark.parametrize("name", ["LLM_BASE_URL", "LLM_TEMPERATURE",
+                                  "LLM_INPUT_PRICE_PER_MILLION", "LLM_OUTPUT_PRICE_PER_MILLION"])
 def test_empty_values_mean_the_default(monkeypatch, name):
     monkeypatch.setenv(name, "")
 
@@ -47,9 +51,29 @@ def test_llm_server_is_independent_of_the_embedding_server(monkeypatch):
     ("LLM_TEMPERATURE", "-0.1"),
     ("LLM_TEMPERATURE", "2.5"),
     ("ANSWER_MIN_SCORE", "1.5"),
+    ("LLM_INPUT_PRICE_PER_MILLION", "-1"),
 ])
 def test_llm_numbers_are_validated(monkeypatch, name, value):
     monkeypatch.setenv(name, value)
 
     with pytest.raises(ValidationError):
         Settings()
+
+
+@pytest.mark.parametrize(("input_price", "output_price", "prices"), [
+    ("0.4", "1.6", TokenPrices(input_per_million=0.4, output_per_million=1.6)),
+    ("0", "0", TokenPrices(input_per_million=0, output_per_million=0)),  # e.g. a free tier
+    ("0.4", "", None),  # both are needed for a cost
+])
+def test_prices_need_both_values(monkeypatch, input_price, output_price, prices):
+    monkeypatch.setenv("LLM_INPUT_PRICE_PER_MILLION", input_price)
+    monkeypatch.setenv("LLM_OUTPUT_PRICE_PER_MILLION", output_price)
+
+    assert Settings().llm_prices == prices
+
+
+def test_cost_is_per_million_tokens():
+    prices = TokenPrices(input_per_million=0.4, output_per_million=1.6)
+
+    assert prices.cost(TokenUsage(input_tokens=1_000_000, output_tokens=500_000)) == 1.2
+    assert prices.cost(TokenUsage(input_tokens=1200, output_tokens=40)) == pytest.approx(0.000544)

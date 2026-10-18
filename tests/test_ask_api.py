@@ -3,6 +3,7 @@ import json
 import pytest
 
 from mini_rag.api.dependencies import get_embedder, get_llm
+from mini_rag.core.config import get_settings
 
 from .fakes import FakeEmbedder, FakeLLM
 
@@ -13,6 +14,10 @@ GUIDE = "\n\n".join([
     "Indexing stores an embedding vector per chunk.",
     "Search compares the question with the chunks.",
 ])
+
+
+# The model was not called, so the answer used no tokens and cost nothing.
+NOT_CALLED_USAGE = {"usage": {"input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0}}
 
 
 @pytest.fixture
@@ -59,6 +64,8 @@ def test_answers_with_citations(client, embedder, llm):
         "citations": [{"number": 1, "file_id": file_id, "chunk_index": 2, "page": None,
                        "text": "Indexing stores an embedding vector per chunk."}],
         "prompt_version": "answer-v1",
+        # FakeLLM's usage; no prices are configured, so the cost is unknown.
+        "usage": {"input_tokens": 1200, "output_tokens": 40, "cost_usd": None},
     }
     assert 0.2 <= score <= 1
     # The model saw the question and only the matching chunk, as data.
@@ -85,7 +92,7 @@ def test_no_matching_chunk_means_no_answer(client, embedder, llm):
 
     assert response.status_code == 200
     assert response.json() == {"signal": "no_answer", "answer": None, "citations": [],
-                               "prompt_version": "answer-v1"}
+                               "prompt_version": "answer-v1", **NOT_CALLED_USAGE}
     assert llm.calls == []
 
 
@@ -189,7 +196,8 @@ def test_stream_no_answer_sends_only_the_final_event(client, embedder, llm):
 
     assert (status, events) == (200, [("answer", {"signal": "no_answer", "answer": None,
                                                   "citations": [],
-                                                  "prompt_version": "answer-v1"})])
+                                                  "prompt_version": "answer-v1",
+                                                  **NOT_CALLED_USAGE})])
     assert llm.calls == []
 
 
@@ -220,3 +228,45 @@ def test_stream_without_llm_configuration(client, embedder):
 
 def test_stream_validates_the_request(client, embedder, llm):
     assert client.post("/api/v1/ask/demo/stream", json={"question": " "}).status_code == 422
+
+
+def test_answers_report_their_cost_with_prices_set(client, embedder, llm, monkeypatch):
+    monkeypatch.setenv("LLM_INPUT_PRICE_PER_MILLION", "0.4")
+    monkeypatch.setenv("LLM_OUTPUT_PRICE_PER_MILLION", "1.6")
+    get_settings.cache_clear()
+    upload_process_and_index(client)
+
+    usage = ask(client, question="embedding vector", min_score=0.2).json()["usage"]
+
+    # 1200 prompt tokens at $0.40 and 40 reply tokens at $1.60 per million.
+    assert usage == {"input_tokens": 1200, "output_tokens": 40,
+                     "cost_usd": pytest.approx(0.000544)}
+
+
+def test_project_usage_adds_up_its_answers(client, embedder, llm, query):
+    upload_process_and_index(client)
+    ask(client, question="embedding vector", min_score=0.2)
+    stream_events(client, question="embedding vector", min_score=0.2)
+    ask(client, question="Where is Paris?")  # no source: the model is not called
+
+    usage = client.get("/api/v1/projects/demo/usage").json()
+
+    assert usage == {"answers": 3, "answered": 2, "input_tokens": 2400, "output_tokens": 80,
+                     "cost_usd": 0.0, "unpriced_answers": 2}
+    # The streamed answer was saved too, after its last event.
+    assert query("SELECT streamed, input_tokens FROM answers ORDER BY id") == [
+        (False, 1200), (True, 1200), (False, 0)]
+
+
+def test_project_usage_of_unknown_project(client):
+    response = client.get("/api/v1/projects/missing/usage")
+
+    assert (response.status_code, response.json()) == (404, {"signal": "project_not_found"})
+
+
+def test_failed_answers_are_not_recorded(client, embedder, query):
+    client.app.dependency_overrides[get_llm] = lambda: FakeLLM(fail=True)
+    upload_process_and_index(client)
+
+    assert ask(client, question="embedding vector", min_score=0.2).status_code == 502
+    assert query("SELECT count(*) FROM answers") == [(0,)]

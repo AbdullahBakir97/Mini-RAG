@@ -135,9 +135,10 @@ def get_llm(request: Request) -> LLM:
 LLMDep = Annotated[LLM, Depends(get_llm)]
 
 
-def get_answer_service(search: SearchServiceDep, llm: LLMDep,
+def get_answer_service(search: SearchServiceDep, llm: LLMDep, uow: UnitOfWorkDep,
                        settings: SettingsDep) -> AnswerService:
-    return AnswerService(search=search, llm=llm, min_score=settings.ANSWER_MIN_SCORE)
+    return AnswerService(search=search, llm=llm, uow=uow, min_score=settings.ANSWER_MIN_SCORE,
+                         prices=settings.llm_prices)
 
 
 AnswerServiceDep = Annotated[AnswerService, Depends(get_answer_service)]

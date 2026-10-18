@@ -62,3 +62,34 @@ class FileRecord:
     content_type: str
     size_bytes: int
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class AnswerRecord:
+    """What one answer used and cost. The question and the answer text are not kept.
+
+    ``model`` is None when no source matched and the model was not called.
+    Token counts are None when the provider did not report them, and
+    ``cost_usd`` when they or the model's prices are unknown.
+    """
+
+    project_id: int
+    prompt_version: str
+    model: str | None
+    streamed: bool
+    answered: bool
+    input_tokens: int | None
+    output_tokens: int | None
+    cost_usd: float | None
+
+
+@dataclass(frozen=True)
+class UsageTotals:
+    """A project's answers added up; ``unpriced_answers`` model calls have no known cost."""
+
+    answers: int
+    answered: int
+    input_tokens: int
+    output_tokens: int
+    cost_usd: float
+    unpriced_answers: int
