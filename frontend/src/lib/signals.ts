@@ -22,6 +22,9 @@ const MESSAGES: Record<string, string> = {
   job_abandoned: "The worker processing the file stopped, on every attempt.",
   job_not_found: "That job does not exist in this project.",
   job_not_failed: "Only a failed job can be retried.",
+  webhook_not_found: "That webhook no longer exists.",
+  webhook_url_not_allowed:
+    "Webhooks may not reach this server's network (localhost or private addresses). Set WEBHOOK_ALLOW_PRIVATE_URLS=true on the server to allow it.",
   validation_error: "The request was not valid.",
   network_error: "The server could not be reached. Is the API running?",
 };

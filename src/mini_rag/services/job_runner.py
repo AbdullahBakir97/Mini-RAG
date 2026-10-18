@@ -7,12 +7,13 @@ from http import HTTPStatus
 
 from mini_rag.core.errors import AppError, EmbeddingNotConfigured
 from mini_rag.domain.embedder import Embedder
-from mini_rag.domain.models import Job
+from mini_rag.domain.models import Job, Project
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.domain.signals import ResponseSignal
 from mini_rag.loaders.registry import LoaderRegistry
 from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.processing_service import ProcessingService
+from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
@@ -91,6 +92,7 @@ class JobRunner:
                 await IndexingService(uow, self.embedder, self.batch_size).index(
                     job.project_name, job.file_key, on_batch=on_batch)
                 await uow.jobs.succeed(job.id, chunks)
+                await self._emit(uow, job, "job.succeeded", chunks_count=chunks, error=None)
                 await uow.commit()
                 logger.info("Job %s: %d chunks processed and indexed", job.id, chunks)
             except Exception as exc:
@@ -113,12 +115,22 @@ class JobRunner:
             delay = self.retry_delays[min(job.attempts, len(self.retry_delays)) - 1]
             retry_at = datetime.now(UTC) + timedelta(seconds=delay)
         await uow.jobs.fail(job.id, signal, retry_at)
+        if retry_at is None:
+            await self._emit(uow, job, "job.failed", chunks_count=None, error=signal)
         await uow.commit()
         then = f"trying again at {retry_at.isoformat()}" if retry_at else "giving up"
         # The details stay in the log: they can quote a provider's reply.
         cause = exc.__cause__ if isinstance(exc, AppError) else exc
         logger.warning("Job %s failed with %s (%s); %s", job.id, signal, exc, then,
                        exc_info=cause)
+
+    @staticmethod
+    async def _emit(uow: UnitOfWork, job: Job, event: str, *, chunks_count: int | None,
+                    error: str | None) -> None:
+        project = Project(id=job.project_id, name=job.project_name, created_at=job.created_at)
+        await emit(uow, project, event, {
+            "job_id": job.id, "file_id": job.file_key, "status": event.removeprefix("job."),
+            "chunks_count": chunks_count, "error": error, "attempts": job.attempts})
 
     async def _release(self, job: Job) -> None:
         async with self.unit_of_work() as uow:

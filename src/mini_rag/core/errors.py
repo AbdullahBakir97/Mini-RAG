@@ -69,6 +69,22 @@ class JobNotFailed(AppError):
     status_code = HTTPStatus.CONFLICT
 
 
+class WebhookNotFound(AppError):
+    signal = ResponseSignal.WEBHOOK_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
+class WebhookUrlNotAllowed(AppError):
+    """The URL points to this server's network, which webhooks may not reach unless allowed."""
+
+    signal = ResponseSignal.WEBHOOK_URL_NOT_ALLOWED
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+class WebhookFailed(Exception):
+    """Sending a webhook failed; the message says how (for the delivery log)."""
+
+
 class NoTextExtracted(AppError):
     signal = ResponseSignal.FILE_HAS_NO_TEXT
     status_code = HTTPStatus.UNPROCESSABLE_ENTITY

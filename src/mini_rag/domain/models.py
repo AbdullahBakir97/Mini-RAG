@@ -220,3 +220,43 @@ class Job:
     started_at: datetime | None = None
     finished_at: datetime | None = None
 
+
+# What webhooks can subscribe to; "ping" is sent on request, to any webhook.
+WEBHOOK_EVENTS = ("file.uploaded", "file.deleted", "job.succeeded", "job.failed")
+
+
+@dataclass(frozen=True)
+class Webhook:
+    """A URL that hears about a project's events, signed with ``secret``."""
+
+    id: str
+    project_id: int
+    url: str
+    events: tuple[str, ...]
+    secret: str
+    created_at: datetime
+    description: str | None = None
+
+
+DeliveryStatus = Literal["pending", "delivered", "failed"]
+
+
+@dataclass(frozen=True)
+class WebhookDelivery:
+    """One event sent to one webhook: tried until it is delivered or out of attempts.
+
+    ``payload`` is fixed when the event happens; each attempt signs it anew.
+    """
+
+    id: str
+    webhook_id: str
+    event: str
+    payload: dict[str, Any]
+    status: DeliveryStatus
+    attempts: int
+    created_at: datetime
+    next_attempt_at: datetime | None = None
+    response_status: int | None = None
+    error: str | None = None
+    delivered_at: datetime | None = None
+

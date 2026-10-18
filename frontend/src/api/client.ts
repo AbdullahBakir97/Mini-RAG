@@ -8,6 +8,7 @@ import type {
   Conversation,
   ConversationDetail,
   ConversationMessage,
+  CreatedWebhook,
   FeedbackList,
   FileInfo,
   Health,
@@ -23,6 +24,9 @@ import type {
   SearchOptions,
   SearchResult,
   UploadResult,
+  Webhook,
+  WebhookDelivery,
+  WebhookEvent,
   Welcome,
 } from "./types";
 
@@ -171,6 +175,19 @@ export const api = {
   createJob: (name: string, fileId: string, options: ProcessOptions) =>
     post<Job>(`/projects/${project(name)}/jobs`, { file_id: fileId, ...options }),
   job: (name: string, jobId: string) => get<Job>(`/projects/${project(name)}/jobs/${encodeURIComponent(jobId)}`),
+  webhooks: (name: string, page: PageParams = {}) =>
+    get<Page<Webhook>>(`/projects/${project(name)}/webhooks`, { offset: page.offset ?? 0, limit: page.limit ?? 100 }),
+  createWebhook: (name: string, body: { url: string; events: WebhookEvent[]; description?: string | null }) =>
+    post<CreatedWebhook>(`/projects/${project(name)}/webhooks`, body),
+  deleteWebhook: (name: string, webhookId: string) =>
+    remove(`/projects/${project(name)}/webhooks/${encodeURIComponent(webhookId)}`),
+  pingWebhook: (name: string, webhookId: string) =>
+    post<WebhookDelivery>(`/projects/${project(name)}/webhooks/${encodeURIComponent(webhookId)}/ping`),
+  deliveries: (name: string, webhookId: string, page: PageParams = {}) =>
+    get<Page<WebhookDelivery>>(`/projects/${project(name)}/webhooks/${encodeURIComponent(webhookId)}/deliveries`, {
+      offset: page.offset ?? 0,
+      limit: page.limit ?? 10,
+    }),
   index: (name: string, fileId?: string) =>
     post<IndexResult>(`/index/${project(name)}`, fileId ? { file_id: fileId } : undefined),
   search: (name: string, query: string, options: SearchOptions) =>

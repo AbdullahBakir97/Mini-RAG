@@ -2,6 +2,7 @@ import logging
 
 from mini_rag.core.errors import FileNotFound, ProjectNotFound
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ class DeletionService:
             raise ProjectNotFound()
         if not await self.uow.files.delete(project.id, file_key):
             raise FileNotFound()
+        await emit(self.uow, project, "file.deleted", {"file_id": file_key})
         await self.uow.commit()
         try:
             self.storage.delete_file(project_name, file_key)

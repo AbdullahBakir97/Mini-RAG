@@ -28,7 +28,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 # Deterministic constraint names, so migrations are reproducible and
@@ -216,4 +216,47 @@ class JobRow(Base):
     created_at: Mapped[datetime] = _created_at()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class WebhookRow(Base):
+    """A URL that hears about a project's events."""
+
+    __tablename__ = "webhooks"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    url: Mapped[str] = mapped_column(Text)
+    events: Mapped[list[str]] = mapped_column(ARRAY(String(32)))
+    # Signs each delivery; kept as is, since signing needs it.
+    secret: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+
+
+class WebhookDeliveryRow(Base):
+    """One event sent to one webhook, with the outcome of its last attempt."""
+
+    __tablename__ = "webhook_deliveries"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'delivered', 'failed')", name="status"),
+        Index("ix_webhook_deliveries_webhook_id_created_at", "webhook_id", "created_at"),
+        # Dispatchers look for pending deliveries that are due.
+        Index("ix_webhook_deliveries_next_attempt_at", "next_attempt_at",
+              postgresql_where=text("status = 'pending'")),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    webhook_id: Mapped[str] = mapped_column(ForeignKey("webhooks.id", ondelete="CASCADE"))
+    event: Mapped[str] = mapped_column(String(32))
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(16), server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    # When a pending delivery is due; a claimed one is not due again for a while.
+    next_attempt_at: Mapped[datetime | None] = _created_at()
+    response_status: Mapped[int | None] = mapped_column(Integer)
+    # Why the last attempt failed, in our words (never the receiver's reply).
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _created_at()
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

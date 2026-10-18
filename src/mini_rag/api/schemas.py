@@ -6,7 +6,7 @@ from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from fastapi import Path, Query
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import AnyHttpUrl, BaseModel, Field, field_validator, model_validator
 
 from mini_rag.core.errors import AppError
 from mini_rag.domain.models import SearchFilters
@@ -399,4 +399,63 @@ class JobListResponse(BaseModel):
     offset: int
     limit: int
     items: list[JobResponse]
+
+
+WebhookIdPath = Annotated[UUID, Path(description="The webhook's id.")]
+WebhookEvent = Literal["file.uploaded", "file.deleted", "job.succeeded", "job.failed"]
+
+
+class WebhookRequest(BaseModel):
+    url: AnyHttpUrl = Field(description="Where to POST events: an http or https URL.",
+                            examples=["https://example.com/hooks/mini-rag"])
+    events: list[WebhookEvent] = Field(min_length=1, max_length=10,
+                                       description="The events to send.")
+    description: str | None = Field(default=None, max_length=200)
+
+    @field_validator("url")
+    @classmethod
+    def check_length(cls, url: AnyHttpUrl) -> AnyHttpUrl:
+        if len(str(url)) > 2000:
+            raise ValueError("the URL is longer than 2000 characters")
+        return url
+
+
+class WebhookResponse(BaseModel):
+    id: str
+    url: str
+    events: list[str]
+    description: str | None
+    created_at: datetime
+
+
+class WebhookCreatedResponse(WebhookResponse):
+    secret: str = Field(description="Signs every delivery; shown only now, so keep it.")
+
+
+class WebhookListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[WebhookResponse]
+
+
+class DeliveryResponse(BaseModel):
+    id: str = Field(description="Also sent as X-Mini-RAG-Delivery; the same on every attempt.")
+    event: str
+    status: Literal["pending", "delivered", "failed"]
+    attempts: int
+    response_status: int | None = Field(description="The receiver's HTTP status, last attempt.")
+    error: str | None = Field(description="Why the last attempt failed, e.g. `HTTP 500` or "
+                                          "`timed out`.")
+    created_at: datetime
+    next_attempt_at: datetime | None
+    delivered_at: datetime | None
+    payload: dict[str, Any] = Field(description="The body sent, without its `id`.")
+
+
+class DeliveryListResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[DeliveryResponse]
 

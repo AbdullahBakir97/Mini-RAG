@@ -378,6 +378,11 @@ code,
   background: var(--danger-soft);
 }
 
+.alert-success {
+  border-color: color-mix(in srgb, var(--success) 35%, transparent);
+  background: var(--success-soft);
+}
+
 .alert > svg {
   flex: none;
   margin-top: 2px;

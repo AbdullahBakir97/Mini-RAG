@@ -18,6 +18,7 @@ from mini_rag.api.routes import (
     jobs,
     projects,
     search,
+    webhooks,
 )
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.logging_config import configure_logging
@@ -31,7 +32,9 @@ from mini_rag.persistence.database import (
 from mini_rag.persistence.repositories import unit_of_work_factory
 from mini_rag.rerankers.factory import create_reranker
 from mini_rag.services.job_runner import JobRunner
+from mini_rag.services.webhook_dispatcher import WebhookDispatcher
 from mini_rag.storage.file_storage import FileStorage
+from mini_rag.webhooks.factory import create_webhook_sender
 
 logger = logging.getLogger(__name__)
 
@@ -61,20 +64,27 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         app.state.embedder = embedder = create_embedder(settings)
         app.state.llm = llm = create_llm(settings)
         app.state.reranker = reranker = create_reranker(settings)
+        sender = create_webhook_sender(settings)
         workers: list[asyncio.Task] = []
         try:
             await _check_embedding_dimensions(engine, settings)
-            runner = JobRunner(unit_of_work_factory(app.state.session_factory),
-                               FileStorage(root=settings.FILES_DIR), get_loader_registry(),
-                               embedder, settings.EMBEDDING_BATCH_SIZE)
+            # Background work: jobs, and webhook deliveries. With JOB_WORKERS=0
+            # it is left to `mini-rag worker`.
+            unit_of_work = unit_of_work_factory(app.state.session_factory)
+            runner = JobRunner(unit_of_work, FileStorage(root=settings.FILES_DIR),
+                               get_loader_registry(), embedder, settings.EMBEDDING_BATCH_SIZE)
             workers = [asyncio.create_task(runner.run(), name=f"job-worker-{n}")
                        for n in range(settings.JOB_WORKERS)]
+            if settings.JOB_WORKERS:
+                dispatcher = WebhookDispatcher(unit_of_work, sender)
+                workers.append(asyncio.create_task(dispatcher.run(), name="webhook-dispatcher"))
             yield
         finally:
             for worker in workers:
                 worker.cancel()
             # A running job goes back to the queue for the next start.
             await asyncio.gather(*workers, return_exceptions=True)
+            await sender.aclose()
             if embedder is not None:
                 await embedder.aclose()
             if llm is not None:
@@ -98,6 +108,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(index.router)
     app.include_router(jobs.router)
+    app.include_router(webhooks.router)
     app.include_router(search.router)
     app.include_router(ask.router)
     app.include_router(conversations.router)

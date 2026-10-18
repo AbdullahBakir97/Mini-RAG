@@ -23,6 +23,7 @@ from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.project_service import ProjectService
 from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
+from mini_rag.services.webhook_service import WebhookService
 from mini_rag.storage.file_storage import FileStorage
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -113,6 +114,13 @@ def get_job_service(uow: UnitOfWorkDep, settings: SettingsDep) -> JobService:
 
 
 JobServiceDep = Annotated[JobService, Depends(get_job_service)]
+
+
+def get_webhook_service(uow: UnitOfWorkDep, settings: SettingsDep) -> WebhookService:
+    return WebhookService(uow=uow, allow_private_urls=settings.WEBHOOK_ALLOW_PRIVATE_URLS)
+
+
+WebhookServiceDep = Annotated[WebhookService, Depends(get_webhook_service)]
 
 
 def get_conversation_service(uow: UnitOfWorkDep) -> ConversationService:

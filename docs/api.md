@@ -18,6 +18,12 @@ Every error response has the form `{"signal": "<name>"}` with a matching HTTP st
 | `GET` | `/api/v1/projects/{project_id}/jobs` | List jobs, most recent first (paged; `?status=` filters) |
 | `GET` | `/api/v1/projects/{project_id}/jobs/{job_id}` | A job's status and progress |
 | `POST` | `/api/v1/projects/{project_id}/jobs/{job_id}/retry` | Queue a failed job again |
+| `POST` | `/api/v1/projects/{project_id}/webhooks` | Send the project's events to a URL; returns its signing secret once |
+| `GET` | `/api/v1/projects/{project_id}/webhooks` | List the project's webhooks (paged) |
+| `GET` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}` | A webhook |
+| `DELETE` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}` | Stop sending to a webhook and forget its deliveries |
+| `POST` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}/ping` | Send a `ping` event |
+| `GET` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}/deliveries` | What was sent, most recent first (paged) |
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
@@ -131,7 +137,7 @@ curl -X DELETE http://localhost:8000/api/v1/projects/demo1/files/a16q20nzrtvj_no
 curl -X DELETE http://localhost:8000/api/v1/projects/demo1
 ```
 
-Both return `204`. Deleting a file removes its chunks and embeddings from the database and the file from `FILES_DIR`; answers that cited it keep their copy of the cited text. Deleting a project removes everything in it: files, chunks, answers, conversations and ratings, and its folder under `FILES_DIR`. The database is changed first, in one transaction; if the files on disk cannot be removed afterwards, a warning is logged and the request still succeeds, since nothing points at them any more. An unknown project or file returns `404`, as above.
+Both return `204`. Deleting a file removes its chunks and embeddings from the database and the file from `FILES_DIR`; answers that cited it keep their copy of the cited text. Deleting a project removes everything in it: files, chunks, answers, conversations, ratings, jobs and webhooks, and its folder under `FILES_DIR`. The database is changed first, in one transaction; if the files on disk cannot be removed afterwards, a warning is logged and the request still succeeds, since nothing points at them any more. An unknown project or file returns `404`, as above.
 
 ## Index chunks for search
 
@@ -188,6 +194,65 @@ A job is `queued`, then `running` (`stage` is `processing`, then `indexing`, whi
 | Queued | `202` | The job |
 | No such project, file or job | `404` | `{"signal": "project_not_found"}` / `{"signal": "file_not_found"}` / `{"signal": "job_not_found"}` |
 | Options not valid, such as `overlap_size` not smaller than `chunk_size` | `422` | Validation error details |
+
+## Webhooks
+
+A webhook sends a project's events to a URL as they happen, for automation tools such as n8n, Make and Zapier.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/demo1/webhooks \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com/hooks/mini-rag", "events": ["job.succeeded", "job.failed"]}'
+```
+
+```json
+{"id": "215a3491-5398-4b18-9048-d242b96fa592", "url": "https://example.com/hooks/mini-rag",
+ "events": ["job.failed", "job.succeeded"], "description": null, "created_at": "2026-10-18T05:56:09Z",
+ "secret": "whsec_…"}
+```
+
+The `secret` is returned only by this call; keep it to check signatures. Adding a webhook to a project that has no files yet creates the project.
+
+| Event | When | `data` |
+|---|---|---|
+| `file.uploaded` | A file was stored (not when the project had its content already) | `file_id`, `original_name`, `content_type`, `size_bytes` |
+| `file.deleted` | A file was deleted | `file_id` |
+| `job.succeeded` | A background job processed and indexed its file | `job_id`, `file_id`, `status`, `chunks_count`, `error`, `attempts` |
+| `job.failed` | A background job failed, after its last attempt | The same, with the failure's signal in `error` |
+| `ping` | Sent by `POST .../ping`, whatever the webhook's events | `webhook_id` |
+
+Each delivery is a `POST` with a JSON body:
+
+```json
+{"id": "6a0c…", "event": "job.succeeded", "created_at": "2026-10-18T05:56:12.408Z", "project": "demo1",
+ "data": {"job_id": "9725833e-…", "file_id": "9jaqw1s4jucs_onboarding.md", "status": "succeeded",
+          "chunks_count": 2, "error": null, "attempts": 1}}
+```
+
+and these headers:
+
+| Header | Value |
+|---|---|
+| `X-Mini-RAG-Event` | The event |
+| `X-Mini-RAG-Delivery` | The delivery's id, also the body's `id`; the same on every attempt, so a receiver can skip a delivery it already handled |
+| `X-Mini-RAG-Signature` | `t=<unix time>,v1=<hex>`: an HMAC-SHA256, with the webhook's secret, of `<t>.<raw body>` |
+
+To check a delivery, compute the HMAC from the raw body (before parsing it), compare it in constant time, and reject old timestamps:
+
+```python
+import hashlib, hmac, time
+
+def verify(secret: str, header: str, body: bytes, tolerance: int = 300) -> bool:
+    parts = dict(item.split("=", 1) for item in header.split(","))
+    signed = parts["t"].encode() + b"." + body
+    expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+    fresh = abs(time.time() - int(parts["t"])) <= tolerance
+    return fresh and hmac.compare_digest(expected, parts["v1"])
+```
+
+Events are queued in the same transaction as the change they report, so one is sent exactly when the change is saved. A delivery counts as delivered when the receiver answers `2xx` within `WEBHOOK_TIMEOUT_SECONDS`. Otherwise it is tried again after 10 seconds, 1 minute, 5 and 30 minutes, then 2, 6 and 12 hours: 8 attempts over about 20 hours. After that it is marked failed. Redirects are not followed. `GET .../deliveries` shows each delivery's `status` (`pending`, `delivered` or `failed`), `attempts`, the receiver's last `response_status`, and the last `error` in our words (`HTTP 500`, `timed out`, `could not connect`). Deliveries are sent by the API when `JOB_WORKERS` is above 0, and always by `mini-rag worker`.
+
+Webhooks reach only public addresses: an address on this server's network (`localhost`, private networks, the cloud metadata service at `169.254.169.254`) is refused, when the webhook is added (`422` `{"signal": "webhook_url_not_allowed"}`) and again whenever a delivery is sent, after resolving the host. For a receiver next to the API, such as n8n in the same compose stack, set `WEBHOOK_ALLOW_PRIVATE_URLS=true`.
 
 ## Search
 
