@@ -49,3 +49,32 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest
+
+  docker:
+    # Builds the image and runs the full compose stack: database, migrations, API.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start the stack
+        run: |
+          cp .env.example .env
+          docker compose up --build --detach
+      - name: Wait for the API to be healthy
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8000/api/v1/health; then exit 0; fi
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs
+          exit 1
+      - name: Upload a file through the API
+        run: |
+          echo "Mini RAG in Docker." > notes.txt
+          curl --fail --silent -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo
+      - name: The API runs as an unprivileged user
+        run: test "$(docker compose exec -T app id -u)" = "10001"
+      - name: Stop the stack
+        if: always()
+        run: docker compose down --volumes

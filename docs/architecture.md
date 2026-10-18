@@ -71,7 +71,8 @@ Mini-RAG/
 │   └── domain/               # Domain models, repository, Embedder and LLM interfaces, signals
 ├── tests/                    # pytest suite
 ├── .env.example              # Settings template (copy to .env)
-├── compose.yaml              # Local PostgreSQL with pgvector
+├── Dockerfile                # API image: multi-stage, runs as an unprivileged user
+├── compose.yaml              # The stack: PostgreSQL with pgvector, and the API
 └── pyproject.toml            # Package, dependencies; Alembic, pytest and ruff settings
 ```
 

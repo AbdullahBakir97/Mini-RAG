@@ -90,7 +90,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 ### Phase 9: Production
 
-- [ ] A multi-stage, non-root Docker image and a full `compose.yaml` stack.
+- [x] A multi-stage, non-root Docker image and a full `compose.yaml` stack.
 - [ ] Automated deployments to staging and production.
 - [ ] Structured logs with request IDs, metrics and tracing.
 - [ ] Cost dashboards and budget alerts; backups with tested restores.

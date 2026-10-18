@@ -18,6 +18,19 @@ pytest
 
 Tests use temporary directories, their own settings and the `mini_rag_test` database, which they create on the same server when it is missing (set `TEST_DATABASE_URL` to use another one), so they need no `.env` file and never write to `assets/` or the development database. Embeddings and answers come from deterministic fakes, so the tests need no API key or network.
 
+## Docker
+
+The `Dockerfile` builds the API image in two stages: the first installs the package and its dependencies into a virtual environment, the second copies only that environment into a slim Python image and runs as an unprivileged user (UID 10001). `compose.yaml` runs the image as the `app` service next to the database, with settings from `.env` and the database address and file storage path set for the stack; uploaded files live in the `files` volume. On every start the service applies any missing migrations, then starts the API.
+
+```bash
+docker compose up --build            # the whole stack, rebuilt after code changes
+docker compose up -d db              # only the database, to run the API with uvicorn
+docker compose logs -f app           # follow the API's logs
+docker compose down                  # stop; add --volumes to delete the data too
+```
+
+CI builds the image and starts the stack on every push, checks `/api/v1/health` and an upload, and checks that the API does not run as root.
+
 ## Database migrations
 
 The schema is managed with Alembic; the app never creates tables itself. Migrations live in `src/mini_rag/persistence/migrations/`, and Alembic's settings are in `pyproject.toml`, so run these commands from the repository root:
