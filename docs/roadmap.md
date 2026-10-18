@@ -52,7 +52,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] An embeddable chat widget: one `<script>` tag, streaming answers, clickable citations; a name, colour, welcome text and allowed website origins per widget.
 - [ ] **White-label:** a logo for the widget; an assistant persona and instructions per project; custom domains.
 - [x] **Collections and tags:** tag files (at upload, by hand, or per website source), list them by tag, and limit search, answers, chat widgets and the MCP tools to some tags.
-- [ ] A versioning policy for `/api/v1`.
+- [x] A [versioning policy](versioning.md) for `/api/v1`: the API only grows within it, CI fails on breaking changes, and deprecated endpoints announce their sunset in headers, at least six months ahead.
 
 ### Phase 4: Ingestion and automation
 
