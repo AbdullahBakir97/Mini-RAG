@@ -103,6 +103,48 @@ class ApiKeyRow(Base):
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class SourceRow(Base):
+    """A website a project's documents are crawled from and kept in sync with."""
+
+    __tablename__ = "sources"
+    __table_args__ = (
+        # Workers look for sources due for a sync.
+        Index("ix_sources_next_sync_at", "next_sync_at",
+              postgresql_where=text("next_sync_at IS NOT NULL")),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    url: Mapped[str] = mapped_column(Text)
+    max_pages: Mapped[int] = mapped_column(Integer)
+    # 0: synced only when asked.
+    sync_interval_hours: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = _created_at()
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    next_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A sync in progress holds the source until then.
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
+class SourcePageRow(Base):
+    """A page of a source, and the file it is stored as."""
+
+    __tablename__ = "source_pages"
+    __table_args__ = (UniqueConstraint("source_id", "url"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, Identity(), primary_key=True)
+    source_id: Mapped[str] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(Text)
+    # Deleting the file forgets the page; the next sync stores it again.
+    file_id: Mapped[int] = mapped_column(ForeignKey("files.id", ondelete="CASCADE"), index=True)
+    content_sha256: Mapped[str] = mapped_column(String(64))
+    owns_file: Mapped[bool] = mapped_column(Boolean)
+    synced_at: Mapped[datetime] = _created_at()
+
+
 class AuditEventRow(Base):
     """An administrative action in a tenant, kept as long as the tenant."""
 

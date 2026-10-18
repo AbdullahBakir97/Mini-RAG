@@ -404,7 +404,8 @@ class JobListResponse(BaseModel):
 
 
 WebhookIdPath = Annotated[UUID, Path(description="The webhook's id.")]
-WebhookEvent = Literal["file.uploaded", "file.deleted", "job.succeeded", "job.failed"]
+WebhookEvent = Literal["file.uploaded", "file.deleted", "job.succeeded", "job.failed",
+                       "source.synced"]
 
 
 class WebhookRequest(BaseModel):
@@ -651,3 +652,56 @@ class WidgetAnswer(BaseModel):
     citations: list[WidgetCitation]
     conversation_id: str = Field(description="Send it with the visitor's next question.")
     message_id: int | None = Field(description="The answer's id, to rate it.")
+
+
+SourceIdPath = Annotated[UUID, Path(description="The source's id.")]
+
+
+class SourceRequest(BaseModel):
+    url: AnyHttpUrl = Field(description="Where to start: the site's pages under this URL's "
+                                        "folder are crawled, following their links.",
+                            examples=["https://docs.example.com/guide/"])
+    max_pages: int = Field(default=50, ge=1, le=1000, description="Most pages to keep.")
+    sync_interval_hours: int = Field(
+        default=24, ge=0, le=24 * 30,
+        description="Sync again after this many hours; 0 syncs only when asked.")
+
+    @field_validator("url")
+    @classmethod
+    def check_length(cls, url: AnyHttpUrl) -> AnyHttpUrl:
+        if len(str(url)) > 2000:
+            raise ValueError("the URL is longer than 2000 characters")
+        return url
+
+
+class SourceResponse(BaseModel):
+    id: str
+    kind: Literal["website"]
+    url: str
+    max_pages: int
+    sync_interval_hours: int
+    pages_count: int = Field(description="Pages stored by the last syncs.")
+    syncing: bool = Field(description="Whether a worker is syncing it now.")
+    last_synced_at: datetime | None
+    next_sync_at: datetime | None = Field(description="When it is next due; null when it is "
+                                                      "synced only when asked.")
+    last_error: str | None = Field(description="Why the last sync could not crawl the site; "
+                                               "the pages it had are kept meanwhile.")
+    created_at: datetime
+
+
+class SourceListResponse(BaseModel):
+    items: list[SourceResponse]
+
+
+class SourcePageResponse(BaseModel):
+    url: str
+    file_id: str = Field(description="The file the page is stored as.")
+    synced_at: datetime
+
+
+class SourcePagesResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[SourcePageResponse]

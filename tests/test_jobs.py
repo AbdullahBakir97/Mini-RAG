@@ -337,8 +337,13 @@ def test_the_worker_command_runs_the_configured_number_of_workers(db, monkeypatc
         async def run(self):
             pass
 
+    class Syncer(cli.SourceSyncer):
+        async def run(self):
+            pass
+
     monkeypatch.setattr(cli, "JobRunner", Runner)
     monkeypatch.setattr(cli, "WebhookDispatcher", Dispatcher)
+    monkeypatch.setattr(cli, "SourceSyncer", Syncer)
     monkeypatch.setenv("JOB_WORKERS", "0")
     get_settings.cache_clear()
 

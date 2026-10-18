@@ -11,6 +11,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 
+from mini_rag.connectors.factory import create_crawler
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.errors import AppError
 from mini_rag.core.logging_config import configure_logging
@@ -40,6 +41,7 @@ from mini_rag.persistence.repositories import (
     unit_of_work_factory,
 )
 from mini_rag.rerankers.factory import create_reranker
+from mini_rag.scanners.factory import create_scanner
 from mini_rag.services.answer_service import AnswerService
 from mini_rag.services.audit import AuditService, record
 from mini_rag.services.auth_service import AuthService
@@ -53,6 +55,7 @@ from mini_rag.services.indexing_service import IndexingService
 from mini_rag.services.job_runner import JobRunner
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.search_service import SearchService
+from mini_rag.services.source_syncer import SourceSyncer
 from mini_rag.services.upload_service import UploadService
 from mini_rag.services.webhook_dispatcher import WebhookDispatcher
 from mini_rag.storage.file_storage import FileStorage
@@ -473,11 +476,16 @@ async def _work(workers: int) -> int:
     runner = JobRunner(unit_of_work, FileStorage(root=settings.FILES_DIR),
                        default_loader_registry(), embedder, settings.EMBEDDING_BATCH_SIZE)
     dispatcher = WebhookDispatcher(unit_of_work, sender)
-    print(f"Running jobs with {workers} workers, and sending webhooks; stop with Ctrl+C.",
-          flush=True)
+    crawler = create_crawler(settings)
+    scanner = create_scanner(settings)
+    syncer = SourceSyncer.from_settings(settings, unit_of_work, crawler, scanner)
+    print(f"Running jobs with {workers} workers, sending webhooks and syncing websites; "
+          "stop with Ctrl+C.", flush=True)
     try:
-        await asyncio.gather(dispatcher.run(), *(runner.run() for _ in range(workers)))
+        await asyncio.gather(dispatcher.run(), syncer.run(),
+                             *(runner.run() for _ in range(workers)))
     finally:
+        await crawler.aclose()
         if embedder is not None:
             await embedder.aclose()
         await sender.aclose()

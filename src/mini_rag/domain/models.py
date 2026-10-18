@@ -305,7 +305,8 @@ class Job:
 
 
 # What webhooks can subscribe to; "ping" is sent on request, to any webhook.
-WEBHOOK_EVENTS = ("file.uploaded", "file.deleted", "job.succeeded", "job.failed")
+WEBHOOK_EVENTS = ("file.uploaded", "file.deleted", "job.succeeded", "job.failed",
+                  "source.synced")
 
 
 @dataclass(frozen=True)
@@ -339,6 +340,46 @@ class Widget:
     allowed_origins: tuple[str, ...]
     created_at: datetime
     tenant_name: str = ""
+
+
+SourceKind = Literal["website"]
+
+
+@dataclass(frozen=True)
+class Source:
+    """Where a project's documents come from and are kept in sync with: a website.
+
+    It is synced every ``sync_interval_hours`` (0: only when asked), and
+    ``syncing`` while a worker crawls it.
+    """
+
+    id: str
+    tenant_id: int
+    project_id: int
+    project_name: str
+    kind: SourceKind
+    url: str
+    max_pages: int
+    sync_interval_hours: int
+    created_at: datetime
+    pages_count: int = 0
+    syncing: bool = False
+    last_synced_at: datetime | None = None
+    next_sync_at: datetime | None = None
+    last_error: str | None = None
+
+
+@dataclass(frozen=True)
+class SourcePage:
+    """A page a source's sync stored as a file. ``owns_file`` when the sync created the file
+    (rather than finding the project had that content already)."""
+
+    url: str
+    file_id: int
+    file_key: str
+    content_sha256: str
+    owns_file: bool
+    synced_at: datetime
 
 
 @dataclass(frozen=True)

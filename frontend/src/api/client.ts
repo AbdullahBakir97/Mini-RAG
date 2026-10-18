@@ -8,6 +8,8 @@ import type {
   ChatWidget,
   ChatWidgetSettings,
   Chunk,
+  SourcePage,
+  WebsiteSource,
   Conversation,
   ConversationDetail,
   ConversationMessage,
@@ -211,6 +213,18 @@ export const api = {
       offset: page.offset ?? 0,
       limit: page.limit ?? 10,
     }),
+  sources: (name: string) => get<{ items: WebsiteSource[] }>(`/projects/${project(name)}/sources`),
+  createSource: (name: string, body: { url: string; max_pages: number; sync_interval_hours: number }) =>
+    post<WebsiteSource>(`/projects/${project(name)}/sources`, body),
+  syncSource: (name: string, sourceId: string) =>
+    post<WebsiteSource>(`/projects/${project(name)}/sources/${encodeURIComponent(sourceId)}/sync`),
+  sourcePages: (name: string, sourceId: string, page: PageParams = {}) =>
+    get<Page<SourcePage>>(`/projects/${project(name)}/sources/${encodeURIComponent(sourceId)}/pages`, {
+      offset: page.offset ?? 0,
+      limit: page.limit ?? 100,
+    }),
+  deleteSource: (name: string, sourceId: string, keepFiles: boolean) =>
+    remove(`/projects/${project(name)}/sources/${encodeURIComponent(sourceId)}?keep_files=${keepFiles}`),
   widgets: (name: string) => get<{ items: ChatWidget[] }>(`/projects/${project(name)}/widgets`),
   createWidget: (name: string, settings: ChatWidgetSettings) =>
     post<ChatWidget>(`/projects/${project(name)}/widgets`, settings),

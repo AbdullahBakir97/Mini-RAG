@@ -60,7 +60,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] Deleting files and projects everywhere at once; duplicate detection by content hash.
 - [x] More formats: DOCX, Markdown and HTML, split by section.
 - [ ] OCR for scanned PDFs.
-- [ ] Connectors: website crawler, GitHub, Notion, Google Drive, RSS, with scheduled incremental sync.
+- [x] A website connector: crawled within its site and folder, obeying robots.txt, synced on a schedule, adding, replacing and removing pages.
+- [ ] More connectors: GitHub, Notion, Google Drive, RSS.
 - [x] Signed outgoing webhooks for automation tools such as n8n, Make and Zapier.
 - [ ] Telegram, Slack and WhatsApp bots.
 
@@ -105,7 +106,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 
 - [x] A first web app: projects, document upload with progress, streamed answers with clickable citations, search and usage ([Web app](web.md)).
 - [x] A chat interface with citations, conversation history and feedback.
-- [ ] Document management with upload, job status and connectors.
+- [x] Document management with upload, job status and website sources.
 - [ ] An admin dashboard for keys, usage, cost and evaluation scores.
 - [ ] Accessible, responsive, tested end to end with Playwright.
 

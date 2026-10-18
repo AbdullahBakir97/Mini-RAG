@@ -20,6 +20,7 @@ import type { FileInfo, ProcessOptions } from "@/api/types";
 import ChunkDrawer from "@/components/ChunkDrawer.vue";
 import FileDropzone from "@/components/FileDropzone.vue";
 import PagerControls from "@/components/PagerControls.vue";
+import WebsiteSources from "@/components/WebsiteSources.vue";
 import { FINISHED, type Stage, useIngest } from "@/composables/useIngest";
 import { useProject } from "@/composables/useProject";
 import { useProjects } from "@/composables/useProjects";
@@ -50,6 +51,11 @@ const optionsProblem = computed(() => {
   if (overlap_size >= chunk_size) return "Overlap must be smaller than the chunk size.";
   return null;
 });
+
+// A website sync added or removed pages: show the files as they are now.
+async function onSourcesSynced() {
+  await Promise.all([load(), refreshProject(), refreshProjects()]);
+}
 
 async function load(at = offset.value) {
   try {
@@ -337,6 +343,8 @@ onMounted(() => load(0));
     <p v-else-if="!jobs.length && project === null" class="subtle small center">
       Upload a document to start. The project is saved with its first file.
     </p>
+
+    <WebsiteSources :project="name" @synced="onSourcesSynced" />
 
     <section v-if="project" class="danger card" aria-labelledby="delete-project">
       <div>

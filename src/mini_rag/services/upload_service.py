@@ -57,7 +57,8 @@ class UploadService:
         self.scanner = scanner
 
     async def save(self, project_name: str, filename: str, content_type: str | None,
-                   stream: AsyncReadable, declared_size: int | None = None) -> Upload:
+                   stream: AsyncReadable, declared_size: int | None = None,
+                   stored_as: str | None = None) -> Upload:
         """Validate, store and record an upload.
 
         The project is created on its first upload. The size limit is
@@ -70,7 +71,9 @@ class UploadService:
         is taken from the file's extension, and the content must fit the
         type (FileContentMismatch). New content is scanned for malware when
         there is a scanner (FileInfected, or MalwareScanFailed when it
-        cannot be scanned).
+        cannot be scanned). ``stored_as`` names the stored file (and so its
+        id, whose extension picks its reader) when ``filename``, the name
+        shown, cannot, e.g. a web page's URL.
         """
         content_type = content_type_for(filename, content_type)
         if content_type not in self.allowed_types:
@@ -79,7 +82,7 @@ class UploadService:
             raise FileTooLarge()
 
         project = await self.uow.projects.get_or_create(project_name)
-        file_id, path = self.storage.reserve_file(project.folder, filename)
+        file_id, path = self.storage.reserve_file(project.folder, stored_as or filename)
         completed = False
         try:
             size, digest, head = await self._copy(stream, path)

@@ -33,6 +33,8 @@ The API writes one line per request (`mini_rag.access`: method, path, status and
 | `mini_rag_uploads_total` | counter | `outcome` | Uploads `stored`, `duplicate` (content the project had) and `infected` |
 | `mini_rag_jobs_total` | counter | `outcome` | Job attempts `succeeded`, `retried` and `failed` |
 | `mini_rag_webhook_deliveries_total` | counter | `outcome` | Delivery attempts `delivered`, `retried` and `failed` |
+| `mini_rag_source_syncs_total` | counter | `outcome` | Website syncs `succeeded` and `failed` (the site could not be crawled) |
+| `mini_rag_source_pages_total` | counter | `change` | Pages website syncs `added`, `updated` and `removed` |
 | `mini_rag_jobs_in_state` | gauge | `status` | Jobs `queued`, `running`, `succeeded` and `failed`, read from the database when scraped |
 | `mini_rag_webhook_deliveries_in_state` | gauge | `status` | Deliveries `pending`, `delivered` and `failed`, likewise |
 | `process_*`, `python_*` | | | The process's CPU, memory, open files and garbage collection |

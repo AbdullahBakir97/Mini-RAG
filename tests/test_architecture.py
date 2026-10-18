@@ -13,7 +13,7 @@ PACKAGE = Path(__file__).resolve().parents[1] / "src" / "mini_rag"
 # Only embeddings and llm may use a model provider's SDK.
 ALLOWED_LAYERS = {
     "api": {"api", "core", "domain", "services", "storage", "loaders", "text", "persistence",
-            "embeddings", "llm", "rerankers", "webhooks", "scanners"},
+            "embeddings", "llm", "rerankers", "webhooks", "scanners", "connectors"},
     # Services use the repository interfaces in domain, never persistence.
     "services": {"core", "domain", "storage", "loaders", "text", "prompts", "evaluation"},
     "persistence": {"core", "domain"},
@@ -27,6 +27,8 @@ ALLOWED_LAYERS = {
     "webhooks": {"core", "domain"},
     # Scans uploads for malware; services use the MalwareScanner interface.
     "scanners": {"core", "domain"},
+    # Fetch documents from elsewhere (websites); services use the Crawler interface.
+    "connectors": {"core", "domain"},
     "text": set(),
     "prompts": {"domain"},
     # Datasets and metrics; services run them, the CLI wires them up.

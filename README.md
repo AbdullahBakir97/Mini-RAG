@@ -20,6 +20,7 @@
 - **Track** the tokens and cost of every answer, per answer and per project.
 - **Embed a chat widget** in any website with one `<script>` tag: streamed answers with clickable citations, in the site's colour, allowed only on the websites you list, without API keys in the page.
 - **Connect agents** through a built-in MCP server (`/api/v1/mcp`) with `list_projects`, `search_knowledge` and `ask` tools, or the same tools as function-calling schemas.
+- **Sync websites** into a project: their pages are crawled (within the site, obeying robots.txt), indexed and kept up to date on a schedule, with new, changed and removed pages handled.
 - **Automate** with signed webhooks: uploads, deletions and finished jobs are sent to n8n, Make, Zapier or any URL, retried for a day until received.
 - **Evaluate** retrieval with `mini-rag eval` on a versioned dataset: hit rate, recall and MRR, checked in CI with a real embedding model so a change that makes search worse fails. With `--answers`, answers are graded too: citation precision, groundedness and correctness. Rated answers become new test cases with `mini-rag feedback-export`.
 - **Browse** projects, files and chunks through paged endpoints; check readiness with a health endpoint.

@@ -31,6 +31,8 @@ from mini_rag.domain.models import (
     RatedAnswer,
     ScoredChunk,
     SearchFilters,
+    Source,
+    SourcePage,
     Tenant,
     TenantUsage,
     UnembeddedChunk,
@@ -590,6 +592,84 @@ class FakeAudit:
         return len(self._mine(tenant_id, action))
 
 
+class FakeSources:
+    """Sources of the projects in ``projects``, with pages pointing at ``files``."""
+
+    def __init__(self, projects: FakeProjects, files: FakeFiles):
+        self.projects = projects
+        self.files = files
+        self.by_id: dict[str, Source] = {}
+        self.locked: set[str] = set()
+        self.page_rows: dict[str, dict[str, tuple[int, str, bool]]] = {}
+
+    def _project(self, project_id):
+        return next(p for p in self.projects.by_name.values() if p.id == project_id)
+
+    def _view(self, source: Source) -> Source:
+        return replace(source, pages_count=len(self.page_rows.get(source.id, {})),
+                       syncing=source.id in self.locked)
+
+    async def create(self, *, project_id, kind, url, max_pages, sync_interval_hours) -> Source:
+        project = self._project(project_id)
+        now = datetime.now(UTC)
+        source = Source(id=str(uuid.uuid4()), tenant_id=project.tenant_id, project_id=project_id,
+                        project_name=project.name, kind=kind, url=url, max_pages=max_pages,
+                        sync_interval_hours=sync_interval_hours, created_at=now, next_sync_at=now)
+        self.by_id[source.id] = source
+        return self._view(source)
+
+    async def get(self, project_id: int, source_id: str) -> Source | None:
+        source = self.by_id.get(source_id)
+        return self._view(source) if source and source.project_id == project_id else None
+
+    async def list_for_project(self, project_id: int) -> list[Source]:
+        return [self._view(s) for s in self.by_id.values() if s.project_id == project_id]
+
+    async def delete(self, project_id: int, source_id: str) -> bool:
+        if await self.get(project_id, source_id) is None:
+            return False
+        del self.by_id[source_id]
+        self.page_rows.pop(source_id, None)
+        return True
+
+    async def request_sync(self, source_id: str) -> None:
+        self.by_id[source_id] = replace(self.by_id[source_id], next_sync_at=datetime.now(UTC))
+
+    async def claim_due(self, lease_seconds: int) -> Source | None:
+        now = datetime.now(UTC)
+        due = [s for s in self.by_id.values()
+               if s.next_sync_at and s.next_sync_at <= now and s.id not in self.locked]
+        if not due:
+            return None
+        source = min(due, key=lambda s: s.next_sync_at)
+        self.locked.add(source.id)
+        return self._view(source)
+
+    async def finish_sync(self, source_id: str, *, error, next_sync_at) -> None:
+        self.locked.discard(source_id)
+        self.by_id[source_id] = replace(self.by_id[source_id], last_synced_at=datetime.now(UTC),
+                                        last_error=error, next_sync_at=next_sync_at)
+
+    async def pages(self, source_id: str, *, offset: int = 0,
+                    limit: int | None = None) -> list[SourcePage]:
+        keys = {record.id: record.key for record in self.files.records}
+        pages = [SourcePage(url=url, file_id=file_id, file_key=keys[file_id], content_sha256=digest,
+                            owns_file=owns, synced_at=datetime.now(UTC))
+                 for url, (file_id, digest, owns) in sorted(self.page_rows.get(source_id, {}).items())
+                 if file_id in keys]
+        return pages[offset:None if limit is None else offset + limit]
+
+    async def save_page(self, source_id: str, *, url, file_id, content_sha256, owns_file) -> None:
+        self.page_rows.setdefault(source_id, {})[url] = (file_id, content_sha256, owns_file)
+
+    async def remove_page(self, source_id: str, url: str) -> None:
+        self.page_rows.get(source_id, {}).pop(url, None)
+
+    async def file_used_elsewhere(self, file_id: int, source_id: str, url: str) -> bool:
+        return any(row[0] == file_id and (sid, page_url) != (source_id, url)
+                   for sid, rows in self.page_rows.items() for page_url, row in rows.items())
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -602,6 +682,7 @@ class FakeUnitOfWork:
         self.webhooks = FakeWebhooks()
         self.widgets = FakeWidgets(self.projects)
         self.audit = FakeAudit()
+        self.sources = FakeSources(self.projects, self.files)
         self.tenants = FakeTenants()
         self.api_keys = FakeApiKeys()
         self.usage = FakeUsage()

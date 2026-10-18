@@ -110,6 +110,12 @@ A `limit` of `null` is unlimited.
 | `GET` | `/api/v1/projects/{project_id}/jobs` | List jobs, most recent first (paged; `?status=` filters) |
 | `GET` | `/api/v1/projects/{project_id}/jobs/{job_id}` | A job's status and progress |
 | `POST` | `/api/v1/projects/{project_id}/jobs/{job_id}/retry` | Queue a failed job again |
+| `POST` | `/api/v1/projects/{project_id}/sources` | Keep a website's pages in the project, synced on a schedule (`write`) |
+| `GET` | `/api/v1/projects/{project_id}/sources` | List the project's sources |
+| `GET` | `/api/v1/projects/{project_id}/sources/{source_id}` | A source: pages, last and next sync, last error |
+| `GET` | `/api/v1/projects/{project_id}/sources/{source_id}/pages` | The pages a source stored (paged) |
+| `POST` | `/api/v1/projects/{project_id}/sources/{source_id}/sync` | Sync a source now (`write`) |
+| `DELETE` | `/api/v1/projects/{project_id}/sources/{source_id}` | Remove a source and, unless `?keep_files=true`, the files it stored (`write`) |
 | `POST` | `/api/v1/projects/{project_id}/webhooks` | Send the project's events to a URL; returns its signing secret once |
 | `GET` | `/api/v1/projects/{project_id}/webhooks` | List the project's webhooks (paged) |
 | `GET` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}` | A webhook |
@@ -300,6 +306,30 @@ A job is `queued`, then `running` (`stage` is `processing`, then `indexing`, whi
 | No such project, file or job | `404` | `{"signal": "project_not_found"}` / `{"signal": "file_not_found"}` / `{"signal": "job_not_found"}` |
 | Options not valid, such as `overlap_size` not smaller than `chunk_size` | `422` | Validation error details |
 
+## Website sources
+
+A source keeps a website's pages in a project: they are crawled, stored as files and indexed, then synced again on a schedule.
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/demo1/sources \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://docs.example.com/guide/", "max_pages": 100, "sync_interval_hours": 24}'
+```
+
+```json
+{"id": "f77f0c0a-…", "kind": "website", "url": "https://docs.example.com/guide/", "max_pages": 100,
+ "sync_interval_hours": 24, "pages_count": 0, "syncing": false, "last_synced_at": null,
+ "next_sync_at": "2026-10-18T12:46:40Z", "last_error": null, "created_at": "2026-10-18T12:46:40Z"}
+```
+
+- **What is crawled.** The pages under the URL's folder (`https://docs.example.com/guide/intro` covers everything under `/guide/`), on the same host and port, found by following links from the URL, breadth first, up to `max_pages` (1–1000, default 50). Queries and fragments are dropped, so `page?x=1` and `page` are one page. HTML, PDF, text and Markdown pages are kept; images and other types are skipped, as are pages larger than `FILE_MAX_SIZE`.
+- **Politely.** `robots.txt` is obeyed, its `Crawl-delay` too, and so are pages' `<meta name="robots">` tags (`noindex`, `nofollow`) and `rel="nofollow"` links. Requests are spaced by `CRAWLER_DELAY_SECONDS` and sent as `mini-rag-crawler/1.0`.
+- **Safely.** As for webhooks, only public addresses are crawled (`422` `{"signal": "source_url_not_allowed"}` when adding one on this server's network, and every host and redirect is checked again during a crawl), unless `CRAWLER_ALLOW_PRIVATE_URLS=true`. Redirects are followed only within the crawled folder.
+- **Stored like uploads.** Each page goes through the upload checks (its type against its content, malware scanning, the storage quota, duplicates) and is stored as a file named by its URL (its `original_name` is the URL, so answers cite it), then processed and indexed by a background job.
+- **Kept in sync.** The first sync starts at once, then every `sync_interval_hours` (0: only on `POST …/sync`). A new page is added, a changed page replaces its file, and an unchanged one is left alone. A page that is gone (no longer linked, or `404`) has its file deleted. A page that could not be fetched this time (a timeout, a `5xx`) keeps what it had, and when the site cannot be crawled at all, `last_error` says why and every page is kept. Files the project already had are never deleted by a sync.
+
+Syncs run in the API's workers when `JOB_WORKERS` is above 0, and in `mini-rag worker`; a source is held by one worker at a time. Deleting a source deletes the files its syncs created, unless `?keep_files=true`.
+
 ## Webhooks
 
 A webhook sends a project's events to a URL as they happen, for automation tools such as n8n, Make and Zapier.
@@ -324,6 +354,7 @@ The `secret` is returned only by this call; keep it to check signatures. Adding 
 | `file.deleted` | A file was deleted | `file_id` |
 | `job.succeeded` | A background job processed and indexed its file | `job_id`, `file_id`, `status`, `chunks_count`, `error`, `attempts` |
 | `job.failed` | A background job failed, after its last attempt | The same, with the failure's signal in `error` |
+| `source.synced` | A website source was synced | `source_id`, `url`, `added`, `updated`, `removed`, `unchanged`, and `error` when the site could not be crawled |
 | `ping` | Sent by `POST .../ping`, whatever the webhook's events | `webhook_id` |
 
 Each delivery is a `POST` with a JSON body:

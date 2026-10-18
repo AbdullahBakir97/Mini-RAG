@@ -56,6 +56,9 @@ from mini_rag.domain.models import (
     Role,
     ScoredChunk,
     SearchFilters,
+    Source,
+    SourceKind,
+    SourcePage,
     StoredCitation,
     Tenant,
     TenantUsage,
@@ -74,6 +77,7 @@ from mini_rag.domain.repositories import (
     FileRepository,
     JobRepository,
     ProjectRepository,
+    SourceRepository,
     TenantRepository,
     UsageRepository,
     WebhookRepository,
@@ -92,6 +96,8 @@ from .tables import (
     JobRow,
     ProjectRow,
     RequestCountRow,
+    SourcePageRow,
+    SourceRow,
     TenantRow,
     WebhookDeliveryRow,
     WebhookRow,
@@ -1066,6 +1072,116 @@ class SqlAuditRepository:
                              .where(*self._mine(tenant_id, action)))
 
 
+def _source(row: SourceRow, project: ProjectRow, pages_count: int) -> Source:
+    return Source(id=row.id, tenant_id=project.tenant_id, project_id=project.id,
+                  project_name=project.name, kind=cast(SourceKind, row.kind), url=row.url,
+                  max_pages=row.max_pages, sync_interval_hours=row.sync_interval_hours,
+                  created_at=row.created_at, pages_count=pages_count,
+                  syncing=row.locked_until is not None
+                  and row.locked_until > datetime.now(row.locked_until.tzinfo),
+                  last_synced_at=row.last_synced_at, next_sync_at=row.next_sync_at,
+                  last_error=row.last_error)
+
+
+class SqlSourceRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    def _select(self):
+        pages = (select(func.count()).select_from(SourcePageRow)
+                 .where(SourcePageRow.source_id == SourceRow.id)
+                 .correlate(SourceRow).scalar_subquery())
+        return (select(SourceRow, ProjectRow, pages)
+                .join(ProjectRow, ProjectRow.id == SourceRow.project_id))
+
+    async def _by_id(self, source_id: str) -> Source:
+        return _source(*(await self.session.execute(
+            self._select().where(SourceRow.id == source_id))).one())
+
+    async def create(self, *, project_id: int, kind: str, url: str, max_pages: int,
+                     sync_interval_hours: int) -> Source:
+        source_id = str(uuid.uuid4())
+        await self.session.execute(
+            insert(SourceRow).values(id=source_id, project_id=project_id, kind=kind, url=url,
+                                     max_pages=max_pages,
+                                     sync_interval_hours=sync_interval_hours,
+                                     next_sync_at=func.now()))
+        return await self._by_id(source_id)
+
+    async def get(self, project_id: int, source_id: str) -> Source | None:
+        found = (await self.session.execute(
+            self._select().where(SourceRow.id == source_id,
+                                 SourceRow.project_id == project_id))).first()
+        return _source(*found) if found else None
+
+    async def list_for_project(self, project_id: int) -> list[Source]:
+        rows = await self.session.execute(
+            self._select().where(SourceRow.project_id == project_id)
+            .order_by(SourceRow.created_at, SourceRow.id))
+        return [_source(*row) for row in rows]
+
+    async def delete(self, project_id: int, source_id: str) -> bool:
+        result = await self.session.execute(
+            delete(SourceRow).where(SourceRow.id == source_id,
+                                    SourceRow.project_id == project_id))
+        return _affected(result) > 0
+
+    async def request_sync(self, source_id: str) -> None:
+        await self.session.execute(
+            update(SourceRow).where(SourceRow.id == source_id).values(next_sync_at=func.now()))
+
+    async def claim_due(self, lease_seconds: int) -> Source | None:
+        due = (select(SourceRow.id)
+               .where(SourceRow.next_sync_at <= func.now(),
+                      or_(SourceRow.locked_until.is_(None),
+                          SourceRow.locked_until < func.now()))
+               .order_by(SourceRow.next_sync_at).limit(1)
+               .with_for_update(skip_locked=True).scalar_subquery())
+        source_id = await self.session.scalar(
+            update(SourceRow).where(SourceRow.id == due)
+            .values(locked_until=_lease(lease_seconds)).returning(SourceRow.id))
+        return await self._by_id(source_id) if source_id else None
+
+    async def finish_sync(self, source_id: str, *, error: str | None,
+                          next_sync_at: datetime | None) -> None:
+        await self.session.execute(
+            update(SourceRow).where(SourceRow.id == source_id)
+            .values(last_synced_at=func.now(), last_error=error, next_sync_at=next_sync_at,
+                    locked_until=None))
+
+    async def pages(self, source_id: str, *, offset: int = 0,
+                    limit: int | None = None) -> list[SourcePage]:
+        rows = await self.session.execute(
+            select(SourcePageRow, FileRow.key)
+            .join(FileRow, FileRow.id == SourcePageRow.file_id)
+            .where(SourcePageRow.source_id == source_id)
+            .order_by(SourcePageRow.url).offset(offset).limit(limit))
+        return [SourcePage(url=row.url, file_id=row.file_id, file_key=key,
+                           content_sha256=row.content_sha256, owns_file=row.owns_file,
+                           synced_at=row.synced_at)
+                for row, key in rows]
+
+    async def save_page(self, source_id: str, *, url: str, file_id: int, content_sha256: str,
+                        owns_file: bool) -> None:
+        values = {"file_id": file_id, "content_sha256": content_sha256, "owns_file": owns_file,
+                  "synced_at": func.now()}
+        await self.session.execute(
+            pg_insert(SourcePageRow).values(source_id=source_id, url=url, **values)
+            .on_conflict_do_update(index_elements=["source_id", "url"], set_=values))
+
+    async def remove_page(self, source_id: str, url: str) -> None:
+        await self.session.execute(
+            delete(SourcePageRow).where(SourcePageRow.source_id == source_id,
+                                        SourcePageRow.url == url))
+
+    async def file_used_elsewhere(self, file_id: int, source_id: str, url: str) -> bool:
+        others = await _number(self.session, select(func.count()).select_from(SourcePageRow).where(
+            SourcePageRow.file_id == file_id,
+            or_(SourcePageRow.source_id != source_id, SourcePageRow.url != url)))
+        return others > 0
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession, tenant_id: int | None = None):
@@ -1082,6 +1198,7 @@ class SqlUnitOfWork:
         self.webhooks: WebhookRepository = SqlWebhookRepository(session)
         self.widgets: WidgetRepository = SqlWidgetRepository(session)
         self.audit: AuditRepository = SqlAuditRepository(session)
+        self.sources: SourceRepository = SqlSourceRepository(session)
         self.tenants: TenantRepository = SqlTenantRepository(session)
         self.api_keys: ApiKeyRepository = SqlApiKeyRepository(session)
         self.usage: UsageRepository = SqlUsageRepository(session)

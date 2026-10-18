@@ -118,6 +118,18 @@ class ApiKeyInvalid(AppError):
     status_code = HTTPStatus.UNAUTHORIZED
 
 
+class SourceNotFound(AppError):
+    signal = ResponseSignal.SOURCE_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
+class SourceUrlNotAllowed(AppError):
+    """The website is on this server's network, which crawls may not reach unless allowed."""
+
+    signal = ResponseSignal.SOURCE_URL_NOT_ALLOWED
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
 class WidgetNotFound(AppError):
     signal = ResponseSignal.WIDGET_NOT_FOUND
     status_code = HTTPStatus.NOT_FOUND
@@ -168,6 +180,10 @@ class StorageQuotaExceeded(AppError):
 
     signal = ResponseSignal.STORAGE_QUOTA_EXCEEDED
     status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE
+
+
+class CrawlFailed(Exception):
+    """A website could not be crawled at all; the message says why (for the source's status)."""
 
 
 class WebhookFailed(Exception):
