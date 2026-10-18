@@ -41,3 +41,6 @@ class ResponseSignal(Enum):
     ANSWER_QUOTA_EXCEEDED = "answer_quota_exceeded"
     STORAGE_QUOTA_EXCEEDED = "storage_quota_exceeded"
     INTERNAL_ERROR = "internal_error"
+    FILE_CONTENT_MISMATCH = "file_content_mismatch"
+    FILE_INFECTED = "file_infected"
+    MALWARE_SCAN_FAILED = "malware_scan_failed"

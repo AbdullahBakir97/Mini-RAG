@@ -86,7 +86,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 ### Phase 8: Security and privacy
 
 - [ ] User accounts with roles per tenant.
-- [ ] File type checked from content, not the declared type; optional malware scanning.
+- [x] File type checked from content, not the declared type; optional malware scanning with ClamAV.
 - [ ] Prompt-injection test cases; encryption at rest; per-tenant export and deletion.
 - [ ] An audit log, dependency vulnerability scanning and secret scanning in CI.
 

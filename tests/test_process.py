@@ -115,7 +115,8 @@ def test_process_html_and_word_documents(client, query, make_docx):
 
 
 def test_process_a_broken_word_document(client):
-    file_id = upload(client, "p1", "broken.docx", b"not a zip",
+    # A ZIP archive's signature, so it is taken in, but no ZIP archive after it.
+    file_id = upload(client, "p1", "broken.docx", b"PK\x03\x04 not a zip after all",
                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     response = process(client, "p1", file_id)
@@ -134,7 +135,7 @@ def test_process_pdf_without_text(client, make_pdf):
 
 
 def test_process_corrupt_pdf(client):
-    file_id = upload(client, "p1", "broken.pdf", b"not really a pdf", "application/pdf")
+    file_id = upload(client, "p1", "broken.pdf", b"%PDF-1.7 not really a pdf", "application/pdf")
 
     response = process(client, "p1", file_id)
 

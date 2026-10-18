@@ -3,6 +3,9 @@
 const MESSAGES: Record<string, string> = {
   file_type_not_supported: "Only PDF, Word, Markdown, HTML and text files can be uploaded.",
   file_size_exceeded: "The file is larger than the server allows.",
+  file_content_mismatch: "The file's content is not of its type, for example a program named like a text file.",
+  file_infected: "The malware scanner found malware in this file, so it was not kept.",
+  malware_scan_failed: "The file could not be scanned for malware, so it was not kept. Try again later.",
   file_upload_failed: "The file could not be saved. Try again.",
   file_not_found: "That file does not exist in this project.",
   project_not_found: "This project has no documents yet.",

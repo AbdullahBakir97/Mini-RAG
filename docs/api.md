@@ -125,6 +125,8 @@ A `limit` of `null` is unlimited.
 
 `project_id` may contain letters, digits, `_` and `-` (1–64 characters). Files are stored under `FILES_DIR/<project_id>/` (default `assets/files/`) with a random prefix, so uploads never overwrite each other. A missing or generic content type (`application/octet-stream`, as browsers often send for Markdown) is taken from the file's extension. Each file's SHA-256 is kept, and content the project already has is not stored again, whatever the file's name: the response then carries the existing file's id, so uploading the same files twice is safe.
 
+The content must be of the file's type, whatever its name and declared type say: a PDF starts with `%PDF-` (within its first kilobyte), a Word document is a ZIP archive, and text is not binary (not a PDF or ZIP archive, and not more than a tenth control characters, as programs, images and UTF-16 text are). When `CLAMAV_URL` is set, every new file is also scanned for malware by ClamAV before it is kept; a file that cannot be scanned is refused rather than kept unscanned. A refused file leaves nothing behind.
+
 ```bash
 curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/upload/demo1
 ```
@@ -139,6 +141,9 @@ curl -F "file=@notes.txt;type=text/plain" http://localhost:8000/api/v1/data/uplo
 | The project has this content already | `200` | `{"signal": "file_already_uploaded", "file_id": "<the existing file>"}` |
 | File type not in `FILE_ALLOWED_TYPES` | `415` | `{"signal": "file_type_not_supported"}` |
 | File larger than `FILE_MAX_SIZE` | `413` | `{"signal": "file_size_exceeded"}` |
+| Content not of the file's type, e.g. a program named `notes.txt` | `415` | `{"signal": "file_content_mismatch"}` |
+| The malware scanner found malware | `422` | `{"signal": "file_infected"}` |
+| The malware scanner is unreachable or could not scan the file | `503` | `{"signal": "malware_scan_failed"}` |
 | Invalid `project_id` | `422` | Validation error details |
 | Storage failure on the server | `500` | `{"signal": "file_upload_failed"}` |
 
