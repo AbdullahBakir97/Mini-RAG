@@ -185,6 +185,7 @@ class Conversation:
     title: str | None
     created_at: datetime
     updated_at: datetime
+    widget_id: str | None = None  # The chat widget it was started in, if any.
 
 
 @dataclass(frozen=True)
@@ -316,6 +317,25 @@ class Webhook:
     secret: str
     created_at: datetime
     description: str | None = None
+
+
+@dataclass(frozen=True)
+class Widget:
+    """A chat widget that websites embed, to let their visitors ask one project.
+
+    ``id`` is public: it is in the page's script tag. The widget can only
+    ask its project, from ``allowed_origins`` (``*`` for any website).
+    """
+
+    id: str
+    tenant_id: int
+    project_id: int
+    project_name: str
+    name: str
+    welcome: str | None
+    accent: str
+    allowed_origins: tuple[str, ...]
+    created_at: datetime
 
 
 DeliveryStatus = Literal["pending", "delivered", "failed"]

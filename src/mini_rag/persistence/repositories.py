@@ -55,6 +55,7 @@ from mini_rag.domain.models import (
     UsageTotals,
     Webhook,
     WebhookDelivery,
+    Widget,
 )
 
 from .tables import (
@@ -71,6 +72,7 @@ from .tables import (
     TenantRow,
     WebhookDeliveryRow,
     WebhookRow,
+    WidgetRow,
 )
 
 
@@ -548,7 +550,8 @@ class SqlAnswerRepository:
 
 def _conversation(row: ConversationRow) -> Conversation:
     return Conversation(id=row.id, project_id=row.project_id, title=row.title,
-                        created_at=row.created_at, updated_at=row.updated_at)
+                        created_at=row.created_at, updated_at=row.updated_at,
+                        widget_id=row.widget_id)
 
 
 def _feedback(row: ConversationMessageRow) -> Feedback | None:
@@ -571,10 +574,12 @@ class SqlConversationRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create(self, project_id: int, title: str | None) -> Conversation:
+    async def create(self, project_id: int, title: str | None,
+                     widget_id: str | None = None) -> Conversation:
         row = await self.session.scalar(
             insert(ConversationRow)
-            .values(id=str(uuid.uuid4()), project_id=project_id, title=title)
+            .values(id=str(uuid.uuid4()), project_id=project_id, title=title,
+                    widget_id=widget_id)
             .returning(ConversationRow))
         return _conversation(row)
 
@@ -925,6 +930,57 @@ class SqlWebhookRepository:
             .where(WebhookDeliveryRow.webhook_id == webhook_id))
 
 
+def _widget(row: WidgetRow, project: ProjectRow) -> Widget:
+    return Widget(id=row.id, tenant_id=project.tenant_id, project_id=project.id,
+                  project_name=project.name, name=row.name, welcome=row.welcome,
+                  accent=row.accent, allowed_origins=tuple(row.allowed_origins),
+                  created_at=row.created_at)
+
+
+class SqlWidgetRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    def _select(self):
+        return select(WidgetRow, ProjectRow).join(ProjectRow,
+                                                  ProjectRow.id == WidgetRow.project_id)
+
+    async def create(self, *, widget_id: str, project_id: int, name: str, welcome: str | None,
+                     accent: str, allowed_origins: Sequence[str]) -> Widget:
+        await self.session.execute(
+            insert(WidgetRow).values(id=widget_id, project_id=project_id, name=name,
+                                     welcome=welcome, accent=accent,
+                                     allowed_origins=list(allowed_origins)))
+        return await self.get(widget_id)
+
+    async def get(self, widget_id: str) -> Widget | None:
+        found = (await self.session.execute(
+            self._select().where(WidgetRow.id == widget_id))).first()
+        return _widget(*found) if found else None
+
+    async def list_for_project(self, project_id: int) -> list[Widget]:
+        found = await self.session.execute(
+            self._select().where(WidgetRow.project_id == project_id)
+            .order_by(WidgetRow.created_at, WidgetRow.id))
+        return [_widget(*row) for row in found]
+
+    async def update(self, project_id: int, widget_id: str,
+                     changes: Mapping[str, Any]) -> Widget | None:
+        values = {name: list(value) if name == "allowed_origins" else value
+                  for name, value in changes.items()}
+        result = await self.session.execute(
+            update(WidgetRow).where(WidgetRow.id == widget_id, WidgetRow.project_id == project_id)
+            .values(**values))
+        return await self.get(widget_id) if result.rowcount else None
+
+    async def delete(self, project_id: int, widget_id: str) -> bool:
+        result = await self.session.execute(
+            delete(WidgetRow).where(WidgetRow.id == widget_id,
+                                    WidgetRow.project_id == project_id))
+        return result.rowcount > 0
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession, tenant_id: int | None = None):
@@ -938,6 +994,7 @@ class SqlUnitOfWork:
         self.conversations = SqlConversationRepository(session)
         self.jobs = SqlJobRepository(session)
         self.webhooks = SqlWebhookRepository(session)
+        self.widgets = SqlWidgetRepository(session)
         self.tenants = SqlTenantRepository(session)
         self.api_keys = SqlApiKeyRepository(session)
         self.usage = SqlUsageRepository(session)

@@ -54,6 +54,8 @@ Each tenant can have three limits. The server's settings give the defaults (`RAT
 | Answers per calendar month (UTC) | Asking (`/ask` and `/ask/.../stream`) is refused; search still works | `429` `{"signal": "answer_quota_exceeded"}` |
 | Megabytes of stored files | An upload that would not fit is refused and removed; content already stored costs nothing | `413` `{"signal": "storage_quota_exceeded"}` |
 
+Questions asked through a [chat widget](#chat-widget) count against the limits of the widget's tenant, like any other.
+
 With a rate limit, every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (Unix time when the minute ends). `GET /api/v1/usage` shows the tenant's usage this month against its limits:
 
 ```json
@@ -91,6 +93,14 @@ A `limit` of `null` is unlimited.
 | `DELETE` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}` | Stop sending to a webhook and forget its deliveries |
 | `POST` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}/ping` | Send a `ping` event |
 | `GET` | `/api/v1/projects/{project_id}/webhooks/{webhook_id}/deliveries` | What was sent, most recent first (paged) |
+| `POST` | `/api/v1/projects/{project_id}/widgets` | Add a chat widget for websites to embed (`admin`) |
+| `GET` | `/api/v1/projects/{project_id}/widgets` | List the project's chat widgets (`admin`) |
+| `GET` | `/api/v1/projects/{project_id}/widgets/{widget_id}` | A chat widget (`admin`) |
+| `PATCH` | `/api/v1/projects/{project_id}/widgets/{widget_id}` | Change a chat widget's settings (`admin`) |
+| `DELETE` | `/api/v1/projects/{project_id}/widgets/{widget_id}` | Remove a chat widget; its conversations stay (`admin`) |
+| `GET` | `/api/v1/widgets/{widget_id}` | What a widget shows, for its visitors (no key) |
+| `POST` | `/api/v1/widgets/{widget_id}/ask` | Answer a visitor's question, streamed (no key) |
+| `PUT` | `/api/v1/widgets/{widget_id}/conversations/{conversation_id}/messages/{message_id}/feedback` | A visitor rates an answer (no key) |
 | `POST` | `/api/v1/search/{project_id}` | Find the chunks that best match a question |
 | `POST` | `/api/v1/ask/{project_id}` | Answer a question from the project's documents, with citations |
 | `POST` | `/api/v1/ask/{project_id}/stream` | The same answer, streamed as it is written (Server-Sent Events) |
@@ -341,6 +351,55 @@ curl -X POST http://localhost:8000/api/v1/mcp -H "Content-Type: application/json
 ```
 
 For agent frameworks that call functions instead, `GET /api/v1/tools` returns the same tools as `{"type": "function", "function": {"name", "description", "parameters"}}` schemas.
+
+## Chat widget
+
+A chat widget lets the visitors of a website ask a project's documents: a chat button in the page's corner opens a panel where answers stream in as they are written, with numbered citations that open the passage they cite, and thumbs up or down on each answer.
+
+![A website with the chat widget open: a question, the answer with a numbered citation, and the cited passage opened below it](media/widget.png)
+
+Add one with an `admin` key, or on the web app's Widget page:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/projects/demo1/widgets \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Handbook assistant", "welcome": "Hi! Ask me anything about our handbook.",
+       "accent": "#0f766e", "allowed_origins": ["https://example.com", "https://www.example.com"]}'
+```
+
+```json
+{"id": "wgt_FZLBMlg8nrGS3z0ObXvgoQ", "project": "demo1", "name": "Handbook assistant",
+ "welcome": "Hi! Ask me anything about our handbook.", "accent": "#0f766e",
+ "allowed_origins": ["https://example.com", "https://www.example.com"], "created_at": "2026-10-18T11:21:15Z"}
+```
+
+Then add one tag to the website's pages, with the address of the web app, which serves the script:
+
+```html
+<script src="https://rag.example.com/widget.js" data-widget="wgt_FZLBMlg8nrGS3z0ObXvgoQ" async></script>
+```
+
+| Attribute | |
+|---|---|
+| `data-widget` | The widget's id (required) |
+| `data-api` | Where the API is, when it is not where the script is served from |
+| `data-position` | `left` puts the button in the bottom left corner instead of the right |
+| `data-open` | `true` opens the panel when the page loads |
+
+The page can also call `window.MiniRagWidget.open()` and `.close()`. The widget lives in a shadow root, so the page's styles do not change it and its styles do not leak into the page. It keeps the visitor's conversation in the browser tab's session storage, so it carries on from page to page, and fills the screen on phones.
+
+| Setting | |
+|---|---|
+| `name` | Shown in the widget's header (1–100 characters) |
+| `welcome` | The first message visitors see (optional, up to 500 characters) |
+| `accent` | The widget's colour as `#rrggbb` (default `#2563eb`); text on it is black or white, whichever reads better |
+| `allowed_origins` | The websites that may use the widget, as origins: scheme, host and any port, like `https://example.com` (1–20; `*` for any website). Anything else, such as a URL with a path, is refused with `422` `{"signal": "widget_origin_invalid"}` |
+
+`PATCH` changes only the settings it sends; pages that embed the widget pick the changes up when they are next loaded.
+
+**What visitors can do.** The widget's id is public: it is in the page. With it, and no API key, a visitor can only see the widget's name, welcome and colour (`GET /api/v1/widgets/{widget_id}`), ask its one project (`POST .../ask`), and rate the answers in their own conversations. Answers stream as Server-Sent Events like [`/ask/{project_id}/stream`](#streaming-the-answer), but the final `answer` event holds only what a visitor needs: the answer, its citations with the document's name, page, section and passage, the `conversation_id` to send with the next question, and the `message_id` to rate it. No file ids, scores, prompt versions or costs. A visitor can continue only conversations started in the same widget (`404` `{"signal": "conversation_not_found"}` otherwise). Widget requests count against the tenant's rate limit and answer quota, and their conversations appear with the project's others, marked with the widget's `widget_id`; removing the widget keeps them.
+
+**Which websites.** Browsers send an `Origin` header with every request a page makes to another site, and a page on a website the widget does not allow is refused with `403` `{"signal": "origin_not_allowed"}`; the widget then stays hidden and says why in the browser console. The widget's routes answer any website's CORS requests (without cookies), so that refusal is readable. Pages on the API's own host, such as the web app's widget preview, may use every widget. The check keeps other websites from embedding your widget; it is not a password, since a client outside a browser can send any `Origin`, which is why a widget can do no more than its visitors could anyway.
 
 ## Search
 

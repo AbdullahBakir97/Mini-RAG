@@ -97,6 +97,25 @@ class ApiKeyInvalid(AppError):
     status_code = HTTPStatus.UNAUTHORIZED
 
 
+class WidgetNotFound(AppError):
+    signal = ResponseSignal.WIDGET_NOT_FOUND
+    status_code = HTTPStatus.NOT_FOUND
+
+
+class WidgetOriginInvalid(AppError):
+    """An allowed origin that is not a website's origin, e.g. a URL with a path."""
+
+    signal = ResponseSignal.WIDGET_ORIGIN_INVALID
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+class OriginNotAllowed(AppError):
+    """The page asking is not on a website the widget allows."""
+
+    signal = ResponseSignal.ORIGIN_NOT_ALLOWED
+    status_code = HTTPStatus.FORBIDDEN
+
+
 class ScopeMissing(AppError):
     """The API key may not do this; the message names the scope it needs."""
 

@@ -35,7 +35,8 @@ PaginationDep = Annotated[Pagination, Depends()]
 
 def _conversation(conversation: Conversation) -> dict:
     return {"id": conversation.id, "title": conversation.title,
-            "created_at": conversation.created_at, "updated_at": conversation.updated_at}
+            "created_at": conversation.created_at, "updated_at": conversation.updated_at,
+            "widget_id": conversation.widget_id}
 
 
 def _citations(citations: list[StoredCitation]) -> list[CitationResponse]:

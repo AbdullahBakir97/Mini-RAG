@@ -70,7 +70,8 @@ jobs:
       - name: Test
         run: npm test
       - name: Build
-        run: npx vite build
+        # The web app, then the chat widget's script.
+        run: npx vite build && npx vite build --config vite.widget.config.ts
 
   eval:
     # Retrieval quality on the handbook dataset with a real embedding model,

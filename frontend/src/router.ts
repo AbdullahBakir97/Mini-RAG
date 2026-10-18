@@ -32,6 +32,12 @@ export const router = createRouter({
           meta: { title: "Search" },
         },
         {
+          path: "widget",
+          name: "widget",
+          component: () => import("@/views/project/WidgetView.vue"),
+          meta: { title: "Chat widget" },
+        },
+        {
           path: "webhooks",
           name: "webhooks",
           component: () => import("@/views/project/WebhooksView.vue"),

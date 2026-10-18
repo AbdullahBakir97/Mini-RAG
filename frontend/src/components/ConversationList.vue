@@ -71,7 +71,9 @@ function confirmRemove(id: string) {
             <MessageSquare :size="14" class="icon" />
             <span class="text">
               <span class="name">{{ conversation.title ?? "New conversation" }}</span>
-              <span class="when subtle">{{ formatRelative(conversation.updated_at) }}</span>
+              <span class="when subtle">
+                <template v-if="conversation.widget_id">Website visitor · </template>{{ formatRelative(conversation.updated_at) }}
+              </span>
             </span>
           </button>
           <button

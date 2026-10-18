@@ -36,6 +36,7 @@ from mini_rag.domain.models import (
     UsageTotals,
     Webhook,
     WebhookDelivery,
+    Widget,
 )
 from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS
 
@@ -195,10 +196,11 @@ class FakeConversations:
         self.stored: dict[str, list[ConversationMessage]] = {}
         self._ids = count(1)
 
-    async def create(self, project_id: int, title: str | None) -> Conversation:
+    async def create(self, project_id: int, title: str | None,
+                     widget_id: str | None = None) -> Conversation:
         now = datetime.now(UTC)
         conversation = Conversation(id=str(uuid.uuid4()), project_id=project_id, title=title,
-                                    created_at=now, updated_at=now)
+                                    created_at=now, updated_at=now, widget_id=widget_id)
         self.by_id[conversation.id] = conversation
         self.stored[conversation.id] = []
         return conversation
@@ -523,6 +525,44 @@ class FakeApiKeys:
                 self.by_hash[key_hash] = replace(key, last_used_at=datetime.now(UTC))
 
 
+class FakeWidgets:
+    """Widgets of the projects in ``projects`` (the fake has one tenant, id 1)."""
+
+    def __init__(self, projects: FakeProjects):
+        self.projects = projects
+        self.by_id: dict[str, Widget] = {}
+
+    async def create(self, *, widget_id, project_id, name, welcome, accent,
+                     allowed_origins) -> Widget:
+        project = next(p for p in self.projects.by_name.values() if p.id == project_id)
+        widget = Widget(id=widget_id, tenant_id=project.tenant_id, project_id=project_id,
+                        project_name=project.name, name=name, welcome=welcome, accent=accent,
+                        allowed_origins=tuple(allowed_origins), created_at=datetime.now(UTC))
+        self.by_id[widget_id] = widget
+        return widget
+
+    async def get(self, widget_id: str) -> Widget | None:
+        return self.by_id.get(widget_id)
+
+    async def list_for_project(self, project_id: int) -> list[Widget]:
+        return [w for w in self.by_id.values() if w.project_id == project_id]
+
+    async def update(self, project_id: int, widget_id: str, changes) -> Widget | None:
+        widget = self.by_id.get(widget_id)
+        if widget is None or widget.project_id != project_id:
+            return None
+        values = {k: tuple(v) if k == "allowed_origins" else v for k, v in changes.items()}
+        self.by_id[widget_id] = replace(widget, **values)
+        return self.by_id[widget_id]
+
+    async def delete(self, project_id: int, widget_id: str) -> bool:
+        widget = self.by_id.get(widget_id)
+        if widget is None or widget.project_id != project_id:
+            return False
+        del self.by_id[widget_id]
+        return True
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -533,6 +573,7 @@ class FakeUnitOfWork:
         self.conversations = FakeConversations()
         self.jobs = FakeJobs(self.projects, self.files)
         self.webhooks = FakeWebhooks()
+        self.widgets = FakeWidgets(self.projects)
         self.tenants = FakeTenants()
         self.api_keys = FakeApiKeys()
         self.usage = FakeUsage()

@@ -28,6 +28,7 @@ from mini_rag.services.project_service import ProjectService
 from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
 from mini_rag.services.webhook_service import WebhookService
+from mini_rag.services.widget_service import WidgetService
 from mini_rag.storage.file_storage import FileStorage
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -256,3 +257,10 @@ def get_answer_service(search: SearchServiceDep, llm: LLMDep, uow: UnitOfWorkDep
 
 
 AnswerServiceDep = Annotated[AnswerService, Depends(get_answer_service)]
+
+
+def get_widget_service(uow: UnitOfWorkDep) -> WidgetService:
+    return WidgetService(uow=uow)
+
+
+WidgetServiceDep = Annotated[WidgetService, Depends(get_widget_service)]
