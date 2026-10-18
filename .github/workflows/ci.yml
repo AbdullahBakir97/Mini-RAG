@@ -75,6 +75,45 @@ jobs:
         # The web app, then the chat widget's script.
         run: npx vite build && npx vite build --config vite.widget.config.ts
 
+  security:
+    # Known vulnerabilities in the dependencies (Python and npm, development
+    # tools included), and secrets anywhere in the history.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Audit the Python dependencies
+        # Resolves pyproject.toml's dependencies on its own, so pip-audit's
+        # own packages are not part of the audit.
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit==2.10.1
+          pip-audit .
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Audit the npm dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=moderate
+      - name: Look for secrets in the history
+        env:
+          GITLEAKS_VERSION: 8.24.2
+          GITLEAKS_SHA256: fa0500f6b7e41d28791ebc680f5dd9899cd42b58629218a5f041efa899151a8e
+        run: |
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          echo "${GITLEAKS_SHA256}  ${archive}" | sha256sum --check
+          tar -xzf "$archive" gitleaks
+          ./gitleaks git . --redact --no-banner
+
   eval:
     # Retrieval quality on the handbook dataset with a real embedding model,
     # nomic-embed-text in Ollama: a metric that drops below the baseline fails.

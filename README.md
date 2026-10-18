@@ -81,7 +81,7 @@ docker compose up -d db          # PostgreSQL 16 with pgvector on localhost:5432
 alembic upgrade head             # create or update the database tables
 uvicorn mini_rag.main:app --reload
 
-cd frontend && npm install && npm run dev   # optional: the web app on http://localhost:5173 (Node 20.19+)
+cd frontend && npm install && npm run dev   # optional: the web app on http://localhost:5173 (Node 22.12+)
 ```
 
 Either way, **http://localhost:8000** shows the interactive API docs. Run commands from the repository root, where `.env` is read. Indexing, search and answers need `OPENAI_API_KEY` in `.env`, or OpenAI-compatible servers in `EMBEDDING_BASE_URL` and `LLM_BASE_URL`.

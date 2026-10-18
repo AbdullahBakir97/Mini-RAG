@@ -88,7 +88,8 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [ ] User accounts with roles per tenant.
 - [x] File type checked from content, not the declared type; optional malware scanning with ClamAV.
 - [ ] Prompt-injection test cases; encryption at rest; per-tenant export and deletion.
-- [ ] An audit log, dependency vulnerability scanning and secret scanning in CI.
+- [x] Dependency vulnerability scanning (`pip-audit`, `npm audit`) and secret scanning (`gitleaks`) in CI.
+- [ ] An audit log of administrative actions.
 
 ### Phase 9: Production
 
