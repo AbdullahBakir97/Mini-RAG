@@ -86,6 +86,21 @@ async def test_failures_raise_embedding_failed(server):
         await make_embedder(server).embed(["a", "b"])
 
 
+@pytest.mark.parametrize(("content_type", "body", "shown"), [
+    ("text/plain", "OK", "OK"),
+    ("text/html", "<html><body>Sign in</body></html>", "<html><body>Sign in"),
+    ("application/json", '{"unexpected": true}', "unexpected=True"),
+], ids=["plain-text", "html", "json-of-another-shape"])
+async def test_a_reply_that_is_not_embeddings_raises_embedding_failed(content_type, body, shown):
+    def answer(request):
+        return httpx2.Response(200, headers={"content-type": content_type}, text=body)
+
+    with pytest.raises(EmbeddingFailed, match="unexpected reply") as error:
+        await make_embedder(answer).embed(["a"])
+    # The start of the reply is kept, to show what the server sent instead.
+    assert shown in str(error.value)
+
+
 async def test_unreachable_server_raises_embedding_failed():
     def refuse(request):
         raise httpx2.ConnectError("refused", request=request)

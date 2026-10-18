@@ -45,6 +45,10 @@ class OpenAILLM:
         except OpenAIError as exc:
             raise LLMFailed(f"Chat request to {self.model} failed") from exc
 
+        # A server that answers with something else (an HTML page, a proxy's
+        # "OK") reaches us as text, or as a response without choices.
+        if not isinstance(getattr(response, "choices", None), list):
+            raise LLMFailed(f"{self.model} sent an unexpected reply: {_preview(response)}")
         if not response.choices or not (response.choices[0].message.content or "").strip():
             raise LLMFailed(f"{self.model} returned no text")
         return Completion(text=response.choices[0].message.content,
@@ -86,6 +90,12 @@ class OpenAILLM:
 
     async def aclose(self) -> None:
         await self._client.close()
+
+
+def _preview(response: Any) -> str:
+    """The start of a reply, for error messages."""
+    text = response if isinstance(response, str) else repr(response)
+    return " ".join(text.split())[:200]
 
 
 def _usage(usage: Any) -> TokenUsage | None:

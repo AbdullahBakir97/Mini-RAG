@@ -133,6 +133,28 @@ async def test_failures_raise_llm_failed(server):
         await make_llm(server).complete(MESSAGES)
 
 
+@pytest.mark.parametrize(("content_type", "body", "shown"), [
+    ("text/plain", "OK", "OK"),
+    ("text/html", "<html><body>Sign in</body></html>", "<html><body>Sign in"),
+    ("application/json", '{"unexpected": true}', "unexpected=True"),
+], ids=["plain-text", "html", "json-of-another-shape"])
+async def test_a_reply_that_is_not_a_completion_raises_llm_failed(content_type, body, shown):
+    def answer(request):
+        return httpx2.Response(200, headers={"content-type": content_type}, text=body)
+
+    with pytest.raises(LLMFailed, match="unexpected reply") as error:
+        await make_llm(answer).complete(MESSAGES)
+    assert shown in str(error.value)
+
+
+async def test_a_stream_that_is_not_events_raises_llm_failed():
+    def answer(request):
+        return httpx2.Response(200, headers={"content-type": "text/plain"}, text="OK")
+
+    with pytest.raises(LLMFailed):
+        await collect(make_llm(answer))
+
+
 async def test_unreachable_server_raises_llm_failed():
     def refuse(request):
         raise httpx2.ConnectError("refused", request=request)
