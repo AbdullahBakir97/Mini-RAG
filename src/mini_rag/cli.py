@@ -46,7 +46,9 @@ from mini_rag.services.job_runner import JobRunner
 from mini_rag.services.processing_service import ProcessingService
 from mini_rag.services.search_service import SearchService
 from mini_rag.services.upload_service import UploadService
+from mini_rag.services.webhook_dispatcher import WebhookDispatcher
 from mini_rag.storage.file_storage import FileStorage
+from mini_rag.webhooks.factory import create_webhook_sender
 
 # Exit codes of `mini-rag eval`.
 PASSED, REGRESSED, FAILED = 0, 1, 2
@@ -381,15 +383,19 @@ async def _work(workers: int) -> int:
     configure_logging(settings.LOG_LEVEL)
     engine = create_engine(settings.DATABASE_URL)
     embedder = create_embedder(settings)
-    runner = JobRunner(unit_of_work_factory(create_session_factory(engine)),
-                       FileStorage(root=settings.FILES_DIR), default_loader_registry(), embedder,
-                       settings.EMBEDDING_BATCH_SIZE)
-    print(f"Running jobs with {workers} workers; stop with Ctrl+C.", flush=True)
+    sender = create_webhook_sender(settings)
+    unit_of_work = unit_of_work_factory(create_session_factory(engine))
+    runner = JobRunner(unit_of_work, FileStorage(root=settings.FILES_DIR),
+                       default_loader_registry(), embedder, settings.EMBEDDING_BATCH_SIZE)
+    dispatcher = WebhookDispatcher(unit_of_work, sender)
+    print(f"Running jobs with {workers} workers, and sending webhooks; stop with Ctrl+C.",
+          flush=True)
     try:
-        await asyncio.gather(*(runner.run() for _ in range(workers)))
+        await asyncio.gather(dispatcher.run(), *(runner.run() for _ in range(workers)))
     finally:
         if embedder is not None:
             await embedder.aclose()
+        await sender.aclose()
         await engine.dispose()
     return 0
 
@@ -448,7 +454,8 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("--name", help="the dataset's name (default: <project>-feedback)")
     worker = commands.add_parser(
         "worker",
-        help="run background jobs (processing and indexing files) until stopped",
+        help="run background jobs (processing and indexing files) and send webhooks until "
+             "stopped",
         description="Take queued jobs and run them, as the API's own workers do (JOB_WORKERS). "
                     "Run as many as you like, on any machine with the same database and "
                     "FILES_DIR: each job runs once. Set JOB_WORKERS=0 for an API that only "

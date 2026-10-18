@@ -45,19 +45,6 @@ async def _with_runner(db, files_dir, embedder, work, **options):
 
 
 @pytest.fixture
-def run_jobs(db, files_dir):
-    """Run due jobs with a worker; returns whether each run found one."""
-    def run(embedder=None, times=1, **options):
-        embedder = embedder if embedder is not None else FakeEmbedder()
-
-        async def work(runner):
-            return [await runner.run_next() for _ in range(times)]
-
-        return asyncio.run(_with_runner(db, files_dir, embedder, work, **options))
-    return run
-
-
-@pytest.fixture
 def claim(db):
     """Claim the next job as a worker that then stops, holding it for ``lease`` seconds."""
     def run(lease=0):
@@ -346,7 +333,12 @@ def test_the_worker_command_runs_the_configured_number_of_workers(db, monkeypatc
         async def run(self):
             runs.append(self)
 
+    class Dispatcher(cli.WebhookDispatcher):
+        async def run(self):
+            pass
+
     monkeypatch.setattr(cli, "JobRunner", Runner)
+    monkeypatch.setattr(cli, "WebhookDispatcher", Dispatcher)
     monkeypatch.setenv("JOB_WORKERS", "0")
     get_settings.cache_clear()
 

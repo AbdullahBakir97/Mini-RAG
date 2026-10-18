@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BarChart3, Files, LoaderCircle, MessageSquareText, Search, Sparkles, TriangleAlert } from "@lucide/vue";
+import { BarChart3, Files, LoaderCircle, MessageSquareText, Search, Sparkles, TriangleAlert, Webhook } from "@lucide/vue";
 import { computed, ref, toRef } from "vue";
 
 import { ApiError, api } from "@/api/client";
@@ -19,6 +19,7 @@ const tabs = [
   { name: "documents", label: "Documents", icon: Files },
   { name: "search", label: "Search", icon: Search },
   { name: "usage", label: "Usage", icon: BarChart3 },
+  { name: "webhooks", label: "Webhooks", icon: Webhook },
 ];
 
 // The Ask tab returns to the conversation last open in this project.

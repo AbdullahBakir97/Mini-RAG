@@ -28,3 +28,5 @@ class ResponseSignal(Enum):
     JOB_NOT_FAILED = "job_not_failed"
     JOB_ABANDONED = "job_abandoned"
     JOB_FAILED = "job_failed"
+    WEBHOOK_NOT_FOUND = "webhook_not_found"
+    WEBHOOK_URL_NOT_ALLOWED = "webhook_url_not_allowed"

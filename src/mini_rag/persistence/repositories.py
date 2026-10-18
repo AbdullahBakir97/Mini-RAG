@@ -12,7 +12,9 @@ from typing import Any
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     Interval,
+    String,
     and_,
+    any_,
     bindparam,
     delete,
     func,
@@ -22,6 +24,7 @@ from sqlalchemy import (
     text,
     update,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
@@ -44,6 +47,8 @@ from mini_rag.domain.models import (
     StoredCitation,
     UnembeddedChunk,
     UsageTotals,
+    Webhook,
+    WebhookDelivery,
 )
 
 from .tables import (
@@ -55,6 +60,8 @@ from .tables import (
     FileRow,
     JobRow,
     ProjectRow,
+    WebhookDeliveryRow,
+    WebhookRow,
 )
 
 
@@ -638,6 +645,122 @@ class SqlJobRepository:
                     started_at=None, finished_at=None))
 
 
+def _webhook(row: WebhookRow) -> Webhook:
+    return Webhook(id=row.id, project_id=row.project_id, url=row.url, events=tuple(row.events),
+                   secret=row.secret, created_at=row.created_at, description=row.description)
+
+
+def _delivery(row: WebhookDeliveryRow) -> WebhookDelivery:
+    return WebhookDelivery(id=row.id, webhook_id=row.webhook_id, event=row.event,
+                           payload=row.payload, status=row.status, attempts=row.attempts,
+                           created_at=row.created_at, next_attempt_at=row.next_attempt_at,
+                           response_status=row.response_status, error=row.error,
+                           delivered_at=row.delivered_at)
+
+
+class SqlWebhookRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, *, project_id: int, url: str, events: Sequence[str], secret: str,
+                     description: str | None) -> Webhook:
+        row = await self.session.scalar(
+            insert(WebhookRow).values(id=str(uuid.uuid4()), project_id=project_id, url=url,
+                                      events=list(events), secret=secret,
+                                      description=description)
+            .returning(WebhookRow))
+        return _webhook(row)
+
+    async def get(self, project_id: int, webhook_id: str) -> Webhook | None:
+        row = await self.session.scalar(
+            select(WebhookRow).where(WebhookRow.id == webhook_id,
+                                     WebhookRow.project_id == project_id))
+        return _webhook(row) if row else None
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Webhook]:
+        rows = await self.session.scalars(
+            select(WebhookRow).where(WebhookRow.project_id == project_id)
+            .order_by(WebhookRow.created_at, WebhookRow.id).offset(offset).limit(limit))
+        return [_webhook(row) for row in rows]
+
+    async def count_for_project(self, project_id: int) -> int:
+        return await self.session.scalar(
+            select(func.count()).select_from(WebhookRow)
+            .where(WebhookRow.project_id == project_id))
+
+    async def delete(self, project_id: int, webhook_id: str) -> bool:
+        result = await self.session.execute(
+            delete(WebhookRow).where(WebhookRow.id == webhook_id,
+                                     WebhookRow.project_id == project_id))
+        return result.rowcount > 0
+
+    async def enqueue(self, project_id: int, event: str, payload: Mapping[str, Any]) -> int:
+        subscribed = select(
+            func.gen_random_uuid(), WebhookRow.id, bindparam("event", event, type_=String),
+            bindparam("payload", dict(payload), type_=JSONB),
+        ).where(WebhookRow.project_id == project_id,
+                bindparam("wanted", event, type_=String) == any_(WebhookRow.events))
+        result = await self.session.execute(
+            insert(WebhookDeliveryRow)
+            .from_select(["id", "webhook_id", "event", "payload"], subscribed))
+        return result.rowcount
+
+    async def add_delivery(self, webhook_id: str, event: str,
+                           payload: Mapping[str, Any]) -> WebhookDelivery:
+        row = await self.session.scalar(
+            insert(WebhookDeliveryRow).values(id=str(uuid.uuid4()), webhook_id=webhook_id,
+                                              event=event, payload=dict(payload))
+            .returning(WebhookDeliveryRow))
+        return _delivery(row)
+
+    async def claim_delivery(self, lease_seconds: int) -> tuple[WebhookDelivery, Webhook] | None:
+        due = (
+            select(WebhookDeliveryRow.id)
+            .where(WebhookDeliveryRow.status == "pending",
+                   WebhookDeliveryRow.next_attempt_at <= func.now())
+            .order_by(WebhookDeliveryRow.next_attempt_at, WebhookDeliveryRow.created_at)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+            .scalar_subquery())
+        row = await self.session.scalar(
+            update(WebhookDeliveryRow).where(WebhookDeliveryRow.id == due)
+            .values(attempts=WebhookDeliveryRow.attempts + 1,
+                    next_attempt_at=_lease(lease_seconds))
+            .returning(WebhookDeliveryRow))
+        if row is None:
+            return None
+        webhook = await self.session.get(WebhookRow, row.webhook_id)
+        return _delivery(row), _webhook(webhook)
+
+    async def record_attempt(self, delivery_id: str, *, delivered: bool,
+                             response_status: int | None, error: str | None,
+                             retry_at: datetime | None) -> None:
+        values: dict[str, Any] = {"response_status": response_status, "error": error}
+        if delivered:
+            values |= {"status": "delivered", "delivered_at": func.now(), "next_attempt_at": None}
+        elif retry_at is not None:
+            values |= {"next_attempt_at": retry_at}
+        else:
+            values |= {"status": "failed", "next_attempt_at": None}
+        await self.session.execute(
+            update(WebhookDeliveryRow).where(WebhookDeliveryRow.id == delivery_id).values(**values))
+
+    async def list_deliveries(self, webhook_id: str, *, offset: int,
+                              limit: int) -> list[WebhookDelivery]:
+        rows = await self.session.scalars(
+            select(WebhookDeliveryRow).where(WebhookDeliveryRow.webhook_id == webhook_id)
+            .order_by(WebhookDeliveryRow.created_at.desc(), WebhookDeliveryRow.id)
+            .offset(offset).limit(limit))
+        return [_delivery(row) for row in rows]
+
+    async def count_deliveries(self, webhook_id: str) -> int:
+        return await self.session.scalar(
+            select(func.count()).select_from(WebhookDeliveryRow)
+            .where(WebhookDeliveryRow.webhook_id == webhook_id))
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession):
@@ -648,6 +771,7 @@ class SqlUnitOfWork:
         self.answers = SqlAnswerRepository(session)
         self.conversations = SqlConversationRepository(session)
         self.jobs = SqlJobRepository(session)
+        self.webhooks = SqlWebhookRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

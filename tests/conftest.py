@@ -14,7 +14,11 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from mini_rag.api.dependencies import get_embedder, get_llm
 from mini_rag.core.config import get_settings
-from mini_rag.persistence.database import create_engine
+from mini_rag.loaders.registry import default_loader_registry
+from mini_rag.persistence.database import create_engine, create_session_factory
+from mini_rag.persistence.repositories import unit_of_work_factory
+from mini_rag.services.job_runner import JobRunner
+from mini_rag.storage.file_storage import FileStorage
 
 from .fakes import FakeEmbedder, FakeLLM
 
@@ -111,7 +115,7 @@ async def _empty_tables(url: str) -> None:
     try:
         async with engine.begin() as connection:
             await connection.execute(sql_text(
-                "TRUNCATE projects, files, chunks, answers, conversations, conversation_messages, jobs RESTART IDENTITY CASCADE"))
+                "TRUNCATE projects, files, chunks, answers, conversations, conversation_messages, jobs, webhooks, webhook_deliveries RESTART IDENTITY CASCADE"))
     finally:
         await engine.dispose()
 
@@ -220,3 +224,23 @@ def llm(client):
     fake = FakeLLM("Each chunk gets an embedding vector [1].")
     client.app.dependency_overrides[get_llm] = lambda: fake
     return fake
+
+
+@pytest.fixture
+def run_jobs(db, files_dir):
+    """Run due jobs with a worker; returns whether each run found one."""
+    def run(embedder=None, times=1, **options):
+        embedder = embedder if embedder is not None else FakeEmbedder()
+
+        async def work():
+            engine = create_engine(db)
+            try:
+                runner = JobRunner(unit_of_work_factory(create_session_factory(engine)),
+                                   FileStorage(root=files_dir), default_loader_registry(),
+                                   embedder, batch_size=2, **options)
+                return [await runner.run_next() for _ in range(times)]
+            finally:
+                await engine.dispose()
+
+        return asyncio.run(work())
+    return run

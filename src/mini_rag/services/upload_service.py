@@ -13,6 +13,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.file_types import content_type_for
 from mini_rag.domain.repositories import UnitOfWork
+from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
 
 
@@ -65,9 +66,13 @@ class UploadService:
         try:
             size, digest = await self._copy(stream, path)
             existing = await self.uow.files.get_by_content(project.id, digest)
-            if existing is None and await self.uow.files.add(
-                    project_id=project.id, key=file_id, original_name=filename,
-                    content_type=content_type, size_bytes=size, content_sha256=digest):
+            record = existing is None and await self.uow.files.add(
+                project_id=project.id, key=file_id, original_name=filename,
+                content_type=content_type, size_bytes=size, content_sha256=digest)
+            if record:
+                await emit(self.uow, project, "file.uploaded", {
+                    "file_id": record.key, "original_name": record.original_name,
+                    "content_type": record.content_type, "size_bytes": record.size_bytes})
                 await self.uow.commit()
                 completed = True
                 return Upload(file_id=file_id)

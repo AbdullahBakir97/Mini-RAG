@@ -92,6 +92,11 @@ class Settings(BaseSettings):
         description="Background jobs the app runs at once; 0 leaves them to `mini-rag worker`")
     JOB_MAX_ATTEMPTS: int = Field(
         default=3, ge=1, le=10, description="Tries per job before it fails, for passing errors")
+    WEBHOOK_ALLOW_PRIVATE_URLS: bool = Field(
+        default=False, description="Let webhooks reach localhost and private networks, e.g. "
+                                   "n8n next to the API; off, only public addresses")
+    WEBHOOK_TIMEOUT_SECONDS: float = Field(
+        default=10, gt=0, le=60, description="How long a webhook's receiver has to answer")
 
     @model_validator(mode="before")
     @classmethod

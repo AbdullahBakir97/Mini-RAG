@@ -23,8 +23,10 @@ Settings are read from `.env` in the repository root (copy it from `.env.example
 | `RERANK_MODEL` | `""` | The reranking model, e.g. `"BAAI/bge-reranker-v2-m3"` |
 | `RERANK_API_KEY` | `""` | Sent as a bearer token when set |
 | `RERANK_CANDIDATES` | `20` | Results reranked per search (1–100); the best `top_k` of them are kept. If the reranker fails, the search order stays and a warning is logged |
-| `JOB_WORKERS` | `1` | Background jobs the API runs at once (0–32). `0` leaves them to `mini-rag worker` processes, for an API that only queues them |
+| `JOB_WORKERS` | `1` | Background jobs the API runs at once (0–32); above 0, the API also sends webhook deliveries. `0` leaves both to `mini-rag worker` processes, for an API that only queues them |
 | `JOB_MAX_ATTEMPTS` | `3` | Tries per job (1–10) when the embedding provider fails, before the job fails |
+| `WEBHOOK_ALLOW_PRIVATE_URLS` | `false` | Let webhooks reach `localhost` and private networks, e.g. n8n next to the API. Off, they reach only public addresses |
+| `WEBHOOK_TIMEOUT_SECONDS` | `10` | How long a webhook's receiver has to answer (up to 60) |
 | `SEARCH_MODE` | `"hybrid"` | `hybrid` ranks chunks by meaning and by the words they share with the question, merged by reciprocal rank fusion; `vector` by meaning only. Scores are the cosine similarity either way |
 | `ANSWER_MIN_SCORE` | `0.3` | Chunks scoring below this cosine similarity are not used for answers; with none left the answer is `no_answer`. The default suits `text-embedding-3-small`; other models may need another value |
 | `LOG_LEVEL` | `"INFO"` | Level for the app's own logs: `DEBUG`, `INFO`, `WARNING`, `ERROR` or `CRITICAL` (libraries log warnings and above) |

@@ -31,6 +31,8 @@ from mini_rag.domain.models import (
     SearchFilters,
     UnembeddedChunk,
     UsageTotals,
+    Webhook,
+    WebhookDelivery,
 )
 from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS
 
@@ -361,6 +363,86 @@ class FakeJobs:
             self.run_after[job_id] = datetime.now(UTC)
 
 
+class FakeWebhooks:
+
+    def __init__(self):
+        self.by_id: dict[str, Webhook] = {}
+        self.deliveries: dict[str, WebhookDelivery] = {}
+
+    async def create(self, *, project_id, url, events, secret, description) -> Webhook:
+        webhook = Webhook(id=str(uuid.uuid4()), project_id=project_id, url=url,
+                          events=tuple(events), secret=secret, created_at=datetime.now(UTC),
+                          description=description)
+        self.by_id[webhook.id] = webhook
+        return webhook
+
+    async def get(self, project_id: int, webhook_id: str) -> Webhook | None:
+        webhook = self.by_id.get(webhook_id)
+        return webhook if webhook and webhook.project_id == project_id else None
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Webhook]:
+        return [w for w in self.by_id.values() if w.project_id == project_id][offset:offset + limit]
+
+    async def count_for_project(self, project_id: int) -> int:
+        return len([w for w in self.by_id.values() if w.project_id == project_id])
+
+    async def delete(self, project_id: int, webhook_id: str) -> bool:
+        if await self.get(project_id, webhook_id) is None:
+            return False
+        del self.by_id[webhook_id]
+        self.deliveries = {k: d for k, d in self.deliveries.items() if d.webhook_id != webhook_id}
+        return True
+
+    async def enqueue(self, project_id: int, event: str, payload) -> int:
+        subscribed = [w for w in self.by_id.values()
+                      if w.project_id == project_id and event in w.events]
+        for webhook in subscribed:
+            await self.add_delivery(webhook.id, event, payload)
+        return len(subscribed)
+
+    async def add_delivery(self, webhook_id: str, event: str, payload) -> WebhookDelivery:
+        now = datetime.now(UTC)
+        delivery = WebhookDelivery(id=str(uuid.uuid4()), webhook_id=webhook_id, event=event,
+                                   payload=dict(payload), status="pending", attempts=0,
+                                   created_at=now, next_attempt_at=now)
+        self.deliveries[delivery.id] = delivery
+        return delivery
+
+    async def claim_delivery(self, lease_seconds: int):
+        now = datetime.now(UTC)
+        due = [d for d in self.deliveries.values()
+               if d.status == "pending" and d.next_attempt_at <= now]
+        if not due:
+            return None
+        delivery = min(due, key=lambda d: (d.next_attempt_at, d.created_at))
+        delivery = replace(delivery, attempts=delivery.attempts + 1,
+                           next_attempt_at=now + timedelta(seconds=lease_seconds))
+        self.deliveries[delivery.id] = delivery
+        return delivery, self.by_id[delivery.webhook_id]
+
+    async def record_attempt(self, delivery_id: str, *, delivered: bool, response_status,
+                             error, retry_at) -> None:
+        delivery = replace(self.deliveries[delivery_id], response_status=response_status,
+                           error=error)
+        if delivered:
+            delivery = replace(delivery, status="delivered", delivered_at=datetime.now(UTC),
+                               next_attempt_at=None)
+        elif retry_at is not None:
+            delivery = replace(delivery, next_attempt_at=retry_at)
+        else:
+            delivery = replace(delivery, status="failed", next_attempt_at=None)
+        self.deliveries[delivery_id] = delivery
+
+    async def list_deliveries(self, webhook_id: str, *, offset: int,
+                              limit: int) -> list[WebhookDelivery]:
+        mine = [d for d in self.deliveries.values() if d.webhook_id == webhook_id]
+        return sorted(mine, key=lambda d: d.created_at, reverse=True)[offset:offset + limit]
+
+    async def count_deliveries(self, webhook_id: str) -> int:
+        return len([d for d in self.deliveries.values() if d.webhook_id == webhook_id])
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -370,6 +452,7 @@ class FakeUnitOfWork:
         self.answers = FakeAnswers()
         self.conversations = FakeConversations()
         self.jobs = FakeJobs(self.projects, self.files)
+        self.webhooks = FakeWebhooks()
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 

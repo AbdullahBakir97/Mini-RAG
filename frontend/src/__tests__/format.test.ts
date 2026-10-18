@@ -27,6 +27,8 @@ describe("format", () => {
     expect(formatRelative("2026-01-10T11:59:50Z", now)).toBe("just now");
     expect(formatRelative("2026-01-10T11:55:00Z", now)).toBe("5 minutes ago");
     expect(formatRelative("2026-01-09T12:00:00Z", now)).toBe("yesterday");
+    expect(formatRelative("2026-01-10T12:05:00Z", now)).toBe("in 5 minutes");
+    expect(formatRelative("2026-01-10T18:00:00Z", now)).toBe("in 6 hours");
   });
 
   it("takes the name out of a file id", () => {

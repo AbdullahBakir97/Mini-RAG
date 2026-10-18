@@ -43,7 +43,10 @@ export function formatDate(iso: string): string {
 
 /** "Just now", "5 minutes ago", ... and the date after a week. */
 export function formatRelative(iso: string, now = Date.now()): string {
-  const seconds = Math.round((now - new Date(iso).getTime()) / 1000);
+  const elapsed = Math.round((now - new Date(iso).getTime()) / 1000);
+  // A time to come (a retry) reads "in 5 minutes".
+  const sign = elapsed < 0 ? -1 : 1;
+  const seconds = Math.abs(elapsed);
   if (seconds < 45) return "just now";
   const steps: [number, Intl.RelativeTimeFormatUnit][] = [
     [60, "minute"],
@@ -56,7 +59,7 @@ export function formatRelative(iso: string, now = Date.now()): string {
     if (seconds >= size) {
       const amount = Math.round(seconds / size);
       if (unit === "day" && amount > 7) break;
-      return relative.format(-amount, unit);
+      return relative.format(-sign * amount, unit);
     }
   }
   return formatDate(iso);

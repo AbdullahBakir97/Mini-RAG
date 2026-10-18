@@ -6,7 +6,7 @@ fakes. Nothing here knows about SQL.
 
 from collections.abc import Mapping, Sequence
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from .models import (
     AnswerRecord,
@@ -25,6 +25,8 @@ from .models import (
     SearchFilters,
     UnembeddedChunk,
     UsageTotals,
+    Webhook,
+    WebhookDelivery,
 )
 
 
@@ -218,6 +220,61 @@ class JobRepository(Protocol):
         ...
 
 
+class WebhookRepository(Protocol):
+
+    async def create(self, *, project_id: int, url: str, events: Sequence[str], secret: str,
+                     description: str | None) -> Webhook: ...
+
+    async def get(self, project_id: int, webhook_id: str) -> Webhook | None:
+        """The project's webhook; None for another project's."""
+        ...
+
+    async def list_for_project(self, project_id: int, *, offset: int,
+                               limit: int) -> list[Webhook]:
+        """Oldest first."""
+        ...
+
+    async def count_for_project(self, project_id: int) -> int: ...
+
+    async def delete(self, project_id: int, webhook_id: str) -> bool:
+        """Delete the webhook and its deliveries; False when there is none."""
+        ...
+
+    async def enqueue(self, project_id: int, event: str, payload: Mapping[str, Any]) -> int:
+        """Queue a delivery of ``payload`` to each of the project's webhooks for ``event``.
+
+        Returns how many were queued. Called in the transaction that makes
+        the change, so an event is sent exactly when the change is saved.
+        """
+        ...
+
+    async def add_delivery(self, webhook_id: str, event: str,
+                           payload: Mapping[str, Any]) -> WebhookDelivery:
+        """Queue a delivery to one webhook, whatever its events (e.g. a ping)."""
+        ...
+
+    async def claim_delivery(self, lease_seconds: int) -> tuple[WebhookDelivery, Webhook] | None:
+        """The oldest due delivery with its webhook, counted as an attempt.
+
+        It is not due again for ``lease_seconds``, so another dispatcher
+        takes it up only if this one stops before recording the attempt.
+        """
+        ...
+
+    async def record_attempt(self, delivery_id: str, *, delivered: bool,
+                             response_status: int | None, error: str | None,
+                             retry_at: datetime | None) -> None:
+        """Record an attempt's outcome: delivered, to be retried at ``retry_at``, or failed."""
+        ...
+
+    async def list_deliveries(self, webhook_id: str, *, offset: int,
+                              limit: int) -> list[WebhookDelivery]:
+        """Most recent first."""
+        ...
+
+    async def count_deliveries(self, webhook_id: str) -> int: ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -230,6 +287,7 @@ class UnitOfWork(Protocol):
     answers: AnswerRepository
     conversations: ConversationRepository
     jobs: JobRepository
+    webhooks: WebhookRepository
 
     async def commit(self) -> None: ...
 

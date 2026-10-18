@@ -214,3 +214,33 @@ export interface ConversationMessage {
 export interface ConversationDetail extends Conversation {
   messages: ConversationMessage[];
 }
+
+export const WEBHOOK_EVENTS = ["file.uploaded", "file.deleted", "job.succeeded", "job.failed"] as const;
+export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
+
+export interface Webhook {
+  id: string;
+  url: string;
+  events: WebhookEvent[];
+  description: string | null;
+  created_at: string;
+}
+
+export interface CreatedWebhook extends Webhook {
+  /** Signs every delivery; the API shows it only once. */
+  secret: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  event: WebhookEvent | "ping";
+  status: "pending" | "delivered" | "failed";
+  attempts: number;
+  response_status: number | null;
+  error: string | null;
+  created_at: string;
+  next_attempt_at: string | null;
+  delivered_at: string | null;
+  payload: Record<string, unknown>;
+}
+

@@ -174,4 +174,19 @@ describe("api", () => {
     expect(JSON.parse(create.body)).toEqual({ file_id: "a_cats.txt", chunk_size: 500, overlap_size: 50 });
     expect(fetch.mock.calls[1]![0]).toBe("/api/v1/projects/demo/jobs/j%201");
   });
+
+  it("manages webhooks and reads their deliveries", async () => {
+    const fetch = vi.fn().mockImplementation(() => Promise.resolve(Response.json({ items: [] })));
+    vi.stubGlobal("fetch", fetch);
+
+    await api.createWebhook("demo", { url: "https://example.com/h", events: ["job.failed"] });
+    await api.pingWebhook("demo", "w-1");
+    await api.deliveries("demo", "w-1", { offset: 10 });
+
+    const [createUrl, create] = fetch.mock.calls[0]!;
+    expect([create.method, createUrl]).toEqual(["POST", "/api/v1/projects/demo/webhooks"]);
+    expect(JSON.parse(create.body)).toEqual({ url: "https://example.com/h", events: ["job.failed"] });
+    expect(fetch.mock.calls[1]![0]).toBe("/api/v1/projects/demo/webhooks/w-1/ping");
+    expect(fetch.mock.calls[2]![0]).toBe("/api/v1/projects/demo/webhooks/w-1/deliveries?offset=10&limit=10");
+  });
 });

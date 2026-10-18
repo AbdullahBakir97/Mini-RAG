@@ -61,7 +61,7 @@ Phases are delivered in order, each as reviewed, tested pull requests. A phase i
 - [x] More formats: DOCX, Markdown and HTML, split by section.
 - [ ] OCR for scanned PDFs.
 - [ ] Connectors: website crawler, GitHub, Notion, Google Drive, RSS, with scheduled incremental sync.
-- [ ] Signed outgoing webhooks for automation tools such as n8n, Make and Zapier.
+- [x] Signed outgoing webhooks for automation tools such as n8n, Make and Zapier.
 - [ ] Telegram, Slack and WhatsApp bots.
 
 ### Phase 5: Agents
