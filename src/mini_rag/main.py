@@ -36,6 +36,7 @@ from mini_rag.persistence.database import (
 )
 from mini_rag.persistence.repositories import unit_of_work_factory
 from mini_rag.rerankers.factory import create_reranker
+from mini_rag.scanners.factory import create_scanner
 from mini_rag.services.job_runner import JobRunner
 from mini_rag.services.webhook_dispatcher import WebhookDispatcher
 from mini_rag.storage.file_storage import FileStorage
@@ -69,6 +70,7 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
         app.state.embedder = embedder = create_embedder(settings)
         app.state.llm = llm = create_llm(settings)
         app.state.reranker = reranker = create_reranker(settings)
+        app.state.scanner = scanner = create_scanner(settings)
         sender = create_webhook_sender(settings)
         workers: list[asyncio.Task] = []
         try:
@@ -96,6 +98,8 @@ def _lifespan(settings: Settings) -> Callable[[FastAPI], AbstractAsyncContextMan
                 await llm.aclose()
             if reranker is not None:
                 await reranker.aclose()
+            if scanner is not None:
+                await scanner.aclose()
             await engine.dispose()
 
     return lifespan

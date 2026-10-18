@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -7,15 +8,20 @@ import aiofiles
 
 from mini_rag.core.errors import (
     AppError,
+    FileContentMismatch,
+    FileInfected,
     FileTooLarge,
     UnsupportedFileType,
     UploadFailed,
 )
-from mini_rag.domain.file_types import content_type_for
+from mini_rag.domain.file_types import HEAD_BYTES, content_mismatch, content_type_for
+from mini_rag.domain.malware_scanner import MalwareScanner
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.services.limit_service import check_storage
 from mini_rag.services.webhook_service import emit
 from mini_rag.storage.file_storage import FileStorage
+
+logger = logging.getLogger(__name__)
 
 
 class AsyncReadable(Protocol):
@@ -35,14 +41,19 @@ class Upload:
 class UploadService:
 
     def __init__(self, storage: FileStorage, uow: UnitOfWork, allowed_types: list[str],
-                 max_bytes: int, read_size: int, storage_left: int | None = None):
-        """``storage_left`` is how many bytes the tenant may still store; None is unlimited."""
+                 max_bytes: int, read_size: int, storage_left: int | None = None,
+                 scanner: MalwareScanner | None = None):
+        """``storage_left`` is how many bytes the tenant may still store; None is unlimited.
+
+        With a ``scanner``, every new file is scanned for malware before it is kept.
+        """
         self.storage = storage
         self.uow = uow
         self.allowed_types = set(allowed_types)
         self.max_bytes = max_bytes
         self.read_size = read_size
         self.storage_left = storage_left
+        self.scanner = scanner
 
     async def save(self, project_name: str, filename: str, content_type: str | None,
                    stream: AsyncReadable, declared_size: int | None = None) -> Upload:
@@ -55,7 +66,10 @@ class UploadService:
         disagree and a failed upload leaves nothing behind. Content the
         project already has is not stored again: the existing file is
         returned, marked as a duplicate. A missing or generic content type
-        is taken from the file's extension.
+        is taken from the file's extension, and the content must fit the
+        type (FileContentMismatch). New content is scanned for malware when
+        there is a scanner (FileInfected, or MalwareScanFailed when it
+        cannot be scanned).
         """
         content_type = content_type_for(filename, content_type)
         if content_type not in self.allowed_types:
@@ -67,11 +81,14 @@ class UploadService:
         file_id, path = self.storage.reserve_file(project.folder, filename)
         completed = False
         try:
-            size, digest = await self._copy(stream, path)
+            size, digest, head = await self._copy(stream, path)
+            if mismatch := content_mismatch(content_type, head):
+                raise FileContentMismatch(f"{filename}: {mismatch}")
             existing = await self.uow.files.get_by_content(project.id, digest)
             if existing is None:
-                # Content already stored costs nothing more.
+                # Content already stored costs nothing more, and was scanned then.
                 check_storage(self.storage_left, size)
+                await self._scan(path, project_name, filename)
             record = existing is None and await self.uow.files.add(
                 project_id=project.id, key=file_id, original_name=filename,
                 content_type=content_type, size_bytes=size, content_sha256=digest)
@@ -96,15 +113,26 @@ class UploadService:
             if not completed:
                 path.unlink(missing_ok=True)
 
-    async def _copy(self, stream: AsyncReadable, path: Path) -> tuple[int, str]:
-        """Stream into ``path``; returns the number of bytes written and their SHA-256."""
+    async def _copy(self, stream: AsyncReadable, path: Path) -> tuple[int, str, bytes]:
+        """Stream into ``path``; returns the bytes written, their SHA-256 and the first ones."""
         written = 0
         digest = hashlib.sha256()
+        head = b""
         async with aiofiles.open(path, "wb") as out:
             while chunk := await stream.read(self.read_size):
                 written += len(chunk)
                 if written > self.max_bytes:
                     raise FileTooLarge()
                 digest.update(chunk)
+                if len(head) < HEAD_BYTES:
+                    head += chunk[:HEAD_BYTES - len(head)]
                 await out.write(chunk)
-        return written, digest.hexdigest()
+        return written, digest.hexdigest(), head
+
+    async def _scan(self, path: Path, project_name: str, filename: str) -> None:
+        if self.scanner is None:
+            return
+        if found := await self.scanner.scan(path):
+            logger.warning("Upload of %s to %s refused: the scanner found %s",
+                           filename, project_name, found)
+            raise FileInfected(f"{filename}: {found}")

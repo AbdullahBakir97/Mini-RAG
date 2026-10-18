@@ -149,7 +149,7 @@ def get_file_storage(settings: SettingsDep) -> FileStorage:
 FileStorageDep = Annotated[FileStorage, Depends(get_file_storage)]
 
 
-async def get_upload_service(storage: FileStorageDep, uow: UnitOfWorkDep,
+async def get_upload_service(request: Request, storage: FileStorageDep, uow: UnitOfWorkDep,
                              settings: SettingsDep, principal: PrincipalDep,
                              limits: LimitServiceDep) -> UploadService:
     return UploadService(
@@ -159,6 +159,7 @@ async def get_upload_service(storage: FileStorageDep, uow: UnitOfWorkDep,
         max_bytes=settings.max_upload_bytes,
         read_size=settings.FILE_DEFAULT_CHUNK_SIZE,
         storage_left=await limits.storage_left(principal.tenant_id),
+        scanner=request.app.state.scanner,
     )
 
 

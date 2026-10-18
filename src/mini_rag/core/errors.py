@@ -27,6 +27,27 @@ class UnsupportedFileType(AppError):
     status_code = HTTPStatus.UNSUPPORTED_MEDIA_TYPE
 
 
+class FileContentMismatch(AppError):
+    """The file's content is not of its type; the message says what it is instead."""
+
+    signal = ResponseSignal.FILE_CONTENT_MISMATCH
+    status_code = HTTPStatus.UNSUPPORTED_MEDIA_TYPE
+
+
+class FileInfected(AppError):
+    """The malware scanner found malware in the file; the message names it."""
+
+    signal = ResponseSignal.FILE_INFECTED
+    status_code = HTTPStatus.UNPROCESSABLE_ENTITY
+
+
+class MalwareScanFailed(AppError):
+    """The file could not be scanned, so it is not kept: the scanner is down or refused it."""
+
+    signal = ResponseSignal.MALWARE_SCAN_FAILED
+    status_code = HTTPStatus.SERVICE_UNAVAILABLE
+
+
 class FileTooLarge(AppError):
     signal = ResponseSignal.FILE_SIZE_EXCEEDED
     status_code = HTTPStatus.REQUEST_ENTITY_TOO_LARGE

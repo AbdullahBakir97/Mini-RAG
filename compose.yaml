@@ -2,6 +2,8 @@
 #   web app on http://localhost:3000, API on http://localhost:8000
 #   (other ports: set WEB_PORT, API_PORT or DB_PORT in .env)
 # Only the database, to run the API with uvicorn: docker compose up -d db
+# With malware scanning of uploads: docker compose --profile scan up --build,
+#   and CLAMAV_URL=tcp://clamav:3310 in .env
 # Settings are read from .env (copy .env.example first).
 services:
   db:
@@ -45,6 +47,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  clamav:
+    # ClamAV's daemon, for scanning uploads (CLAMAV_URL). Started only with
+    # --profile scan; it downloads its signatures on start and needs about
+    # 1.5 GB of memory.
+    image: clamav/clamav:1.4
+    profiles: ["scan"]
+    volumes:
+      - clamav-db:/var/lib/clamav
+    restart: unless-stopped
+
   web:
     # The web interface; it forwards /api to the app service.
     build: ./frontend
@@ -57,5 +69,6 @@ services:
     restart: unless-stopped
 
 volumes:
+  clamav-db:
   db-data:
   files:

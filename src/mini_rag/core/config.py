@@ -106,6 +106,10 @@ class Settings(BaseSettings):
     WEBHOOK_ALLOW_PRIVATE_URLS: bool = Field(
         default=False, description="Let webhooks reach localhost and private networks, e.g. "
                                    "n8n next to the API; off, only public addresses")
+    # Uploads are scanned by ClamAV's daemon when its address is set, e.g.
+    # tcp://clamav:3310; a file that cannot be scanned is refused.
+    CLAMAV_URL: str | None = Field(default=None, pattern=r"^tcp://[^/:]+:\d+$")
+    CLAMAV_TIMEOUT_SECONDS: float = Field(default=60, gt=0, le=600)
     WEBHOOK_TIMEOUT_SECONDS: float = Field(
         default=10, gt=0, le=60, description="How long a webhook's receiver has to answer")
 
