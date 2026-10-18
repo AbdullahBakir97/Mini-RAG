@@ -8,17 +8,20 @@ The code is split into layers. Each layer only depends on the layers below it, a
 api          routes, request/response schemas, dependency wiring, error handler
  │
 services     UploadService, ProcessingService, ProjectService, IndexingService, SearchService,
-             AnswerService, ConversationService
+             AnswerService, ConversationService, EvaluationService
  │
-persistence · embeddings · llm · prompts · storage · loaders · text
+persistence · embeddings · llm · prompts · evaluation · storage · loaders · text
              PostgreSQL + pgvector repositories · embedding client · chat model client ·
-             versioned prompts · files on disk · one loader per file type · text splitter
+             versioned prompts · datasets and metrics · files on disk ·
+             one loader per file type · text splitter
  │
 domain       Document, Chunk, Project, FileRecord, ScoredChunk, Message, Conversation, repository,
              Embedder and LLM interfaces, response signals
 ```
 
 Services depend on the repository **interfaces** in `domain/repositories.py` (`ProjectRepository`, `FileRepository`, `ChunkRepository`, `AnswerRepository`, `ConversationRepository` and a `UnitOfWork` that shares one transaction), never on SQLAlchemy. `persistence/` implements them; the API wires the implementation in, and unit tests swap in in-memory fakes. Embeddings work the same way: services use the `Embedder` interface in `domain/embedder.py`, `embeddings/` implements it with the OpenAI SDK, and tests use a deterministic fake, so no test needs the network. Language models follow the same pattern: services use the `LLM` interface in `domain/llm.py`, `llm/` implements it with the OpenAI chat completions API, and tests use `FakeLLM`.
+
+`cli.py` wires the same pieces together for the `mini-rag` command, as `api` does for HTTP: `mini-rag eval` runs a dataset through the real services (see [Evaluation](evaluation.md)), and `evaluation` itself holds only datasets, metrics and reports, depending on nothing but `domain`.
 
 `core` holds settings, the `AppError` hierarchy and logging setup; `api`, `services`, `persistence`, `embeddings`, `llm`, `storage` and `loaders` may use it. `text` and `domain` depend on nothing, and `prompts` only on `domain`, so they stay reusable on their own. Only `api` may import FastAPI, only `persistence` (and the API, which wires it up) may import SQLAlchemy or pgvector, and only `embeddings` and `llm` may import the OpenAI SDK.
 
@@ -59,17 +62,19 @@ Nothing else changes: the processing service and the API pick it up automaticall
 Mini-RAG/
 ├── .github/                  # CI, Dependabot, contributing, conduct and security policies
 ├── docs/                     # This documentation
+├── evals/                    # Versioned evaluation datasets and their baselines (see evaluation.md)
 ├── src/mini_rag/
 │   ├── main.py               # create_app(): routers, error handler, lifespan
-│   ├── cli.py                # The mini-rag command: resize-embeddings
+│   ├── cli.py                # The mini-rag command: resize-embeddings, eval
 │   ├── core/                 # Settings, application errors, logging setup
 │   ├── api/                  # Routes, schemas, dependency wiring, error handler
-│   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers, conversations
+│   ├── services/             # Use cases: upload, processing, project queries, indexing, search, answers, conversations, evaluation
 │   ├── persistence/          # SQLAlchemy tables, engine, repositories (with pgvector)
 │   │   └── migrations/       # Alembic migrations
 │   ├── embeddings/           # Embedding client for OpenAI-compatible APIs
 │   ├── llm/                  # Chat model client for OpenAI-compatible APIs
 │   ├── prompts/              # Versioned prompts
+│   ├── evaluation/           # Evaluation datasets, retrieval metrics, reports and baselines
 │   ├── storage/              # File storage and path safety
 │   ├── loaders/              # One loader per file type, chosen by extension
 │   ├── text/                 # Recursive text splitter

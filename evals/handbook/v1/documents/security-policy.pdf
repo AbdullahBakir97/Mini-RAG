@@ -1,0 +1,43 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1543 >>
+stream
+BT /F1 12 Tf 72 720 Td 14 TL (Security policy) Tj T* ( ) Tj T* (This policy applies to everyone who works for Larkspur Labs, including) Tj T* (contractors.) Tj T* ( ) Tj T* (Accounts and passwords) Tj T* ( ) Tj T* (Every account uses a unique password of at least 14 characters, stored in the) Tj T* (company password manager. Passwords are never shared, not even with IT or your) Tj T* (manager. Multi-factor authentication is required for every company account;) Tj T* (use the authenticator app or a hardware security key, never text messages.) Tj T* ( ) Tj T* (If you think a password has leaked, change it immediately and tell the) Tj T* (security team in the security channel.) Tj T* ( ) Tj T* (Devices) Tj T* ( ) Tj T* (Company laptops must have disk encryption switched on, the screen must lock) Tj T* (after five minutes without activity, and operating system updates must be) Tj T* (installed within seven days of their release. Laptops that miss updates for) Tj T* (longer are blocked from company systems until they are updated.) Tj T* ( ) Tj T* (Personal phones may be used for email and chat if they have a screen lock and) Tj T* (are enrolled in the device management app. Customer data must never be stored) Tj T* (on a personal device.) Tj T* ( ) Tj T* (Lost or stolen devices) Tj T* ( ) Tj T* (Report a lost or stolen laptop or phone to the security team within one hour,) Tj T* (at any time of day, through the security hotline. The device is wiped) Tj T* (remotely; reporting quickly matters more than finding it.) Tj T* ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 1441 >>
+stream
+BT /F1 12 Tf 72 720 Td 14 TL (Data classification) Tj T* ( ) Tj T* (Data at Larkspur Labs belongs to one of three classes. Public data may be) Tj T* (shared with anyone. Internal data may be shared with colleagues and) Tj T* (contractors under contract. Confidential data, which includes all customer) Tj T* (data and personal data about employees, is shared only with people who need it) Tj T* (for their work.) Tj T* ( ) Tj T* (Confidential data is never pasted into external tools, including translation) Tj T* (sites and chat assistants that are not approved by the security team.) Tj T* ( ) Tj T* (Phishing) Tj T* ( ) Tj T* (Report suspicious emails with the report button in your email client rather) Tj T* (than forwarding them. The security team runs a phishing exercise every) Tj T* (quarter; clicking a test link is not punished, but it is followed by a short) Tj T* (training.) Tj T* ( ) Tj T* (Access reviews) Tj T* ( ) Tj T* (Managers review the access of their team members every quarter and remove) Tj T* (access that is no longer needed. When someone leaves the company, all of their) Tj T* (access is removed on their last working day.) Tj T* ( ) Tj T* (Reporting vulnerabilities) Tj T* ( ) Tj T* (If you find a security weakness in our product, report it to the security team) Tj T* (rather than testing it further. External researchers can report) Tj T* (vulnerabilities through the security page on our website.) Tj T* ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000191 00000 n 
+0000000317 00000 n 
+0000001912 00000 n 
+0000002038 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+3531
+%%EOF

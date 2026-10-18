@@ -1,0 +1,27 @@
+Onboarding at Larkspur Labs
+
+Welcome to Larkspur Labs. This guide covers your first two weeks: the accounts you need, the equipment you receive, the people who help you settle in and the small change every new engineer ships before the end of the second week.
+
+Before your first day
+
+Your laptop is shipped to your home address five working days before you start. It arrives with the operating system installed and disk encryption already switched on. Do not sign in with a personal account; the setup assistant asks for your company email, which IT creates two days before your start date and sends to your personal address together with a temporary password.
+
+Day one
+
+On your first morning you meet your manager for a thirty-minute welcome call. In the afternoon, request access to the code repository, the staging environment, the shared drive and the on-call calendar through the access portal. Your manager approves access requests within one working day; requests for production access additionally need approval from the security team and take up to three working days.
+
+Your onboarding buddy
+
+Every new team member is paired with an onboarding buddy from a neighbouring team. Your buddy is your first contact for questions you might not want to ask in a channel: where a document lives, who owns a service, how a meeting usually runs. Buddies meet you twice in the first week and once a week for the following month.
+
+The first change
+
+By the end of your second week you ship one small change to production with the help of your buddy. It is usually a documentation fix, a log message or a small test. The point is not the change itself but walking through the whole path once: branch, review, build, deploy and verify.
+
+Equipment
+
+Besides the laptop you may order one external monitor, a keyboard, a mouse and a headset from the equipment catalogue during your first month. Equipment ordered through the catalogue is paid by the company directly and does not count against the home office allowance described in the remote work guide.
+
+Learning the systems
+
+Read the architecture overview in the engineering wiki during your first week, and attend the weekly systems tour on Thursdays, where an engineer walks through one service in depth. Recordings of earlier tours are in the shared drive under Engineering / Systems tours.
