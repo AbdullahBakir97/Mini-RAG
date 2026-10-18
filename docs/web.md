@@ -15,6 +15,8 @@ The web app in `frontend/` is the interface for people: create projects, upload 
 | **Webhooks** | Add a URL that gets the project's events (uploads, deletions, finished jobs), shown its signing secret once with a button to copy it; send a ping; and see each webhook's recent deliveries: delivered, waiting to try again (and when), or failed, with the receiver's answer. How to check a signature is explained on the page. |
 | **Usage** | Questions asked, how many were answered, tokens and cost for the project, and the rated answers: how many were good and bad, each with its question, the note on it and a link to its conversation. |
 
+When the server requires API keys (`AUTH_ENABLED=true`), the app asks for one, keeps it in the browser, and shows the tenant it signed in to, with a button to sign out. A refused key brings the question back.
+
 When chunks are not indexed yet, for example because no embedding model was configured during the upload, a banner offers to index them. The sidebar shows whether the API and the database are reachable.
 
 The first question on the Ask page starts a conversation, which the server keeps: its address (`/projects/<name>/ask/<conversation id>`) can be reloaded or shared with anyone using the same server, and the Ask tab returns to the conversation last open.

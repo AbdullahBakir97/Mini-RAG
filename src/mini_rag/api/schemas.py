@@ -459,3 +459,35 @@ class DeliveryListResponse(BaseModel):
     limit: int
     items: list[DeliveryResponse]
 
+
+KeyIdPath = Annotated[UUID, Path(description="The API key's id.")]
+
+
+class ApiKeyRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100, description="What the key is for.")
+    scopes: list[Literal["read", "write", "ask", "admin"]] = Field(
+        min_length=1, description="read: list and search; write: upload, process, index and "
+                                  "delete; ask: questions and conversations; admin: keys and "
+                                  "webhooks.")
+
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    name: str
+    prefix: str = Field(description="The start of the key, to recognise it.")
+    scopes: list[str]
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+
+
+class ApiKeyCreatedResponse(ApiKeyResponse):
+    key: str = Field(description="The key itself: shown only now, so keep it safe.")
+
+
+class MeResponse(BaseModel):
+    tenant: str
+    scopes: list[str]
+    key_id: str | None = Field(description="Null when authentication is off.")
+    auth_enabled: bool
+

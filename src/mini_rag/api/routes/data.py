@@ -1,6 +1,6 @@
 from fastapi import APIRouter, UploadFile
 
-from mini_rag.api.dependencies import ProcessingServiceDep, UploadServiceDep
+from mini_rag.api.dependencies import WRITE, ProcessingServiceDep, UploadServiceDep
 from mini_rag.api.schemas import (
     ProcessRequest,
     ProcessResponse,
@@ -18,7 +18,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.signals import ResponseSignal
 
-router = APIRouter(prefix="/api/v1/data", tags=["data"])
+router = APIRouter(prefix="/api/v1/data", tags=["data"], dependencies=[WRITE])
 
 
 @router.post(

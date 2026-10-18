@@ -3,7 +3,7 @@ import asyncio
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.runtime.migration import MigrationContext
-from sqlalchemy import inspect
+from sqlalchemy import inspect, text
 
 from mini_rag.persistence.database import create_engine
 from mini_rag.persistence.tables import Base
@@ -40,6 +40,27 @@ def test_downgrade_and_upgrade_round_trip(migrated_database):
         command.upgrade(config, "head")
 
     assert APP_TABLES <= run_on_connection(migrated_database, table_names)
+
+
+def test_projects_from_before_tenants_go_to_the_default_tenant(db):
+    config = alembic_config(db)
+
+    def execute(sql):
+        def run(connection):
+            rows = connection.execute(text(sql))
+            connection.commit()
+            return rows.all() if rows.returns_rows else None
+        return run_on_connection(db, run)
+
+    try:
+        command.downgrade(config, "0009")
+        execute("INSERT INTO projects (name) VALUES ('legacy')")
+        command.upgrade(config, "head")
+
+        assert execute("SELECT t.name, p.name, p.storage_name FROM projects p "
+                       "JOIN tenants t ON t.id = p.tenant_id") == [("default", "legacy", "legacy")]
+    finally:
+        command.upgrade(config, "head")
 
 
 def test_models_and_migrations_are_in_sync(migrated_database):

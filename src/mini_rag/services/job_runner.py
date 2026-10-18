@@ -33,7 +33,7 @@ class JobRunner:
     repeats); one caused by the file fails the job at once.
     """
 
-    def __init__(self, unit_of_work: Callable[[], AbstractAsyncContextManager[UnitOfWork]],
+    def __init__(self, unit_of_work: Callable[..., AbstractAsyncContextManager[UnitOfWork]],
                  storage: FileStorage, loaders: LoaderRegistry, embedder: Embedder | None,
                  batch_size: int, *, lease_seconds: int = 300, poll_seconds: float = 1.0,
                  retry_delays: Sequence[float] = (10, 60, 300)):
@@ -78,7 +78,8 @@ class JobRunner:
         return True
 
     async def _run(self, job: Job) -> None:
-        async with self.unit_of_work() as uow:
+        # Acting for the job's tenant, its project is found by name among that tenant's.
+        async with self.unit_of_work(job.tenant_id) as uow:
             try:
                 chunks = await ProcessingService(self.storage, self.loaders, uow).process(
                     job.project_name, job.file_key, job.chunk_size, job.overlap_size)

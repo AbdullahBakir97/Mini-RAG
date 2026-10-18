@@ -61,7 +61,7 @@ class UploadService:
             raise FileTooLarge()
 
         project = await self.uow.projects.get_or_create(project_name)
-        file_id, path = self.storage.reserve_file(project_name, filename)
+        file_id, path = self.storage.reserve_file(project.folder, filename)
         completed = False
         try:
             size, digest = await self._copy(stream, path)

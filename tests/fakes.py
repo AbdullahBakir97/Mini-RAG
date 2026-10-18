@@ -18,6 +18,7 @@ from mini_rag.core.errors import EmbeddingFailed, LLMFailed
 from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.domain.models import (
     AnswerRecord,
+    ApiKey,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -29,6 +30,7 @@ from mini_rag.domain.models import (
     RatedAnswer,
     ScoredChunk,
     SearchFilters,
+    Tenant,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -48,7 +50,8 @@ class FakeProjects:
 
     async def get_or_create(self, name: str) -> Project:
         if name not in self.by_name:
-            self.by_name[name] = Project(id=next(self._ids), name=name, created_at=datetime.now(UTC))
+            self.by_name[name] = Project(id=next(self._ids), name=name, created_at=datetime.now(UTC),
+                                         tenant_id=1, storage_name=name)
         return self.by_name[name]
 
     async def list_all(self, *, offset: int, limit: int) -> list[Project]:
@@ -443,6 +446,59 @@ class FakeWebhooks:
         return len([d for d in self.deliveries.values() if d.webhook_id == webhook_id])
 
 
+class FakeTenants:
+
+    def __init__(self):
+        self.by_name: dict[str, Tenant] = {}
+        self._ids = count(1)
+
+    async def get_by_name(self, name: str) -> Tenant | None:
+        return self.by_name.get(name)
+
+    async def get_by_id(self, tenant_id: int) -> Tenant | None:
+        return next((t for t in self.by_name.values() if t.id == tenant_id), None)
+
+    async def get_or_create(self, name: str) -> Tenant:
+        if name not in self.by_name:
+            self.by_name[name] = Tenant(id=next(self._ids), name=name, created_at=datetime.now(UTC))
+        return self.by_name[name]
+
+    async def list_all(self) -> list[Tenant]:
+        return [self.by_name[name] for name in sorted(self.by_name)]
+
+
+class FakeApiKeys:
+
+    def __init__(self):
+        self.by_hash: dict[str, ApiKey] = {}
+
+    async def create(self, *, tenant_id, name, prefix, key_hash, scopes) -> ApiKey:
+        key = ApiKey(id=str(uuid.uuid4()), tenant_id=tenant_id, name=name, prefix=prefix,
+                     scopes=tuple(scopes), created_at=datetime.now(UTC))
+        self.by_hash[key_hash] = key
+        return key
+
+    async def find_active(self, key_hash: str) -> ApiKey | None:
+        key = self.by_hash.get(key_hash)
+        return key if key and key.revoked_at is None else None
+
+    async def list_for_tenant(self, tenant_id: int) -> list[ApiKey]:
+        return sorted((k for k in self.by_hash.values() if k.tenant_id == tenant_id),
+                      key=lambda k: k.created_at, reverse=True)
+
+    async def revoke(self, tenant_id: int, key_id: str) -> bool:
+        for key_hash, key in self.by_hash.items():
+            if key.id == key_id and key.tenant_id == tenant_id and key.revoked_at is None:
+                self.by_hash[key_hash] = replace(key, revoked_at=datetime.now(UTC))
+                return True
+        return False
+
+    async def touch(self, key_id: str) -> None:
+        for key_hash, key in self.by_hash.items():
+            if key.id == key_id:
+                self.by_hash[key_hash] = replace(key, last_used_at=datetime.now(UTC))
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
@@ -453,6 +509,8 @@ class FakeUnitOfWork:
         self.conversations = FakeConversations()
         self.jobs = FakeJobs(self.projects, self.files)
         self.webhooks = FakeWebhooks()
+        self.tenants = FakeTenants()
+        self.api_keys = FakeApiKeys()
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 

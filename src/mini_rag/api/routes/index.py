@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from mini_rag.api.dependencies import IndexingServiceDep
+from mini_rag.api.dependencies import WRITE, IndexingServiceDep
 from mini_rag.api.schemas import IndexRequest, IndexResponse, ProjectId, error_responses
 from mini_rag.core.errors import (
     EmbeddingFailed,
@@ -10,7 +10,7 @@ from mini_rag.core.errors import (
 )
 from mini_rag.domain.signals import ResponseSignal
 
-router = APIRouter(prefix="/api/v1/index", tags=["index"])
+router = APIRouter(prefix="/api/v1/index", tags=["index"], dependencies=[WRITE])
 
 
 @router.post(

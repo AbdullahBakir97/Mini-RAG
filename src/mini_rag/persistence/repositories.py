@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
 from mini_rag.domain.models import (
+    DEFAULT_TENANT,
     AnswerRecord,
+    ApiKey,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -45,6 +47,7 @@ from mini_rag.domain.models import (
     ScoredChunk,
     SearchFilters,
     StoredCitation,
+    Tenant,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -54,19 +57,22 @@ from mini_rag.domain.models import (
 from .tables import (
     FULL_TEXT_CONFIG,
     AnswerRow,
+    ApiKeyRow,
     ChunkRow,
     ConversationMessageRow,
     ConversationRow,
     FileRow,
     JobRow,
     ProjectRow,
+    TenantRow,
     WebhookDeliveryRow,
     WebhookRow,
 )
 
 
 def _project(row: ProjectRow) -> Project:
-    return Project(id=row.id, name=row.name, created_at=row.created_at)
+    return Project(id=row.id, name=row.name, created_at=row.created_at,
+                   tenant_id=row.tenant_id, storage_name=row.storage_name)
 
 
 def _file(row: FileRow) -> FileRecord:
@@ -88,20 +94,39 @@ MIN_CANDIDATES = 20
 MAX_FETCHED = 200
 RRF_K = 60
 
-class SqlProjectRepository:
+def storage_name(tenant: Tenant, project_name: str) -> str:
+    """The project's folder: its name in the default tenant, else made unique with the tenant.
 
-    def __init__(self, session: AsyncSession):
+    Project names have no dots, so the two kinds never clash.
+    """
+    return project_name if tenant.name == DEFAULT_TENANT else f"{project_name}.t{tenant.id}"
+
+
+class SqlProjectRepository:
+    """Projects of one tenant; without one (workers), name lookups see every tenant."""
+
+    def __init__(self, session: AsyncSession, tenant_id: int | None = None):
         self.session = session
+        self.tenant_id = tenant_id
+
+    def _mine(self):
+        return [] if self.tenant_id is None else [ProjectRow.tenant_id == self.tenant_id]
 
     async def get_by_name(self, name: str) -> Project | None:
-        row = await self.session.scalar(select(ProjectRow).where(ProjectRow.name == name))
+        row = await self.session.scalar(
+            select(ProjectRow).where(ProjectRow.name == name, *self._mine()))
         return _project(row) if row else None
 
     async def get_or_create(self, name: str) -> Project:
+        if self.tenant_id is None:
+            raise RuntimeError("Projects can only be created for a tenant")
+        tenant = _tenant(await self.session.get(TenantRow, self.tenant_id))
         # INSERT ... ON CONFLICT DO NOTHING avoids a race between two
         # requests creating the same project.
         await self.session.execute(
-            pg_insert(ProjectRow).values(name=name).on_conflict_do_nothing(index_elements=["name"]))
+            pg_insert(ProjectRow)
+            .values(tenant_id=self.tenant_id, name=name, storage_name=storage_name(tenant, name))
+            .on_conflict_do_nothing(index_elements=["tenant_id", "name"]))
         project = await self.get_by_name(name)
         if project is None:  # only possible if it was deleted concurrently
             raise RuntimeError(f"Project {name!r} vanished while being created")
@@ -109,16 +134,95 @@ class SqlProjectRepository:
 
     async def list_all(self, *, offset: int, limit: int) -> list[Project]:
         rows = await self.session.scalars(
-            select(ProjectRow).order_by(ProjectRow.name).offset(offset).limit(limit))
+            select(ProjectRow).where(*self._mine())
+            .order_by(ProjectRow.name, ProjectRow.id).offset(offset).limit(limit))
         return [_project(row) for row in rows]
 
     async def count(self) -> int:
-        return await self.session.scalar(select(func.count()).select_from(ProjectRow))
+        return await self.session.scalar(
+            select(func.count()).select_from(ProjectRow).where(*self._mine()))
 
     async def delete(self, name: str) -> bool:
         # Files, chunks, answers and conversations go with it (ON DELETE CASCADE).
-        result = await self.session.execute(delete(ProjectRow).where(ProjectRow.name == name))
+        result = await self.session.execute(
+            delete(ProjectRow).where(ProjectRow.name == name, *self._mine()))
         return result.rowcount > 0
+
+
+def _tenant(row: TenantRow) -> Tenant:
+    return Tenant(id=row.id, name=row.name, created_at=row.created_at)
+
+
+class SqlTenantRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def get_by_name(self, name: str) -> Tenant | None:
+        row = await self.session.scalar(select(TenantRow).where(TenantRow.name == name))
+        return _tenant(row) if row else None
+
+    async def get_by_id(self, tenant_id: int) -> Tenant | None:
+        row = await self.session.get(TenantRow, tenant_id)
+        return _tenant(row) if row else None
+
+    async def get_or_create(self, name: str) -> Tenant:
+        await self.session.execute(
+            pg_insert(TenantRow).values(name=name).on_conflict_do_nothing(index_elements=["name"]))
+        return await self.get_by_name(name)
+
+    async def list_all(self) -> list[Tenant]:
+        rows = await self.session.scalars(select(TenantRow).order_by(TenantRow.name))
+        return [_tenant(row) for row in rows]
+
+
+def _api_key(row: ApiKeyRow) -> ApiKey:
+    return ApiKey(id=row.id, tenant_id=row.tenant_id, name=row.name, prefix=row.prefix,
+                  scopes=tuple(row.scopes), created_at=row.created_at,
+                  last_used_at=row.last_used_at, revoked_at=row.revoked_at)
+
+
+class SqlApiKeyRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def create(self, *, tenant_id: int, name: str, prefix: str, key_hash: str,
+                     scopes: Sequence[str]) -> ApiKey:
+        row = await self.session.scalar(
+            insert(ApiKeyRow).values(id=str(uuid.uuid4()), tenant_id=tenant_id, name=name,
+                                     prefix=prefix, key_hash=key_hash, scopes=list(scopes))
+            .returning(ApiKeyRow))
+        return _api_key(row)
+
+    async def find_active(self, key_hash: str) -> ApiKey | None:
+        row = await self.session.scalar(
+            select(ApiKeyRow).where(ApiKeyRow.key_hash == key_hash,
+                                    ApiKeyRow.revoked_at.is_(None)))
+        return _api_key(row) if row else None
+
+    async def list_for_tenant(self, tenant_id: int) -> list[ApiKey]:
+        rows = await self.session.scalars(
+            select(ApiKeyRow).where(ApiKeyRow.tenant_id == tenant_id)
+            .order_by(ApiKeyRow.created_at.desc(), ApiKeyRow.id))
+        return [_api_key(row) for row in rows]
+
+    async def revoke(self, tenant_id: int, key_id: str) -> bool:
+        result = await self.session.execute(
+            update(ApiKeyRow)
+            .where(ApiKeyRow.id == key_id, ApiKeyRow.tenant_id == tenant_id,
+                   ApiKeyRow.revoked_at.is_(None))
+            .values(revoked_at=func.now()))
+        return result.rowcount > 0
+
+    async def touch(self, key_id: str) -> None:
+        await self.session.execute(
+            update(ApiKeyRow)
+            .where(ApiKeyRow.id == key_id,
+                   or_(ApiKeyRow.last_used_at.is_(None),
+                       ApiKeyRow.last_used_at
+                       < func.now() - bindparam("minute", timedelta(minutes=1), type_=Interval)))
+            .values(last_used_at=func.now()))
 
 
 class SqlFileRepository:
@@ -524,13 +628,14 @@ class SqlConversationRepository:
         return conditions
 
 
-def _job(row: JobRow, project_name: str, file_key: str) -> Job:
+def _job(row: JobRow, project_name: str, file_key: str, tenant_id: int) -> Job:
     return Job(id=row.id, project_id=row.project_id, project_name=project_name,
                file_id=row.file_id, file_key=file_key, chunk_size=row.chunk_size,
                overlap_size=row.overlap_size, status=row.status, attempts=row.attempts,
                max_attempts=row.max_attempts, created_at=row.created_at, stage=row.stage,
                progress=row.progress, chunks_count=row.chunks_count,
-               error_signal=row.error_signal, started_at=row.started_at, finished_at=row.finished_at)
+               error_signal=row.error_signal, started_at=row.started_at,
+               finished_at=row.finished_at, tenant_id=tenant_id)
 
 
 def _lease(seconds: int):
@@ -543,7 +648,7 @@ class SqlJobRepository:
         self.session = session
 
     def _select(self):
-        return (select(JobRow, ProjectRow.name, FileRow.key)
+        return (select(JobRow, ProjectRow.name, FileRow.key, ProjectRow.tenant_id)
                 .join(ProjectRow, ProjectRow.id == JobRow.project_id)
                 .join(FileRow, FileRow.id == JobRow.file_id))
 
@@ -763,15 +868,19 @@ class SqlWebhookRepository:
 
 class SqlUnitOfWork:
 
-    def __init__(self, session: AsyncSession):
+    def __init__(self, session: AsyncSession, tenant_id: int | None = None):
+        """``tenant_id`` limits projects to that tenant's; workers act for any."""
         self.session = session
-        self.projects = SqlProjectRepository(session)
+        self.tenant_id = tenant_id
+        self.projects = SqlProjectRepository(session, tenant_id)
         self.files = SqlFileRepository(session)
         self.chunks = SqlChunkRepository(session)
         self.answers = SqlAnswerRepository(session)
         self.conversations = SqlConversationRepository(session)
         self.jobs = SqlJobRepository(session)
         self.webhooks = SqlWebhookRepository(session)
+        self.tenants = SqlTenantRepository(session)
+        self.api_keys = SqlApiKeyRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()
@@ -782,13 +891,16 @@ class SqlUnitOfWork:
 
 def unit_of_work_factory(
         session_factory: async_sessionmaker[AsyncSession],
-) -> Callable[[], AbstractAsyncContextManager[SqlUnitOfWork]]:
-    """Opens a unit of work on a new session, closed (and rolled back if uncommitted) after."""
+) -> Callable[..., AbstractAsyncContextManager[SqlUnitOfWork]]:
+    """Opens a unit of work on a new session, closed (and rolled back if uncommitted) after.
+
+    Called with a tenant id, it acts for that tenant.
+    """
 
     @asynccontextmanager
-    async def unit_of_work() -> AsyncIterator[SqlUnitOfWork]:
+    async def unit_of_work(tenant_id: int | None = None) -> AsyncIterator[SqlUnitOfWork]:
         async with session_factory() as session:
-            yield SqlUnitOfWork(session)
+            yield SqlUnitOfWork(session, tenant_id)
 
     return unit_of_work
 

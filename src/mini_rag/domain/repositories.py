@@ -10,6 +10,7 @@ from typing import Any, Protocol
 
 from .models import (
     AnswerRecord,
+    ApiKey,
     Chunk,
     Conversation,
     ConversationMessage,
@@ -23,6 +24,7 @@ from .models import (
     RatedAnswer,
     ScoredChunk,
     SearchFilters,
+    Tenant,
     UnembeddedChunk,
     UsageTotals,
     Webhook,
@@ -30,7 +32,43 @@ from .models import (
 )
 
 
+class TenantRepository(Protocol):
+
+    async def get_by_name(self, name: str) -> Tenant | None: ...
+
+    async def get_by_id(self, tenant_id: int) -> Tenant | None: ...
+
+    async def get_or_create(self, name: str) -> Tenant: ...
+
+    async def list_all(self) -> list[Tenant]:
+        """In name order."""
+        ...
+
+
+class ApiKeyRepository(Protocol):
+
+    async def create(self, *, tenant_id: int, name: str, prefix: str, key_hash: str,
+                     scopes: Sequence[str]) -> ApiKey: ...
+
+    async def find_active(self, key_hash: str) -> ApiKey | None:
+        """The key with this hash, unless it was revoked."""
+        ...
+
+    async def list_for_tenant(self, tenant_id: int) -> list[ApiKey]:
+        """Newest first, revoked ones included."""
+        ...
+
+    async def revoke(self, tenant_id: int, key_id: str) -> bool:
+        """Revoke the tenant's key; False when it has none with that id (or it was revoked)."""
+        ...
+
+    async def touch(self, key_id: str) -> None:
+        """Note that the key was used, at most once a minute."""
+        ...
+
+
 class ProjectRepository(Protocol):
+    """The projects of the tenant the unit of work acts for."""
 
     async def get_by_name(self, name: str) -> Project | None: ...
 
@@ -288,6 +326,8 @@ class UnitOfWork(Protocol):
     conversations: ConversationRepository
     jobs: JobRepository
     webhooks: WebhookRepository
+    tenants: TenantRepository
+    api_keys: ApiKeyRepository
 
     async def commit(self) -> None: ...
 

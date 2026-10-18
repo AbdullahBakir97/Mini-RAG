@@ -4,17 +4,20 @@ from collections.abc import AsyncIterator
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, Security
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from mini_rag.core.config import Settings, get_settings
-from mini_rag.core.errors import EmbeddingNotConfigured, LLMNotConfigured
+from mini_rag.core.errors import EmbeddingNotConfigured, LLMNotConfigured, ScopeMissing
 from mini_rag.domain.embedder import Embedder
 from mini_rag.domain.llm import LLM
+from mini_rag.domain.models import Principal, Scope
 from mini_rag.domain.repositories import UnitOfWork
 from mini_rag.loaders.registry import LoaderRegistry, default_loader_registry
 from mini_rag.persistence.repositories import SqlUnitOfWork
 from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.auth_service import AuthService
 from mini_rag.services.conversation_service import ConversationService
 from mini_rag.services.deletion_service import DeletionService
 from mini_rag.services.indexing_service import IndexingService
@@ -51,11 +54,54 @@ async def get_session(
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
 
 
-def get_unit_of_work(session: SessionDep) -> UnitOfWork:
-    return SqlUnitOfWork(session)
+# Both appear in the OpenAPI schema, so /docs and generated clients know how to send a key.
+bearer = HTTPBearer(auto_error=False, description="An API key: `Authorization: Bearer mrag_…`")
+key_header = APIKeyHeader(name="X-API-Key", auto_error=False,
+                          description="An API key, for clients that cannot set Authorization")
+
+
+async def get_principal(
+    session: SessionDep, settings: SettingsDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Security(bearer)],
+    header_key: Annotated[str | None, Security(key_header)],
+) -> Principal:
+    """Who the request acts for: the API key's tenant, or the default tenant when auth is off."""
+    service = AuthService(SqlUnitOfWork(session))
+    if not settings.AUTH_ENABLED:
+        return await service.anonymous()
+    return await service.authenticate(credentials.credentials if credentials else header_key)
+
+
+PrincipalDep = Annotated[Principal, Depends(get_principal)]
+
+
+def require(scope: Scope):
+    """A route dependency that lets only keys with ``scope`` through (403 otherwise)."""
+
+    def check(principal: PrincipalDep) -> Principal:
+        if scope not in principal.scopes:
+            raise ScopeMissing(f"This needs an API key with the {scope} scope")
+        return principal
+
+    return Depends(check)
+
+
+READ, WRITE, ASK, ADMIN = require("read"), require("write"), require("ask"), require("admin")
+
+
+def get_unit_of_work(session: SessionDep, principal: PrincipalDep) -> UnitOfWork:
+    """Repositories for the request's tenant: other tenants' projects do not exist for it."""
+    return SqlUnitOfWork(session, principal.tenant_id)
 
 
 UnitOfWorkDep = Annotated[UnitOfWork, Depends(get_unit_of_work)]
+
+
+def get_auth_service(session: SessionDep) -> AuthService:
+    return AuthService(SqlUnitOfWork(session))
+
+
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 
 def get_file_storage(settings: SettingsDep) -> FileStorage:

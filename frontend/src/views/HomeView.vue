@@ -2,7 +2,7 @@
 import { ArrowRight, FileText, FolderPlus, MessageSquareText, Plus, Sparkles, Upload } from "@lucide/vue";
 import { onMounted, ref, watch } from "vue";
 
-import { api } from "@/api/client";
+import { ApiError, api } from "@/api/client";
 import type { Project } from "@/api/types";
 import NewProjectDialog from "@/components/NewProjectDialog.vue";
 import PageHeader from "@/components/PageHeader.vue";
@@ -40,7 +40,7 @@ const steps = [
     </PageHeader>
 
     <div v-if="error" class="alert alert-danger">
-      <span>{{ signalMessage("network_error") }}</span>
+      <span>{{ error instanceof ApiError ? error.message : signalMessage("network_error") }}</span>
     </div>
 
     <div v-if="!loaded" class="grid">

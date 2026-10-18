@@ -16,6 +16,7 @@ from mini_rag.api.routes import (
     data,
     index,
     jobs,
+    keys,
     projects,
     search,
     webhooks,
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(index.router)
     app.include_router(jobs.router)
     app.include_router(webhooks.router)
+    app.include_router(keys.router)
     app.include_router(search.router)
     app.include_router(ask.router)
     app.include_router(conversations.router)

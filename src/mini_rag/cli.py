@@ -7,12 +7,14 @@ import re
 import shutil
 import sys
 import tempfile
+import uuid
 from datetime import date
 from pathlib import Path
 
 from mini_rag.core.config import Settings, get_settings
 from mini_rag.core.errors import AppError
 from mini_rag.core.logging_config import configure_logging
+from mini_rag.domain.models import DEFAULT_TENANT, SCOPES
 from mini_rag.embeddings.factory import create_embedder
 from mini_rag.evaluation.dataset import Dataset, DatasetError, load_dataset
 from mini_rag.evaluation.report import (
@@ -32,9 +34,14 @@ from mini_rag.persistence.database import (
     resize_embeddings,
     stored_embedding_dimensions,
 )
-from mini_rag.persistence.repositories import SqlUnitOfWork, unit_of_work_factory
+from mini_rag.persistence.repositories import (
+    SqlTenantRepository,
+    SqlUnitOfWork,
+    unit_of_work_factory,
+)
 from mini_rag.rerankers.factory import create_reranker
 from mini_rag.services.answer_service import AnswerService
+from mini_rag.services.auth_service import AuthService
 from mini_rag.services.evaluation_service import (
     AnswerSettings,
     EvaluationService,
@@ -102,7 +109,10 @@ async def _run(settings: Settings, args: argparse.Namespace, dataset: Dataset) -
         # The documents' files only live as long as the run.
         with tempfile.TemporaryDirectory(prefix="mini-rag-eval-") as files:
             async with create_session_factory(engine)() as session:
-                uow = SqlUnitOfWork(session)
+                # Evaluations run in the default tenant, apart from its projects by name.
+                tenant = await SqlTenantRepository(session).get_or_create(DEFAULT_TENANT)
+                await session.commit()
+                uow = SqlUnitOfWork(session, tenant.id)
                 storage = FileStorage(root=Path(files))
                 search = SearchService(uow=uow, embedder=embedder,
                                        mode=parameters["search_mode"], reranker=reranker,
@@ -342,7 +352,14 @@ async def _export_feedback(args: argparse.Namespace) -> int:
     engine = create_engine(settings.DATABASE_URL)
     try:
         async with create_session_factory(engine)() as session:
-            service = FeedbackExportService(uow=SqlUnitOfWork(session),
+            tenants = SqlTenantRepository(session)
+            # The default tenant exists once anything used it; an empty database has none yet.
+            tenant = await (tenants.get_or_create(args.tenant) if args.tenant == DEFAULT_TENANT
+                            else tenants.get_by_name(args.tenant))
+            if tenant is None:
+                print(f"There is no tenant {args.tenant!r}.", file=sys.stderr)
+                return FAILED
+            service = FeedbackExportService(uow=SqlUnitOfWork(session, tenant.id),
                                             storage=FileStorage(root=settings.FILES_DIR))
             export = await service.export(args.project)
     except AppError as exc:
@@ -376,6 +393,48 @@ async def _export_feedback(args: argparse.Namespace) -> int:
           "cases-to-review.jsonl and move them into cases.jsonl, then run "
           f"`mini-rag eval {output}`.")
     return PASSED
+
+
+async def _tenants_and_keys(args: argparse.Namespace) -> int:
+    """`mini-rag tenants …` and `mini-rag keys …`."""
+    engine = create_engine(get_settings().DATABASE_URL)
+    try:
+        async with create_session_factory(engine)() as session:
+            uow = SqlUnitOfWork(session)
+            service = AuthService(uow)
+            if args.command == "tenants" and args.action == "create":
+                tenant = await service.create_tenant(args.name)
+                print(f"Tenant {tenant.name} (id {tenant.id}) is ready.")
+                return 0
+            if args.command == "tenants":
+                for tenant in await uow.tenants.list_all():
+                    print(f"{tenant.id}\t{tenant.name}\t{tenant.created_at:%Y-%m-%d}")
+                return 0
+            tenant = await uow.tenants.get_by_name(args.tenant)
+            if tenant is None:
+                print(f"There is no tenant {args.tenant!r}; create it with "
+                      f"`mini-rag tenants create {args.tenant}`.", file=sys.stderr)
+                return 1
+            if args.action == "create":
+                record, key = await service.create_key(tenant.id, args.name,
+                                                       args.scope or list(SCOPES))
+                print(f"Key {record.id} for {tenant.name}, with {', '.join(record.scopes)}:")
+                print(key)
+                print("Keep it now: it is not stored and cannot be shown again.", file=sys.stderr)
+                return 0
+            if args.action == "list":
+                for key in await service.list_keys(tenant.id):
+                    state = "revoked" if key.revoked_at else "active"
+                    print(f"{key.id}\t{key.prefix}…\t{key.name}\t{','.join(key.scopes)}\t{state}")
+                return 0
+            await service.revoke_key(tenant.id, args.key_id)
+            print(f"Key {args.key_id} is revoked.")
+            return 0
+    except AppError as exc:
+        print(f"{exc}", file=sys.stderr)
+        return 1
+    finally:
+        await engine.dispose()
 
 
 async def _work(workers: int) -> int:
@@ -452,6 +511,8 @@ def main(argv: list[str] | None = None) -> int:
     export.add_argument("project", help="the project whose feedback to export")
     export.add_argument("output", type=Path, help="a new folder for the dataset")
     export.add_argument("--name", help="the dataset's name (default: <project>-feedback)")
+    export.add_argument("--tenant", default=DEFAULT_TENANT,
+                        help="the tenant that owns the project (default: default)")
     worker = commands.add_parser(
         "worker",
         help="run background jobs (processing and indexing files) and send webhooks until "
@@ -462,7 +523,28 @@ def main(argv: list[str] | None = None) -> int:
                     "queues jobs.")
     worker.add_argument("--workers", type=_positive,
                         help="jobs to run at once (default JOB_WORKERS, or 1 when it is 0)")
+    tenants = commands.add_parser("tenants", help="create and list tenants",
+                                  description="Tenants keep their projects apart; API keys "
+                                              "belong to one.")
+    tenant_actions = tenants.add_subparsers(dest="action", required=True, metavar="action")
+    create_tenant = tenant_actions.add_parser("create", help="create a tenant")
+    create_tenant.add_argument("name", type=_tenant_name, help="letters, digits, _ and -")
+    tenant_actions.add_parser("list", help="list tenants")
+    keys = commands.add_parser("keys", help="create, list and revoke a tenant's API keys")
+    key_actions = keys.add_subparsers(dest="action", required=True, metavar="action")
+    create_key = key_actions.add_parser("create", help="create a key; it is printed once")
+    create_key.add_argument("--tenant", required=True)
+    create_key.add_argument("--name", required=True, help="what the key is for")
+    create_key.add_argument("--scope", action="append", choices=SCOPES,
+                            help="repeat for several (default: all of them)")
+    list_keys = key_actions.add_parser("list", help="list a tenant's keys")
+    list_keys.add_argument("--tenant", required=True)
+    revoke_key = key_actions.add_parser("revoke", help="revoke a key at once")
+    revoke_key.add_argument("--tenant", required=True)
+    revoke_key.add_argument("key_id", type=_key_id, help="the id `keys list` shows")
     args = parser.parse_args(argv)
+    if args.command in ("tenants", "keys"):
+        return asyncio.run(_tenants_and_keys(args))
     if args.command == "worker":
         workers = args.workers or get_settings().JOB_WORKERS or 1
         try:
@@ -479,6 +561,19 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--judge-model needs --answers")
         return asyncio.run(_evaluate(args))
     return asyncio.run(_resize_embeddings())
+
+
+def _key_id(value: str) -> str:
+    try:
+        return str(uuid.UUID(value))
+    except ValueError:
+        raise argparse.ArgumentTypeError("not a key id") from None
+
+
+def _tenant_name(value: str) -> str:
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", value):
+        raise argparse.ArgumentTypeError("use 1-64 letters, digits, _ and -")
+    return value
 
 
 def _positive(value: str) -> int:

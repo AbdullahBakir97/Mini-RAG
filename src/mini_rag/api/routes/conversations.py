@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
 
-from mini_rag.api.dependencies import ConversationServiceDep
+from mini_rag.api.dependencies import ASK, READ, ConversationServiceDep
 from mini_rag.api.schemas import (
     CitationResponse,
     ConversationCreateRequest,
@@ -59,7 +59,7 @@ def _message(message: ConversationMessage) -> MessageResponse:
         created_at=message.created_at, feedback=_feedback(message.feedback))
 
 
-@router.post("/{project_id}/conversations", status_code=status.HTTP_201_CREATED,
+@router.post("/{project_id}/conversations", dependencies=[ASK], status_code=status.HTTP_201_CREATED,
              summary="Start a conversation",
              description="Ask in it with POST /api/v1/ask/{project_id} and its `conversation_id`.",
              responses=error_responses(ProjectNotFound))
@@ -70,7 +70,8 @@ async def create_conversation(project_id: ProjectId, service: ConversationServic
     return ConversationResponse(**_conversation(conversation))
 
 
-@router.get("/{project_id}/conversations", summary="List conversations, most recent first",
+@router.get("/{project_id}/conversations", dependencies=[READ],
+            summary="List conversations, most recent first",
             responses=error_responses(ProjectNotFound))
 async def list_conversations(project_id: ProjectId, page: PaginationDep,
                              service: ConversationServiceDep) -> ConversationListResponse:
@@ -80,7 +81,7 @@ async def list_conversations(project_id: ProjectId, page: PaginationDep,
         items=[ConversationResponse(**_conversation(c)) for c in result.items])
 
 
-@router.get("/{project_id}/conversations/{conversation_id}",
+@router.get("/{project_id}/conversations/{conversation_id}", dependencies=[READ],
             summary="A conversation with its questions and answers",
             responses=error_responses(ProjectNotFound, ConversationNotFound))
 async def get_conversation(project_id: ProjectId, conversation_id: ConversationIdPath,
@@ -90,7 +91,7 @@ async def get_conversation(project_id: ProjectId, conversation_id: ConversationI
                                       messages=[_message(m) for m in found.messages])
 
 
-@router.delete("/{project_id}/conversations/{conversation_id}",
+@router.delete("/{project_id}/conversations/{conversation_id}", dependencies=[ASK],
                status_code=status.HTTP_204_NO_CONTENT,
                summary="Delete a conversation and its messages",
                responses=error_responses(ProjectNotFound, ConversationNotFound))
@@ -104,7 +105,7 @@ FEEDBACK_ERRORS = error_responses(ProjectNotFound, ConversationNotFound, Message
 FEEDBACK_PATH = "/{project_id}/conversations/{conversation_id}/messages/{message_id}/feedback"
 
 
-@router.put(FEEDBACK_PATH, summary="Rate an answer thumbs up or down",
+@router.put(FEEDBACK_PATH, dependencies=[ASK], summary="Rate an answer thumbs up or down",
             description="Replaces any rating the answer had. Rated answers can be reviewed with "
                         "GET /api/v1/projects/{project_id}/feedback and exported as evaluation "
                         "cases with `mini-rag feedback-export`.",
@@ -117,7 +118,7 @@ async def rate_answer(project_id: ProjectId, conversation_id: ConversationIdPath
     return _message(message)
 
 
-@router.delete(FEEDBACK_PATH, status_code=status.HTTP_204_NO_CONTENT,
+@router.delete(FEEDBACK_PATH, dependencies=[ASK], status_code=status.HTTP_204_NO_CONTENT,
                summary="Remove an answer's rating", responses=FEEDBACK_ERRORS)
 async def unrate_answer(project_id: ProjectId, conversation_id: ConversationIdPath,
                         message_id: MessageIdPath, service: ConversationServiceDep) -> Response:
@@ -125,7 +126,8 @@ async def unrate_answer(project_id: ProjectId, conversation_id: ConversationIdPa
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.get("/{project_id}/feedback", summary="Rated answers, most recently rated first",
+@router.get("/{project_id}/feedback", dependencies=[READ],
+            summary="Rated answers, most recently rated first",
             responses=error_responses(ProjectNotFound))
 async def list_feedback(project_id: ProjectId, page: PaginationDep, service: ConversationServiceDep,
                         rating: Annotated[Literal["up", "down"] | None,
