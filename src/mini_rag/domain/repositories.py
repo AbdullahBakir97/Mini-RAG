@@ -7,7 +7,15 @@ fakes. Nothing here knows about SQL.
 from collections.abc import Mapping, Sequence
 from typing import Protocol
 
-from .models import Chunk, FileRecord, Project, ScoredChunk, UnembeddedChunk
+from .models import (
+    AnswerRecord,
+    Chunk,
+    FileRecord,
+    Project,
+    ScoredChunk,
+    UnembeddedChunk,
+    UsageTotals,
+)
 
 
 class ProjectRepository(Protocol):
@@ -68,6 +76,15 @@ class ChunkRepository(Protocol):
         ...
 
 
+class AnswerRepository(Protocol):
+
+    async def add(self, record: AnswerRecord) -> None: ...
+
+    async def totals_for_project(self, project_id: int) -> UsageTotals:
+        """All of the project's answers added up; zeros when there are none."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Repositories that share one transaction.
 
@@ -77,6 +94,7 @@ class UnitOfWork(Protocol):
     projects: ProjectRepository
     files: FileRepository
     chunks: ChunkRepository
+    answers: AnswerRepository
 
     async def commit(self) -> None: ...
 

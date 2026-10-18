@@ -17,6 +17,7 @@ CONTRACTS = [
     (interfaces.ProjectRepository, sql.SqlProjectRepository, fakes.FakeProjects),
     (interfaces.FileRepository, sql.SqlFileRepository, fakes.FakeFiles),
     (interfaces.ChunkRepository, sql.SqlChunkRepository, fakes.FakeChunks),
+    (interfaces.AnswerRepository, sql.SqlAnswerRepository, fakes.FakeAnswers),
     (interfaces.UnitOfWork, sql.SqlUnitOfWork, fakes.FakeUnitOfWork),
 ]
 
@@ -44,7 +45,7 @@ def test_implementation_matches_interface(interface, implementation):
 
 @pytest.mark.parametrize("implementation", [sql.SqlUnitOfWork, fakes.FakeUnitOfWork])
 def test_unit_of_work_exposes_the_repositories(implementation):
-    assert set(interfaces.UnitOfWork.__annotations__) == {"projects", "files", "chunks"}
+    assert set(interfaces.UnitOfWork.__annotations__) == {"projects", "files", "chunks", "answers"}
     instance = implementation(None) if implementation is sql.SqlUnitOfWork else implementation()
 
     assert all(hasattr(instance, name) for name in interfaces.UnitOfWork.__annotations__)

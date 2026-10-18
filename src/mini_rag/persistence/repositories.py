@@ -7,14 +7,16 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mini_rag.domain.models import (
+    AnswerRecord,
     Chunk,
     FileRecord,
     Project,
     ScoredChunk,
     UnembeddedChunk,
+    UsageTotals,
 )
 
-from .tables import ChunkRow, FileRow, ProjectRow
+from .tables import AnswerRow, ChunkRow, FileRow, ProjectRow
 
 
 def _project(row: ProjectRow) -> Project:
@@ -170,6 +172,34 @@ class SqlChunkRepository:
         ]
 
 
+class SqlAnswerRepository:
+
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def add(self, record: AnswerRecord) -> None:
+        await self.session.execute(insert(AnswerRow).values(
+            project_id=record.project_id, prompt_version=record.prompt_version,
+            model=record.model, streamed=record.streamed, answered=record.answered,
+            input_tokens=record.input_tokens, output_tokens=record.output_tokens,
+            cost_usd=record.cost_usd))
+
+    async def totals_for_project(self, project_id: int) -> UsageTotals:
+        row = (await self.session.execute(
+            select(
+                func.count().label("answers"),
+                func.count().filter(AnswerRow.answered).label("answered"),
+                func.coalesce(func.sum(AnswerRow.input_tokens), 0).label("input_tokens"),
+                func.coalesce(func.sum(AnswerRow.output_tokens), 0).label("output_tokens"),
+                func.coalesce(func.sum(AnswerRow.cost_usd), 0).label("cost_usd"),
+                func.count().filter(AnswerRow.model.is_not(None),
+                                    AnswerRow.cost_usd.is_(None)).label("unpriced_answers"),
+            ).where(AnswerRow.project_id == project_id))).one()
+        return UsageTotals(answers=row.answers, answered=row.answered,
+                           input_tokens=row.input_tokens, output_tokens=row.output_tokens,
+                           cost_usd=float(row.cost_usd), unpriced_answers=row.unpriced_answers)
+
+
 class SqlUnitOfWork:
 
     def __init__(self, session: AsyncSession):
@@ -177,6 +207,7 @@ class SqlUnitOfWork:
         self.projects = SqlProjectRepository(session)
         self.files = SqlFileRepository(session)
         self.chunks = SqlChunkRepository(session)
+        self.answers = SqlAnswerRepository(session)
 
     async def commit(self) -> None:
         await self.session.commit()

@@ -16,11 +16,13 @@ from itertools import count
 from mini_rag.core.errors import EmbeddingFailed, LLMFailed
 from mini_rag.domain.llm import Completion, Message, TokenUsage
 from mini_rag.domain.models import (
+    AnswerRecord,
     Chunk,
     FileRecord,
     Project,
     ScoredChunk,
     UnembeddedChunk,
+    UsageTotals,
 )
 from mini_rag.persistence.tables import EMBEDDING_DIMENSIONS
 
@@ -128,12 +130,31 @@ class FakeChunks:
         return [hit for hit in hits[:top_k] if min_score is None or hit.score >= min_score]
 
 
+class FakeAnswers:
+
+    def __init__(self):
+        self.records: list[AnswerRecord] = []
+
+    async def add(self, record: AnswerRecord) -> None:
+        self.records.append(record)
+
+    async def totals_for_project(self, project_id: int) -> UsageTotals:
+        records = [r for r in self.records if r.project_id == project_id]
+        return UsageTotals(
+            answers=len(records), answered=sum(r.answered for r in records),
+            input_tokens=sum(r.input_tokens or 0 for r in records),
+            output_tokens=sum(r.output_tokens or 0 for r in records),
+            cost_usd=sum(r.cost_usd or 0 for r in records),
+            unpriced_answers=sum(r.model is not None and r.cost_usd is None for r in records))
+
+
 class FakeUnitOfWork:
 
     def __init__(self):
         self.projects = FakeProjects()
         self.files = FakeFiles()
         self.chunks = FakeChunks()
+        self.answers = FakeAnswers()
         self.commits = 0
         self.fail_commit_with: Exception | None = None
 
