@@ -72,6 +72,11 @@ class SqlProjectRepository:
     async def count(self) -> int:
         return await self.session.scalar(select(func.count()).select_from(ProjectRow))
 
+    async def delete(self, name: str) -> bool:
+        # Files, chunks, answers and conversations go with it (ON DELETE CASCADE).
+        result = await self.session.execute(delete(ProjectRow).where(ProjectRow.name == name))
+        return result.rowcount > 0
+
 
 class SqlFileRepository:
 

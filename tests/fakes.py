@@ -50,6 +50,9 @@ class FakeProjects:
     async def count(self) -> int:
         return len(self.by_name)
 
+    async def delete(self, name: str) -> bool:
+        return self.by_name.pop(name, None) is not None
+
 
 class FakeFiles:
 

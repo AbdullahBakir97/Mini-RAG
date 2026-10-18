@@ -33,6 +33,8 @@ COPY --from=build /opt/venv /opt/venv
 WORKDIR /app
 # Alembic reads its settings from pyproject.toml in the working directory.
 COPY pyproject.toml ./
+# The evaluation datasets, for `mini-rag eval evals/handbook/v1`.
+COPY evals ./evals
 
 USER app
 EXPOSE 8000

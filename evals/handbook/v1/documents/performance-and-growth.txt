@@ -1,0 +1,31 @@
+Performance and growth
+
+This guide explains how Larkspur Labs gives feedback, decides on promotions and supports learning.
+
+Feedback
+
+Managers hold a one-to-one meeting with each team member every week. Feedback is given when it is useful, not saved for a review. Twice a year, in April and October, everyone writes a short self-assessment and receives written feedback from their manager and two peers of their choice.
+
+Performance reviews
+
+The October review also decides salary changes, which take effect on the first of January. Reviews look at impact, collaboration and growth, not at hours worked. Ratings are calibrated across teams, so the same work receives the same rating regardless of the manager.
+
+Promotions
+
+Promotions are proposed by your manager and decided by a promotion committee, which meets twice a year after each review cycle. A promotion case describes work you have already done at the next level for at least six months, with examples and feedback from colleagues. If a case is not accepted, the committee explains what is missing.
+
+Career paths
+
+Engineers can grow on the individual contributor path up to principal engineer, or move into management. Switching between the two paths is possible in both directions and is not a demotion.
+
+Learning budget
+
+Every employee has a personal learning budget of 1,500 euros per year for conferences, courses, workshops and books, plus three paid learning days for attending them. Unused budget does not carry over to the next year. You do not need approval for anything that fits within the budget, as long as it is relevant to your work.
+
+Mentoring
+
+Anyone can ask for a mentor from another team through the people team. Mentoring pairs meet every two weeks for six months, and the mentee sets the topics.
+
+Internal moves
+
+After twelve months in a role you can apply for an open position in another team. Tell your manager before applying; they cannot block the move, but they plan the handover with you.

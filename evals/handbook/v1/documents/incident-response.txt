@@ -1,0 +1,29 @@
+Incident response
+
+This guide explains how Larkspur Labs handles incidents: who is on call, how severity is decided and what happens after an incident is resolved.
+
+On-call rotation
+
+Each team runs a weekly on-call rotation that changes over on Mondays at 10:00. The on-call engineer carries the pager for the whole week, including nights and weekends, and receives an on-call allowance of 300 euros per week on top of their salary. New team members join the rotation after their sixth week, first shadowing an experienced engineer for one full rotation.
+
+Acknowledging a page
+
+The on-call engineer acknowledges a page within 15 minutes, at any time of day. If a page is not acknowledged in time, it escalates to the secondary on-call engineer, and after another 15 minutes to the engineering manager.
+
+Severity levels
+
+SEV1 means customers cannot use the product at all, or data is being lost. SEV2 means an important feature is broken or badly degraded for many customers. SEV3 means a minor feature is broken or a small group of customers is affected.
+
+For a SEV1 the on-call engineer declares an incident immediately, an incident commander takes charge, and the status page is updated within 30 minutes and then every hour until the incident is resolved. SEV2 incidents update the status page within one hour. SEV3 incidents are handled during working hours and do not appear on the status page.
+
+Roles during an incident
+
+The incident commander coordinates the response and decides on rollbacks; they do not debug themselves. A communications lead writes the status page updates and answers the support team. Everyone else works on the fix and reports what they find in the incident channel.
+
+After the incident
+
+Every SEV1 and SEV2 incident gets a written postmortem within five working days. Postmortems are blameless: they describe what happened, why it made sense at the time, and what will change so it cannot happen the same way again. Each follow-up action has an owner and a due date and is tracked until it is done.
+
+Paging tools
+
+Pages arrive through the paging app on your phone. Test your notification settings at the start of every rotation by sending yourself a test page; a silenced phone is the most common reason a page escalates.

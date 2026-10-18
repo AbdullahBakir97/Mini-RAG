@@ -79,3 +79,30 @@ async def resize_embeddings(engine: AsyncEngine, dimensions: int) -> int:
             "CREATE INDEX ix_chunks_embedding ON chunks "
             "USING hnsw (embedding vector_cosine_ops)"))
     return cleared
+
+
+class EmbeddingDimensionsMismatch(RuntimeError):
+    """Stored vectors have another length than the one configured."""
+
+
+async def match_embedding_dimensions(engine: AsyncEngine, wanted: int) -> int | None:
+    """Make chunks.embedding fit vectors of ``wanted`` dimensions.
+
+    With no vectors stored yet, a column of another length is resized, since
+    nothing is lost, and its old length is returned. With vectors stored,
+    EmbeddingDimensionsMismatch names the command that resizes it. Returns
+    None when nothing changed, including when the database cannot be asked.
+    """
+    stored = await stored_embedding_dimensions(engine)
+    if stored is None or stored == wanted:
+        return None
+    embedded = await count_embeddings(engine)
+    if embedded:
+        raise EmbeddingDimensionsMismatch(
+            f"EMBEDDING_DIMENSIONS is {wanted}, but the database stores {embedded} vectors of "
+            f"{stored} dimensions. Set it back to {stored}, or switch to {wanted} with "
+            f"`mini-rag resize-embeddings` (with Docker: `docker compose run --rm app "
+            f"mini-rag resize-embeddings`), which clears the stored vectors so the projects "
+            f"can be indexed again with the new model.")
+    await resize_embeddings(engine, wanted)
+    return stored

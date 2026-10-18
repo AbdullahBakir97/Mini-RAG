@@ -1,0 +1,33 @@
+Engineering workflow
+
+This guide describes how code moves from a branch to production at Larkspur Labs.
+
+Branches and pull requests
+
+All work happens on short-lived branches cut from main. Name a branch after its ticket, for example PAY-142-retry-webhooks. Keep pull requests small: a reviewer should be able to read one in under thirty minutes. Pull requests that change more than 400 lines are split unless the reviewer agrees otherwise.
+
+Reviews
+
+Every pull request needs one approving review and a green build before it can be merged. Changes to authentication, payments or data deletion need a second approval from a member of the owning team. Reviewers respond within one working day; if a review takes longer, ask in the team channel rather than merging without it.
+
+Continuous integration
+
+The build runs linting, unit tests and integration tests against a fresh database. A flaky test is fixed or quarantined by the team that owns it within two working days; re-running a build until it passes is not a fix.
+
+Deployments
+
+Deployments run from the main branch through the deploy pipeline; nobody deploys from a laptop. Production deploys happen on weekdays between 9:00 and 16:00, never on Fridays after noon and never on public holidays. Outside these windows a deploy needs approval from the incident commander on duty.
+
+Every deploy goes to staging first and stays there for at least fifteen minutes while the smoke tests run. The pipeline then rolls the change out to production in three steps: one percent of traffic, then twenty-five percent, then all traffic.
+
+Feature flags
+
+New behaviour that users can see ships behind a feature flag, switched off by default. Flags are removed within thirty days of reaching all users, so the code does not collect dead branches.
+
+Rollbacks
+
+If error rates rise after a deploy, roll back first and investigate afterwards. The pipeline keeps the last five releases, and a rollback to any of them takes about two minutes. A rollback never needs approval.
+
+Database migrations
+
+Migrations must be backwards compatible with the release that is currently running, because during a rollout old and new code run side by side. Removing a column therefore takes two releases: stop using it in the first, drop it in the second.

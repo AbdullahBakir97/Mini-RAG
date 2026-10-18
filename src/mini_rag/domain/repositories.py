@@ -34,6 +34,10 @@ class ProjectRepository(Protocol):
 
     async def count(self) -> int: ...
 
+    async def delete(self, name: str) -> bool:
+        """Delete the project with everything in it; False if there was none."""
+        ...
+
 
 class FileRepository(Protocol):
 
