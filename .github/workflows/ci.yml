@@ -251,7 +251,7 @@ jobs:
         run: if [ -f eval-baseline.json ]; then cat eval-baseline.json; fi
       - name: Keep the report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-report
           path: eval-report.json
