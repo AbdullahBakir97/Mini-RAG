@@ -26,7 +26,7 @@ dependencies = [
     "python-dotenv==1.2.4",
     "pydantic-settings==2.16.0",
     "aiofiles==25.1.0",
-    "pypdf==6.21.0",
+    "pypdf==6.21.2",
     "sqlalchemy[asyncio]==2.1.5",
     "asyncpg==0.32.0",
     "alembic==1.20.0",
@@ -36,6 +36,8 @@ dependencies = [
     "httpx2==2.13.1",
     "anyio==4.15.1",
     "prometheus-client==0.26.0",
+    # AES-GCM for encryption at rest (ENCRYPTION_KEYS).
+    "cryptography==50.0.2",
 ]
 
 [project.optional-dependencies]
